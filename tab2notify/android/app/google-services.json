@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1082574746898",
+    "project_id": "tab2notify",
+    "storage_bucket": "tab2notify.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1082574746898:android:f86797d1f1291f28462fcb",
+        "android_client_info": {
+          "package_name": "com.example.tab2notify"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCshTqGrUlW1XbUuHfiK03JQqz8zbN8a4Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

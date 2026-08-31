@@ -1,39 +1,51 @@
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../authentication/presentation/auth_providers.dart';
+
+import '../../../core/services/ble_service.dart';
 import '../data/service_request_repository.dart';
-import '../domain/service_request_model.dart';
+import '../domain/table_model.dart';
+
+final bleServiceProvider = Provider<BleService>((ref) {
+  final service = BleService();
+  ref.onDispose(() => service.dispose());
+  return service;
+});
 
 final serviceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref) {
-  final dbService = ref.watch(firebaseRealtimeServiceProvider);
-  return ServiceRequestRepository(dbService);
+  final bleService = ref.watch(bleServiceProvider);
+  return ServiceRequestRepository(bleService);
 });
 
-// Stream of all requests
-final serviceRequestsStreamProvider = StreamProvider<List<ServiceRequestModel>>((ref) {
+// Real-time Stream of all Dynamic Hotel Tables (Discovered over BLE)
+final tablesStreamProvider = StreamProvider<List<TableModel>>((ref) {
   final repo = ref.watch(serviceRequestRepositoryProvider);
-  return repo.getServiceRequestsStream();
+  return repo.getTablesStream();
 });
 
-// Derived Providers for filtered requests
-final pendingRequestsProvider = Provider<List<ServiceRequestModel>>((ref) {
-  final requestsAsync = ref.watch(serviceRequestsStreamProvider);
-  return requestsAsync.value?.where((req) => req.status == 'pending').toList() ?? [];
+// BLE Scanning state
+final bleScanningStreamProvider = StreamProvider<bool>((ref) {
+  final ble = ref.watch(bleServiceProvider);
+  return ble.isScanningStream;
 });
 
-final acceptedRequestsProvider = Provider<List<ServiceRequestModel>>((ref) {
-  final requestsAsync = ref.watch(serviceRequestsStreamProvider);
-  return requestsAsync.value?.where((req) => req.status == 'accepted').toList() ?? [];
+// BLE Adapter state
+final bleAdapterStateStreamProvider = StreamProvider<BluetoothAdapterState>((ref) {
+  final ble = ref.watch(bleServiceProvider);
+  return ble.adapterStateStream;
 });
 
-final completedRequestsProvider = Provider<List<ServiceRequestModel>>((ref) {
-  final requestsAsync = ref.watch(serviceRequestsStreamProvider);
-  return requestsAsync.value?.where((req) => req.status == 'completed').toList() ?? [];
+// Derived Providers for filtered Tables
+final pendingTablesProvider = Provider<List<TableModel>>((ref) {
+  final tablesAsync = ref.watch(tablesStreamProvider);
+  return tablesAsync.value?.where((t) => t.isPending).toList() ?? [];
 });
 
-final todayRequestsCountProvider = Provider<int>((ref) {
-  final requestsAsync = ref.watch(serviceRequestsStreamProvider);
-  final all = requestsAsync.value ?? [];
-  final now = DateTime.now();
-  final startOfDay = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
-  return all.where((req) => req.createdAt >= startOfDay).length;
+final acceptedTablesProvider = Provider<List<TableModel>>((ref) {
+  final tablesAsync = ref.watch(tablesStreamProvider);
+  return tablesAsync.value?.where((t) => t.isAccepted).toList() ?? [];
+});
+
+final idleTablesProvider = Provider<List<TableModel>>((ref) {
+  final tablesAsync = ref.watch(tablesStreamProvider);
+  return tablesAsync.value?.where((t) => t.isIdle).toList() ?? [];
 });

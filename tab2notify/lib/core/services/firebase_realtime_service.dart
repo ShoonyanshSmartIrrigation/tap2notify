@@ -1,6 +1,8 @@
 import 'package:firebase_database/firebase_database.dart';
 import '../../features/authentication/domain/user_model.dart';
 import '../../features/service_requests/domain/service_request_model.dart';
+import '../../features/service_requests/domain/table_model.dart';
+
 
 class FirebaseRealtimeService {
   final FirebaseDatabase _db = FirebaseDatabase.instance;
@@ -33,14 +35,23 @@ class FirebaseRealtimeService {
         return <ServiceRequestModel>[];
       }
 
-      final Map<dynamic, dynamic> values = snapshot.value as Map<dynamic, dynamic>;
+      final raw = snapshot.value;
       final List<ServiceRequestModel> requests = [];
 
-      values.forEach((key, value) {
-        if (value is Map<dynamic, dynamic>) {
-          requests.add(ServiceRequestModel.fromMap(value, key.toString()));
+      if (raw is Map) {
+        raw.forEach((key, value) {
+          if (value is Map) {
+            requests.add(ServiceRequestModel.fromMap(value, key.toString()));
+          }
+        });
+      } else if (raw is List) {
+        for (int i = 0; i < raw.length; i++) {
+          final item = raw[i];
+          if (item is Map) {
+            requests.add(ServiceRequestModel.fromMap(item, 'req_$i'));
+          }
         }
-      });
+      }
 
       // Sort by latest created first
       requests.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -72,4 +83,158 @@ class FirebaseRealtimeService {
   Future<void> createRequest(ServiceRequestModel request) async {
     await _requestsRef.child(request.requestId).set(request.toMap());
   }
+
+  // Device Status Node
+  DatabaseReference get _devicesRef => _db.ref('devices');
+
+  // Tables Node
+  DatabaseReference get _tablesRef => _db.ref('tables');
+
+  // Listen to Dynamic Tables in real time
+  Stream<List<TableModel>> getTablesStream() {
+    return _tablesRef.onValue.map((event) {
+      final snapshot = event.snapshot;
+      if (!snapshot.exists || snapshot.value == null) {
+        seedInitialTablesIfEmpty();
+        return <TableModel>[];
+      }
+
+      final raw = snapshot.value;
+      final List<TableModel> tables = [];
+
+      if (raw is Map) {
+        raw.forEach((key, value) {
+          if (value is Map) {
+            tables.add(TableModel.fromMap(value, key.toString()));
+          }
+        });
+      } else if (raw is List) {
+        for (int i = 0; i < raw.length; i++) {
+          final item = raw[i];
+          if (item is Map) {
+            tables.add(TableModel.fromMap(item, 'table_$i'));
+          }
+        }
+      }
+
+      if (tables.isEmpty) {
+        seedInitialTablesIfEmpty();
+      }
+
+      // Sort by Table Number ascending
+      tables.sort((a, b) => a.tableNumber.compareTo(b.tableNumber));
+      return tables;
+    });
+  }
+
+  // Seed default 5 tables if none exist
+  Future<void> seedInitialTablesIfEmpty() async {
+    final snapshot = await _tablesRef.get();
+    if (!snapshot.exists || snapshot.value == null) {
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      final Map<String, dynamic> initialTables = {};
+      for (int i = 1; i <= 5; i++) {
+        final tableId = 'table_$i';
+        initialTables[tableId] = {
+          'id': tableId,
+          'table_number': i,
+          'device_id': 'device_$i',
+          'status': 'idle',
+          'flag': -1,
+          'waiter_name': '',
+          'created_at': now,
+          'updated_at': now,
+        };
+      }
+      await _tablesRef.set(initialTables);
+    }
+  }
+
+  // Accept a Table Request with Waiter Name (flag = 1)
+  Future<void> acceptTableRequest({
+    required String tableId,
+    required String waiterName,
+    String? managerUid,
+  }) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, dynamic> updates = {
+      'flag': 1,
+      'status': 'accepted',
+      'waiter_name': waiterName,
+      'accepted_at': now,
+      'updated_at': now,
+    };
+    if (managerUid != null) {
+      updates['accepted_by'] = managerUid;
+    }
+    await _tablesRef.child(tableId).update(updates);
+
+    // Mirror to serviceRequests node for backward compatibility
+    await _requestsRef.child(tableId).update({
+      'status': 'accepted',
+      'acceptedBy': waiterName,
+      'acceptedAt': now,
+      'updatedAt': now,
+    });
+  }
+
+  // Reset a Table back to Idle state (flag = -1)
+  Future<void> resetTableStatus(String tableId) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, dynamic> updates = {
+      'flag': -1,
+      'status': 'idle',
+      'waiter_name': '',
+      'updated_at': now,
+    };
+    await _tablesRef.child(tableId).update(updates);
+    await _requestsRef.child(tableId).update({
+      'status': 'idle',
+      'updatedAt': now,
+    });
+  }
+
+  // Trigger a Table Request (Customer Pressed Button, flag = 0)
+  Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int tNum = tableNumber ?? (int.tryParse(tableId.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1);
+    final Map<String, dynamic> updates = {
+      'id': tableId,
+      'table_number': tNum,
+      'device_id': 'device_$tNum',
+      'flag': 0,
+      'status': 'pending',
+      'waiter_name': '',
+      'updated_at': now,
+      'created_at': now,
+    };
+    await _tablesRef.child(tableId).update(updates);
+    await _requestsRef.child(tableId).set({
+      'requestId': tableId,
+      'roomNumber': '101',
+      'tableNumber': 'T$tNum',
+      'requestType': 'assistance',
+      'status': 'pending',
+      'priority': 'urgent',
+      'createdAt': now,
+    });
+  }
+
+  // Listen to ESP32 Device Status in real time
+  Stream<Map<String, dynamic>?> getDeviceStatusStream(String deviceId) {
+    return _devicesRef.child(deviceId).onValue.map((event) {
+      final snapshot = event.snapshot;
+      if (!snapshot.exists || snapshot.value == null) {
+        return null;
+      }
+      final Map<dynamic, dynamic> val = snapshot.value as Map<dynamic, dynamic>;
+      return val.map((k, v) => MapEntry(k.toString(), v));
+    });
+  }
+
+  // Update Device Heartbeat / Status
+  Future<void> updateDeviceHeartbeat(String deviceId, Map<String, dynamic> data) async {
+    await _devicesRef.child(deviceId).update(data);
+  }
 }
+

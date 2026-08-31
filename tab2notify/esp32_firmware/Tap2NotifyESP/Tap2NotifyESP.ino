@@ -1,33 +1,40 @@
-#include <WiFi.h>
-#include <WebServer.h>
-#include <DNSServer.h>
-#include <Preferences.h>
-#include <ESPmDNS.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include <Adafruit_NeoPixel.h>
 
 // ==========================================
-// --- Hardware Pin Configurations ---
+// --- Hardware Pin Configurations (Exact) ---
 // ==========================================
-const int TOUCH_PIN = 1;     // Touch Sensor OUT (e.g. TTP223)
-const int BUZZER_PIN = 2;    // Buzzer I/O
-const int LED_PIN = 0;       // WS2812B NeoPixel Data IN
-const int NUM_LEDS = 7;      // 7-LED Circular Module
+const int TOUCH_PIN  = 1;    // Touch / Press Button -> GPIO 1
+const int BUZZER_PIN = 2;    // Buzzer I/O          -> GPIO 2
+const int LED_PIN    = 0;    // NeoPixel Data IN    -> GPIO 0
+const int NUM_LEDS   = 7;    // 7-LED Circular NeoPixel Ring
 
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
-// Preferences for saving Wi-Fi credentials in flash memory
-Preferences preferences;
+// ==========================================
+// --- Table & BLE Configuration ---
+// ==========================================
+const int TABLE_NUMBER = 1; // Table 1, Table 2, Table 3...
 
-// Web server & Captive Portal DNS
-WebServer server(80);
-DNSServer dnsServer;
-const byte DNS_PORT = 53;
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
-// Modes & State (Prefix enum values to avoid ESP32-C3 ROM naming conflicts)
-bool inConfigPortalMode = false;
-enum ReqState { REQ_IDLE, REQ_PENDING, REQ_ACCEPTED, REQ_REJECTED };
-ReqState currentStatus = REQ_IDLE;
+BLEServer*         pServer         = NULL;
+BLECharacteristic* pCharacteristic = NULL;
+bool               deviceConnected = false;
+bool               oldDeviceConnected = false;
+
+// Device States
+enum DeviceState { STATE_IDLE, STATE_PENDING, STATE_ACCEPTED };
+DeviceState currentState = STATE_IDLE;
+
 unsigned long acceptedTimestamp = 0;
+int lastTouchState              = LOW;
+unsigned long lastDebounceTime  = 0;
+String assignedWaiterName       = "";
 
 // ==========================================
 // --- LED & Buzzer Helper Functions ---
@@ -40,210 +47,145 @@ void setAllLeds(int r, int g, int b) {
   strip.show();
 }
 
-// Quick upward frequency sweep simulating a "water drop" / "bloop"
-void playWaterDropSound() {
-  for (int freq = 500; freq < 1600; freq += 120) {
-    tone(BUZZER_PIN, freq, 15);
-    delay(15);
-  }
-}
-
-// Short beep for UI confirmations
-void playBeep() {
-  tone(BUZZER_PIN, 1200, 80);
-  delay(90);
+// Direct Full-Volume Buzzer Beep - ONLY active during function call, held LOW otherwise
+void triggerOriginalBeep(int durationMs) {
+  if (durationMs <= 0) return;
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(durationMs);
+  digitalWrite(BUZZER_PIN, LOW);
 }
 
 // ==========================================
-// --- Router Mode Server Routes ---
+// --- High-Speed Real-Time BLE Advertising ---
 // ==========================================
 
-void addCorsHeaders() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  server.sendHeader("Access-Control-Allow-Headers", "*");
-}
+void updateBleAdvertisement() {
+  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->stop();
 
-void handleStatus() {
-  addCorsHeaders();
-  String statusStr;
-  switch (currentStatus) {
-    case REQ_PENDING: statusStr = "pending"; break;
-    case REQ_ACCEPTED: statusStr = "accepted"; break;
-    case REQ_REJECTED: statusStr = "rejected"; break;
-    default: statusStr = "idle"; break;
-  }
-  String json = "{\"room\":\"101\",\"table\":\"T1\",\"service\":\"water\",\"status\":\"" + statusStr + "\"}";
-  server.send(200, "application/json", json);
-}
-
-void handleAccept() {
-  addCorsHeaders();
-  if (currentStatus == REQ_PENDING) {
-    Serial.println("\n>>> [ROUTER] Manager ACCEPTED Request! <<<");
-    currentStatus = REQ_ACCEPTED;
-    acceptedTimestamp = millis();
-
-    // Turn LED Green
-    setAllLeds(0, 255, 0);
-    // Play water drop sound
-    playWaterDropSound();
-
-    server.send(200, "application/json", "{\"result\":\"ok\",\"status\":\"accepted\"}");
+  // Dynamic Name containing state (Instantly detected by Android / iOS)
+  // Pending:  "T2N_T1_REQ"
+  // Accepted: "T2N_T1_ACC"
+  // Idle:     "T2N_T1_IDLE"
+  String dynamicName = "T2N_T" + String(TABLE_NUMBER) + "_";
+  if (currentState == STATE_PENDING) {
+    dynamicName += "REQ";
+  } else if (currentState == STATE_ACCEPTED) {
+    dynamicName += "ACC";
   } else {
-    server.send(200, "application/json", "{\"result\":\"no_pending_request\"}");
-  }
-}
-
-void handleReject() {
-  addCorsHeaders();
-  Serial.println("\n>>> [ROUTER] Manager REJECTED Request <<<");
-  currentStatus = REQ_REJECTED;
-  setAllLeds(0, 0, 0);
-  server.send(200, "application/json", "{\"result\":\"ok\",\"status\":\"rejected\"}");
-}
-
-// Reset Wi-Fi via web endpoint
-void handleResetWifi() {
-  preferences.begin("wifi-config", false);
-  preferences.clear();
-  preferences.end();
-  server.send(200, "text/html", "<h2>Wi-Fi credentials cleared! Restarting in Setup Mode...</h2>");
-  delay(1500);
-  ESP.restart();
-}
-
-// Main Manager Web Dashboard
-void handleDashboard() {
-  String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>"
-    "<title>Tab2Notify Manager</title>"
-    "<style>"
-    "body{font-family:Arial,sans-serif;background:#121212;color:#fff;text-align:center;padding:24px;}"
-    ".card{background:#1e1e1e;border-radius:16px;padding:24px;max-width:380px;margin:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);}"
-    "h1{color:#ff9800;font-size:24px;margin-bottom:4px;}p{color:#aaa;margin-top:0;}"
-    ".btn{display:block;width:100%;padding:14px;margin:12px 0;font-size:18px;font-weight:bold;border:none;border-radius:10px;cursor:pointer;}"
-    ".btn-accept{background:#2e7d32;color:#fff;}"
-    ".btn-reject{background:#d32f2f;color:#fff;}"
-    ".btn-reset{background:#333;color:#ff9800;font-size:14px;padding:10px;margin-top:20px;}"
-    ".status{font-size:18px;font-weight:bold;padding:12px;border-radius:8px;margin:16px 0;}"
-    ".pending{background:#ff9800;color:#000;}"
-    ".idle{background:#292929;color:#888;}"
-    ".accepted{background:#2e7d32;color:#fff;}"
-    "</style></head><body>"
-    "<div class='card'>"
-    "<h1>Tab2Notify</h1>"
-    "<p>Local Wi-Fi Manager</p>"
-    "<div id='status-box' class='status idle'>Checking...</div>"
-    "<h3>Room 101 &bull; Table T1</h3>"
-    "<p>Service: Water Request 💧</p>"
-    "<button class='btn btn-accept' onclick=\"fetch('/accept').then(()=>checkStatus())\">ACCEPT REQUEST</button>"
-    "<button class='btn btn-reject' onclick=\"fetch('/reject').then(()=>checkStatus())\">REJECT</button>"
-    "<form action='/reset-wifi' method='POST' onsubmit=\"return confirm('Reset Wi-Fi credentials?');\">"
-    "<button type='submit' class='btn btn-reset'>⚙ Change Wi-Fi Settings</button>"
-    "</form>"
-    "</div>"
-    "<script>"
-    "function checkStatus(){"
-    "  fetch('/status').then(r=>r.json()).then(d=>{"
-    "    let b=document.getElementById('status-box');"
-    "    if(d.status==='pending'){b.className='status pending';b.innerText='🔔 PENDING REQUEST!';}"
-    "    else if(d.status==='accepted'){b.className='status accepted';b.innerText='✓ REQUEST ACCEPTED';}"
-    "    else{b.className='status idle';b.innerText='Waiting for Guest...';}"
-    "  });"
-    "}"
-    "setInterval(checkStatus,1500);checkStatus();"
-    "</script></body></html>";
-
-  server.send(200, "text/html", html);
-}
-
-// ==========================================
-// --- Mobile Wi-Fi Provisioning Portal ---
-// ==========================================
-
-void handlePortalRoot() {
-  int n = WiFi.scanNetworks();
-  String options = "";
-  for (int i = 0; i < n; ++i) {
-    options += "<option value='" + WiFi.SSID(i) + "'>" + WiFi.SSID(i) + " (" + String(WiFi.RSSI(i)) + " dBm)</option>";
+    dynamicName += "IDLE";
   }
 
-  String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>"
-    "<title>Tab2Notify Wi-Fi Setup</title>"
-    "<style>"
-    "body{font-family:Arial,sans-serif;background:#121212;color:#fff;text-align:center;padding:24px;}"
-    ".card{background:#1e1e1e;border-radius:16px;padding:24px;max-width:380px;margin:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);}"
-    "h1{color:#ff9800;font-size:22px;}p{color:#bbb;font-size:14px;}"
-    "select,input{width:100%;padding:12px;margin:8px 0 16px;box-sizing:border-box;background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:8px;font-size:16px;}"
-    ".btn{width:100%;padding:14px;font-size:18px;font-weight:bold;background:#ff9800;color:#000;border:none;border-radius:8px;cursor:pointer;}"
-    "</style></head><body>"
-    "<div class='card'>"
-    "<h1>⚙ Tab2Notify Wi-Fi Setup</h1>"
-    "<p>Select your hotel/home Wi-Fi router:</p>"
-    "<form action='/save' method='POST'>"
-    "<label style='float:left;font-size:13px;'>Available Wi-Fi Networks:</label>"
-    "<select name='ssid' id='ssid'>" + (n == 0 ? "<option value=''>No networks found</option>" : options) + "</select>"
-    "<label style='float:left;font-size:13px;'>Wi-Fi Password:</label>"
-    "<input type='password' name='password' placeholder='Enter Wi-Fi Password' required>"
-    "<button type='submit' class='btn'>Connect & Save</button>"
-    "</form>"
-    "</div></body></html>";
+  // Update underlying GAP device name
+  esp_ble_gap_set_device_name(dynamicName.c_str());
 
-  server.send(200, "text/html", html);
-}
+  // 1. Primary Advertising Packet (< 31 bytes)
+  BLEAdvertisementData advData;
+  advData.setName(dynamicName.c_str());
+  advData.setFlags(0x06); // BR_EDR_NOT_SUPPORTED | LE_GENERAL_DISCOVERABLE
 
-void handlePortalSave() {
-  String newSsid = server.arg("ssid");
-  String newPass = server.arg("password");
-
-  if (newSsid.length() > 0) {
-    Serial.println("\n[PORTAL] Received Wi-Fi credentials from mobile phone!");
-    Serial.print("SSID: "); Serial.println(newSsid);
-
-    preferences.begin("wifi-config", false);
-    preferences.putString("ssid", newSsid);
-    preferences.putString("password", newPass);
-    preferences.end();
-
-    String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>"
-      "<style>body{background:#121212;color:#fff;text-align:center;padding:40px;font-family:Arial;}</style></head><body>"
-      "<h2>✓ Wi-Fi Details Saved!</h2>"
-      "<p>The ESP32 is now connecting to <b>" + newSsid + "</b>.</p>"
-      "<p>Your phone can now switch back to your regular Wi-Fi.</p>"
-      "</body></html>";
-
-    server.send(200, "text/html", html);
-    delay(2000);
-    ESP.restart();
+  // Compact manufacturer data: "1:0" (Pending), "1:1:Staff" (Accepted), "1:-1" (Idle)
+  String payload = String(TABLE_NUMBER) + ":";
+  if (currentState == STATE_PENDING) {
+    payload += "0";
+  } else if (currentState == STATE_ACCEPTED) {
+    payload += "1:" + assignedWaiterName;
   } else {
-    server.send(400, "text/plain", "Missing SSID");
+    payload += "-1";
   }
+  advData.setManufacturerData(payload.c_str());
+
+  // 2. Scan Response Packet (Service UUID)
+  BLEAdvertisementData scanResponseData;
+  scanResponseData.setCompleteServices(BLEUUID(SERVICE_UUID));
+
+  pAdvertising->setAdvertisementData(advData);
+  pAdvertising->setScanResponseData(scanResponseData);
+
+  // Fast advertising interval: 20ms - 30ms (Instant response)
+  pAdvertising->setMinInterval(0x20); // 20ms
+  pAdvertising->setMaxInterval(0x30); // 30ms
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+
+  pAdvertising->start();
+  Serial.printf("[BLE ADV] Broadcast: [ %s ] -> State: %s (flag = %d)\n", 
+                dynamicName.c_str(), 
+                currentState == STATE_PENDING ? "PENDING / RED" : (currentState == STATE_ACCEPTED ? "ACCEPTED / GREEN" : "IDLE"),
+                currentState == STATE_PENDING ? 0 : (currentState == STATE_ACCEPTED ? 1 : -1));
 }
 
-// Start Captive Portal Access Point
-void startConfigPortal() {
-  inConfigPortalMode = true;
-  Serial.println("\n=============================================");
-  Serial.println("  Starting Mobile Wi-Fi Setup Hotspot");
-  Serial.println("  Connect phone to Wi-Fi: [ Tab2Notify-Setup ]");
-  Serial.println("  Open browser to: http://192.168.4.1");
-  Serial.println("=============================================");
+// ==========================================
+// --- BLE Server Callbacks ---
+// ==========================================
 
-  // Show Blue LEDs indicating Setup Mode
-  setAllLeds(0, 0, 255);
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    deviceConnected = true;
+    Serial.println("[BLE] Manager Phone Connected via Bluetooth!");
+  };
 
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP("Tab2Notify-Setup");
-  delay(500);
+  void onDisconnect(BLEServer* pServer) {
+    deviceConnected = false;
+    Serial.println("[BLE] Manager Phone Disconnected. Resuming BLE Advertising...");
+  }
+};
 
-  // DNS Server for Captive Portal (redirects any request to 192.168.4.1)
-  dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
+// Callback when Manager writes to Characteristic (Accept / Reset Request)
+class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    String value = pCharacteristic->getValue().c_str();
 
-  server.on("/", handlePortalRoot);
-  server.on("/save", HTTP_POST, handlePortalSave);
-  server.onNotFound(handlePortalRoot); // Captive portal redirect
-  server.begin();
-}
+    if (value.length() > 0) {
+      Serial.printf("[BLE RECEIVED] Command: %s\n", value.c_str());
+
+      // Parse command: {"flag":1,"waiter":"Rajesh"} or "1:Rajesh" or {"flag":-1}
+      if (value.indexOf("\"flag\":1") >= 0 || value.startsWith("1:") || value.indexOf("\"flag\": 1") >= 0) {
+        // Extract Waiter Name
+        String waiter = "Staff";
+        int waiterIdx = value.indexOf("\"waiter\":\"");
+        if (waiterIdx >= 0) {
+          int start = waiterIdx + 10;
+          int end = value.indexOf("\"", start);
+          if (end > start) {
+            waiter = value.substring(start, end);
+          }
+        } else if (value.startsWith("1:")) {
+          waiter = value.substring(2);
+        }
+
+        assignedWaiterName = waiter;
+        currentState = STATE_ACCEPTED;
+        acceptedTimestamp = millis();
+
+        Serial.printf("\n>>> [BLE ACCEPTED] Table %d Accepted! Assigned Server: %s <<<\n", TABLE_NUMBER, assignedWaiterName.c_str());
+
+        // Update BLE advertisement immediately
+        updateBleAdvertisement();
+
+        // Stop buzzer pin completely
+        digitalWrite(BUZZER_PIN, LOW);
+
+        // Turn LED GREEN (flag = 1)
+        setAllLeds(0, 255, 0);
+
+        // Play 2 clean confirmation beeps
+        triggerOriginalBeep(80);
+        delay(60);
+        triggerOriginalBeep(80);
+
+      } else if (value.indexOf("\"flag\":-1") >= 0 || value.startsWith("-1") || value.indexOf("\"flag\": -1") >= 0) {
+        // Reset to Idle
+        currentState = STATE_IDLE;
+        assignedWaiterName = "";
+        setAllLeds(0, 0, 0);
+        digitalWrite(BUZZER_PIN, LOW);
+        Serial.printf("[BLE RESET] Table %d reset to IDLE.\n", TABLE_NUMBER);
+        updateBleAdvertisement();
+      }
+    }
+  }
+};
 
 // ==========================================
 // --- Setup ---
@@ -251,115 +193,123 @@ void startConfigPortal() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n=== Tab2Notify ESP32-C3 Booting ===");
+  Serial.printf("\n=== Tab2Notify Table %d Bluetooth (BLE) Booting ===\n", TABLE_NUMBER);
 
-  pinMode(TOUCH_PIN, INPUT_PULLDOWN);
+  // Initialize GPIO Pins (Strictly LOW on Buzzer)
+  pinMode(TOUCH_PIN, INPUT_PULLDOWN);   // GPIO 1: Touch / Button
+  pinMode(BUZZER_PIN, OUTPUT);          // GPIO 2: Buzzer
+  digitalWrite(BUZZER_PIN, LOW);
 
+  // Initialize NeoPixel LEDs (GPIO 0)
   strip.begin();
   strip.show();
   strip.setBrightness(60);
-  setAllLeds(0, 0, 0);
+  setAllLeds(0, 0, 0); // Off / Idle
 
-  // Check if touch button is held down at boot to force reset Wi-Fi
-  if (digitalRead(TOUCH_PIN) == HIGH) {
-    Serial.println("[RESET] Touch button held at boot! Resetting Wi-Fi memory...");
-    preferences.begin("wifi-config", false);
-    preferences.clear();
-    preferences.end();
-    playBeep();
-  }
+  // Initialize Touch State
+  delay(50);
+  lastTouchState = digitalRead(TOUCH_PIN);
 
-  // Read saved Wi-Fi from memory
-  preferences.begin("wifi-config", true);
-  String savedSsid = preferences.getString("ssid", "");
-  String savedPass = preferences.getString("password", "");
-  preferences.end();
+  // Initialize BLE Device with exact assigned Table Number
+  String bootName = "T2N_T" + String(TABLE_NUMBER) + "_IDLE";
+  BLEDevice::init(bootName.c_str());
 
-  if (savedSsid.length() > 0) {
-    Serial.print("Saved Wi-Fi found: ");
-    Serial.println(savedSsid);
-    Serial.println("Attempting to connect...");
+  // Create BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+  // Create BLE Service
+  BLEService* pService = pServer->createService(SERVICE_UUID);
 
-    // Wait up to 15 seconds to connect
-    int timeout = 30;
-    while (WiFi.status() != WL_CONNECTED && timeout > 0) {
-      delay(500);
-      Serial.print(".");
-      timeout--;
-    }
+  // Create BLE Characteristic
+  pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_READ   |
+    BLECharacteristic::PROPERTY_WRITE  |
+    BLECharacteristic::PROPERTY_NOTIFY |
+    BLECharacteristic::PROPERTY_INDICATE
+  );
 
-    if (WiFi.status() == WL_CONNECTED) {
-      // Start mDNS service (allows accessing as http://tab2notify.local)
-      if (MDNS.begin("tab2notify")) {
-        Serial.println("✓ mDNS responder started: http://tab2notify.local");
-      }
+  pCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
+  pCharacteristic->addDescriptor(new BLE2902());
+  String initialVal = String(TABLE_NUMBER) + ":-1";
+  pCharacteristic->setValue(initialVal.c_str());
 
-      Serial.println("\n-------------------------------------------");
-      Serial.println("✓ Connected to Router successfully!");
-      Serial.print("✓ ESP32 IP Address: http://");
-      Serial.println(WiFi.localIP());
-      Serial.println("-------------------------------------------");
+  // Start Service
+  pService->start();
 
-      // Setup Router Mode Web Server
-      server.on("/", HTTP_GET, handleDashboard);
-      server.on("/status", HTTP_GET, handleStatus);
-      server.on("/accept", HTTP_GET, handleAccept);
-      server.on("/accept", HTTP_POST, handleAccept);
-      server.on("/reject", HTTP_GET, handleReject);
-      server.on("/reject", HTTP_POST, handleReject);
-      server.on("/reset-wifi", HTTP_POST, handleResetWifi);
+  // Start Instant Advertising
+  updateBleAdvertisement();
 
-      server.begin();
-      setAllLeds(0, 0, 0); // Ready
-      return;
-    } else {
-      Serial.println("\n[ERROR] Failed to connect to saved Wi-Fi. Launching Setup Portal...");
-    }
-  } else {
-    Serial.println("No saved Wi-Fi found. Launching Setup Portal...");
-  }
-
-  // If no Wi-Fi saved or connection failed -> Start Mobile Setup Hotspot
-  startConfigPortal();
+  Serial.println("-------------------------------------------");
+  Serial.printf("✓ Bluetooth Low Energy (BLE) ACTIVE!\n");
+  Serial.printf("✓ Assigned to Table %d\n", TABLE_NUMBER);
+  Serial.println("✓ Real-Time Instant State Advertising: ACTIVE\n");
+  Serial.println("-------------------------------------------");
 }
 
 // ==========================================
 // --- Main Loop ---
 // ==========================================
 void loop() {
-  if (inConfigPortalMode) {
-    dnsServer.processNextRequest();
-    server.handleClient();
-    return;
+  // Ensure buzzer pin is always LOW when not explicitly beeping
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // Restart advertising if disconnected
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(300);
+    pServer->startAdvertising();
+    Serial.println("[BLE] Restarted BLE advertising");
+    oldDeviceConnected = deviceConnected;
+  }
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
   }
 
-  // --- Normal Router Operation Mode ---
-  server.handleClient();
+  // -------------------------------------------------------------
+  // 1. Detect Customer Button Press on GPIO 1 (Instant BLE Broadcast)
+  // -------------------------------------------------------------
+  int reading = digitalRead(TOUCH_PIN);
 
-  // 1. Check physical Touch button press
-  int touchState = digitalRead(TOUCH_PIN);
+  // Detect state change from LOW to HIGH (Instant response on EVERY press)
+  if (reading == HIGH && lastTouchState == LOW) {
+    if (millis() - lastDebounceTime > 150) {
+      lastDebounceTime = millis();
+      Serial.printf("\n[BUTTON TAP] Table %d touched! Instant BLE broadcast -> flag = 0 (PENDING / RED)...\n", TABLE_NUMBER);
 
-  if (touchState == HIGH && currentStatus != REQ_PENDING) {
-    Serial.println("\n[TOUCH DETECTED] Guest requested service!");
-    currentStatus = REQ_PENDING;
+      // 1. Transition state to PENDING (flag = 0)
+      currentState = STATE_PENDING;
 
-    // Show RED on LEDs
-    setAllLeds(255, 0, 0);
-    // Play water drop sound
-    playWaterDropSound();
+      // 2. LED turns RED (flag = 0)
+      setAllLeds(255, 0, 0);
 
-    delay(1000); // Debounce delay
-  }
+      // 3. Immediately Broadcast updated BLE Advertisement (Instant name change to T2N_T1_REQ!)
+      updateBleAdvertisement();
 
-  // 2. If status was ACCEPTED, keep Green light on for 5 seconds then reset to IDLE
-  if (currentStatus == REQ_ACCEPTED) {
-    if (millis() - acceptedTimestamp > 5000) {
-      Serial.println("[TIMER] Resetting LEDs back to IDLE");
-      setAllLeds(0, 0, 0);
-      currentStatus = REQ_IDLE;
+      // 4. Update characteristic notification
+      if (pCharacteristic) {
+        String payload = String(TABLE_NUMBER) + ":0:pending";
+        pCharacteristic->setValue(payload.c_str());
+        pCharacteristic->notify();
+      }
+
+      // 5. Sound buzzer
+      triggerOriginalBeep(150);
     }
   }
+  lastTouchState = reading;
+
+  // -------------------------------------------------------------
+  // 2. Accepted State (flag = 1): Green LED stays for 5 seconds
+  // -------------------------------------------------------------
+  if (currentState == STATE_ACCEPTED) {
+    if (millis() - acceptedTimestamp > 5000) {
+      Serial.println("[TIMER] Resetting LEDs back to Standby/Idle");
+      setAllLeds(0, 0, 0);
+      currentState = STATE_IDLE;
+      updateBleAdvertisement();
+    }
+  }
+
+  delay(10);
 }

@@ -1,16 +1,10 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 
 import '../../../core/theme/theme_provider.dart';
-import '../../../core/widgets/dashboard_summary_card.dart';
-import '../../../core/widgets/request_card.dart';
-import '../../authentication/presentation/auth_providers.dart';
-import '../../service_requests/domain/service_request_model.dart';
+import '../../../core/widgets/table_card.dart';
+import '../../service_requests/domain/table_model.dart';
 import '../../service_requests/presentation/service_request_providers.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -21,137 +15,105 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  String _selectedFilter = 'pending'; // 'all', 'pending', 'accepted', 'completed'
-
-  // Local Router ESP32 Sync
-  String? _esp32Ip;
-  Timer? _pollTimer;
-  ServiceRequestModel? _localEspRequest;
-  bool _isEspConnected = false;
+  String _selectedFilter = 'all'; // 'all', 'pending', 'accepted', 'idle'
 
   @override
   void initState() {
     super.initState();
-  }
-
-  @override
-  void dispose() {
-    _pollTimer?.cancel();
-    super.dispose();
-  }
-
-  void _startEspPolling(String ip) {
-    _esp32Ip = ip.trim().replaceAll('http://', '').replaceAll('/', '');
-    _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _fetchEspStatus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(bleServiceProvider).requestPermissionsAndStartScan();
     });
-    _fetchEspStatus();
   }
 
-  Future<void> _fetchEspStatus() async {
-    if (_esp32Ip == null || _esp32Ip!.isEmpty) return;
-    try {
-      final url = Uri.parse('http://$_esp32Ip/status');
-      final res = await http.get(url).timeout(const Duration(seconds: 2));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final status = data['status'] as String? ?? 'idle';
-        setState(() {
-          _isEspConnected = true;
-          if (status == 'pending') {
-            _localEspRequest = ServiceRequestModel(
-              requestId: 'esp32_hardware_req',
-              roomNumber: data['room']?.toString() ?? '101',
-              tableNumber: data['table']?.toString() ?? 'T1',
-              requestType: data['service']?.toString() ?? 'water',
-              status: 'pending',
-              createdAt: DateTime.now().millisecondsSinceEpoch,
-            );
-          } else if (status == 'accepted') {
-            if (_localEspRequest != null) {
-              _localEspRequest = _localEspRequest!.copyWith(status: 'accepted');
-            } else {
-              _localEspRequest = ServiceRequestModel(
-                requestId: 'esp32_hardware_req',
-                roomNumber: data['room']?.toString() ?? '101',
-                tableNumber: data['table']?.toString() ?? 'T1',
-                requestType: data['service']?.toString() ?? 'water',
-                status: 'accepted',
-                createdAt: DateTime.now().millisecondsSinceEpoch,
-              );
-            }
-          } else {
-            _localEspRequest = null;
-          }
-        });
-      }
-    } catch (_) {
-      if (mounted && _isEspConnected) {
-        setState(() => _isEspConnected = false);
-      }
-    }
-  }
-
-  Future<void> _sendEspAction(String action) async {
-    if (_esp32Ip == null) return;
-    try {
-      final url = Uri.parse('http://$_esp32Ip/$action');
-      await http.get(url).timeout(const Duration(seconds: 2));
-      _fetchEspStatus();
-    } catch (_) {}
-  }
-
-  void _showEspConnectDialog() {
-    final controller = TextEditingController(text: _esp32Ip ?? '');
+  void _showAcceptDialog(TableModel table) {
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
         return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.wifi_rounded, color: Colors.orange),
-              SizedBox(width: 8),
-              Text('Connect to ESP32'),
-            ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+          title: Column(
             children: [
-              const Text('Enter the local IP of your ESP32 connected to the Wi-Fi router:'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'ESP32 IP Address',
-                  hintText: 'e.g. 192.168.1.50',
-                  border: OutlineInputBorder(),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE53935).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
                 ),
+                child: const Icon(
+                  Icons.table_restaurant_rounded,
+                  color: Color(0xFFE53935),
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Table ${table.tableNumber} Request',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Customer requested service',
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
               ),
             ],
           ),
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
           actions: [
             TextButton(
-              onPressed: () {
-                _pollTimer?.cancel();
-                setState(() {
-                  _esp32Ip = null;
-                  _isEspConnected = false;
-                  _localEspRequest = null;
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Disconnect'),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text(
+                'DISMISS',
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
             ElevatedButton(
-              onPressed: () {
-                if (controller.text.trim().isNotEmpty) {
-                  _startEspPolling(controller.text.trim());
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dialogContext);
+
+                final repo = ref.read(serviceRequestRepositoryProvider);
+                await repo.acceptTableRequest(
+                  tableId: table.id,
+                  waiterName: 'Staff',
+                );
+
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '🟢 Table ${table.tableNumber} Request Accepted!',
+                      ),
+                      backgroundColor: const Color(0xFF2E7D32),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
                 }
-                Navigator.pop(context);
               },
-              child: const Text('Connect & Sync'),
+              child: const Text(
+                'ACCEPT',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
             ),
           ],
         );
@@ -159,10 +121,102 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  void _showDetailsBottomSheet(ServiceRequestModel request) {
+  void _showCompleteDialog(TableModel table) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle_outline_rounded,
+                  color: Color(0xFF2E7D32),
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Table ${table.tableNumber}',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Request is currently ACCEPTED 🟢',
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
+            ],
+          ),
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueGrey,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dialogContext);
+
+                final repo = ref.read(serviceRequestRepositoryProvider);
+                await repo.resetTableStatus(table.id);
+
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '✓ Table ${table.tableNumber} marked as Idle/Ready.',
+                      ),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text(
+                'MARK AS IDLE',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showBleInfoModal(
+    List<TableModel> tables,
+    bool isScanning,
+    BluetoothAdapterState adapterState,
+  ) {
     final theme = Theme.of(context);
-    final dt = DateTime.fromMillisecondsSinceEpoch(request.createdAt);
-    final formattedTime = DateFormat('MMM d, yyyy • h:mm:ss a').format(dt);
+    final isBtOn = adapterState == BluetoothAdapterState.on;
+    final onlineCount = tables.where((t) => t.isDeviceOnline).length;
 
     showModalBottomSheet(
       context: context,
@@ -191,22 +245,43 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Request Details',
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.bluetooth_rounded,
+                        color: isBtOn
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFE53935),
+                        size: 28,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'BLE Network Status',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: request.status == 'pending'
-                          ? const Color(0xFFE53935).withValues(alpha: 0.15)
-                          : const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                      color: isBtOn
+                          ? const Color(0xFF2E7D32).withValues(alpha: 0.15)
+                          : const Color(0xFFE53935).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
-                      request.status.toUpperCase(),
+                      isBtOn
+                          ? (isScanning ? 'SCANNING' : 'ONLINE')
+                          : 'BLUETOOTH OFF',
                       style: TextStyle(
-                        color: request.status == 'pending' ? const Color(0xFFE53935) : const Color(0xFF2E7D32),
+                        color: isBtOn
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFE53935),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -214,12 +289,44 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ],
               ),
               const Divider(height: 32),
-              _buildDetailRow('Request ID', request.requestId),
-              _buildDetailRow('Room Number', 'Room ${request.roomNumber}'),
-              _buildDetailRow('Table Number', 'Table ${request.tableNumber}'),
-              _buildDetailRow('Service Type', request.requestType.toUpperCase()),
-              _buildDetailRow('Created Time', formattedTime),
+              _buildDetailRow(
+                'Protocol',
+                'Bluetooth Low Energy (BLE Advertising & GATT)',
+              ),
+              _buildDetailRow(
+                'Active Connected Tables',
+                '$onlineCount of ${tables.length} in range',
+              ),
+              _buildDetailRow(
+                'Service UUID',
+                '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
+              ),
+              _buildDetailRow(
+                'Zero Configuration',
+                'No Wi-Fi / Router / Internet needed',
+              ),
               const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    ref.read(bleServiceProvider).startScan();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text(
+                    'Re-scan Nearby Tables',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
           ),
         );
@@ -233,70 +340,48 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // Simulate an ESP32 tap for instant local testing!
-  Future<void> _simulateEsp32Tap() async {
-    final newId = 'esp32_req_${DateTime.now().millisecondsSinceEpoch % 10000}';
-    final sampleReq = ServiceRequestModel(
-      requestId: newId,
-      roomNumber: '101',
-      tableNumber: 'T1',
-      requestType: 'water',
-      status: 'pending',
-      createdAt: DateTime.now().millisecondsSinceEpoch,
-    );
-
-    final db = ref.read(firebaseRealtimeServiceProvider);
-    await db.createRequest(sampleReq);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🔴 Simulated ESP32 Touch: RED New Request created!'),
-          backgroundColor: Color(0xFFE53935),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final userProfileAsync = ref.watch(currentUserProfileProvider);
-    final allRequestsAsync = ref.watch(serviceRequestsStreamProvider);
-    final user = ref.watch(authStateProvider).value;
+    final tablesAsync = ref.watch(tablesStreamProvider);
+    final isScanningAsync = ref.watch(bleScanningStreamProvider);
+    final adapterStateAsync = ref.watch(bleAdapterStateStreamProvider);
 
-    List<ServiceRequestModel> firebaseList = allRequestsAsync.value ?? [];
-    List<ServiceRequestModel> combinedList = List.from(firebaseList);
+    final tablesList = tablesAsync.value ?? [];
+    final isScanning = isScanningAsync.value ?? false;
+    final adapterState =
+        adapterStateAsync.value ?? BluetoothAdapterState.unknown;
 
-    // Merge direct local ESP32 request if active
-    if (_localEspRequest != null) {
-      combinedList.removeWhere((r) => r.requestId == _localEspRequest!.requestId);
-      combinedList.insert(0, _localEspRequest!);
-    }
+    final onlineCount = tablesList.where((t) => t.isDeviceOnline).length;
+    final hasOnlineDevices = onlineCount > 0;
 
-    final pendingList = combinedList.where((req) => req.status == 'pending').toList();
-    final acceptedList = combinedList.where((req) => req.status == 'accepted').toList();
-    final completedList = combinedList.where((req) => req.status == 'completed').toList();
+    final pendingTables = tablesList.where((t) => t.isPending).toList();
+    final acceptedTables = tablesList.where((t) => t.isAccepted).toList();
+    final idleTables = tablesList.where((t) => t.isIdle).toList();
 
-    List<ServiceRequestModel> displayList = [];
+    List<TableModel> displayList = [];
     if (_selectedFilter == 'pending') {
-      displayList = pendingList;
+      displayList = pendingTables;
     } else if (_selectedFilter == 'accepted') {
-      displayList = acceptedList;
-    } else if (_selectedFilter == 'completed') {
-      displayList = completedList;
+      displayList = acceptedTables;
+    } else if (_selectedFilter == 'idle') {
+      displayList = idleTables;
     } else {
-      displayList = combinedList;
+      displayList = tablesList;
     }
-
-    final repo = ref.read(serviceRequestRepositoryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -304,50 +389,85 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           children: [
             Icon(Icons.hotel_rounded, color: theme.colorScheme.primary),
             const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Tab2Notify', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                userProfileAsync.when(
-                  data: (profile) => Text(
-                    profile?.fullName ?? 'Manager',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  loading: () => const SizedBox.shrink(),
-                  error: (error, stackTrace) => const SizedBox.shrink(),
-                ),
-              ],
+            const Text(
+              'Tab2Notify',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: _isEspConnected ? 'ESP32 Wi-Fi Connected' : 'Connect ESP32 via Wi-Fi',
-            icon: Icon(
-              Icons.wifi_tethering_rounded,
-              color: _isEspConnected ? Colors.green : Colors.grey,
+          // Live BLE Status Badge (Green Dot = Online, Red Dot = Offline)
+          Center(
+            child: InkWell(
+              onTap: () =>
+                  _showBleInfoModal(tablesList, isScanning, adapterState),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                margin: const EdgeInsets.only(right: 6),
+                decoration: BoxDecoration(
+                  color: hasOnlineDevices
+                      ? const Color(0xFF2E7D32).withValues(alpha: 0.15)
+                      : const Color(0xFFE53935).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: hasOnlineDevices
+                        ? const Color(0xFF2E7D32)
+                        : const Color(0xFFE53935),
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: hasOnlineDevices
+                            ? const Color(0xFF00E676)
+                            : const Color(0xFFE53935),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                (hasOnlineDevices
+                                        ? const Color(0xFF00E676)
+                                        : const Color(0xFFE53935))
+                                    .withValues(alpha: 0.7),
+                            blurRadius: 6,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      hasOnlineDevices ? '$onlineCount Online' : 'No Devices',
+                      style: TextStyle(
+                        color: hasOnlineDevices
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFE53935),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            onPressed: _showEspConnectDialog,
-          ),
-          IconButton(
-            tooltip: 'Simulate Touch Tap',
-            icon: const Icon(Icons.touch_app_rounded, color: Colors.orange),
-            onPressed: _simulateEsp32Tap,
           ),
           IconButton(
             tooltip: 'Toggle Theme',
-            icon: Icon(theme.brightness == Brightness.dark ? Icons.light_mode : Icons.dark_mode),
+            icon: Icon(
+              theme.brightness == Brightness.dark
+                  ? Icons.light_mode
+                  : Icons.dark_mode,
+            ),
             onPressed: () => ref.read(themeModeProvider.notifier).toggleTheme(),
-          ),
-          IconButton(
-            tooltip: 'Sign Out',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await ref.read(authRepositoryProvider).signOut();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
           ),
         ],
       ),
@@ -355,107 +475,140 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 12.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Router Sync Status Bar
-                  if (_esp32Ip != null) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: _isEspConnected
-                            ? const Color(0xFF2E7D32).withValues(alpha: 0.15)
-                            : Colors.orange.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: _isEspConnected ? Colors.green : Colors.orange,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Hotel Tables',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _isEspConnected ? Icons.check_circle : Icons.sync,
-                            size: 18,
-                            color: _isEspConnected ? Colors.green : Colors.orange,
+                      PopupMenuButton<String>(
+                        tooltip: 'Filter Tables',
+                        initialValue: _selectedFilter,
+                        onSelected: (value) {
+                          setState(() => _selectedFilter = value);
+                        },
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _isEspConnected
-                                  ? 'Connected directly to ESP32 at $_esp32Ip'
-                                  : 'Connecting to ESP32 at $_esp32Ip...',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: _isEspConnected ? Colors.green : Colors.orange,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.1,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.3,
                               ),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.filter_list_rounded,
+                                size: 16,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                _selectedFilter == 'all'
+                                    ? 'All (${tablesList.length})'
+                                    : (_selectedFilter == 'pending'
+                                          ? 'Pending (${pendingTables.length})'
+                                          : (_selectedFilter == 'accepted'
+                                                ? 'Accepted (${acceptedTables.length})'
+                                                : 'Idle (${idleTables.length})')),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(
+                                Icons.arrow_drop_down_rounded,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        ),
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'all',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.table_restaurant_rounded,
+                                  size: 18,
+                                  color: Colors.blueGrey,
+                                ),
+                                const SizedBox(width: 10),
+                                Text('All Tables (${tablesList.length})'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'pending',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.notifications_active_rounded,
+                                  size: 18,
+                                  color: Color(0xFFE53935),
+                                ),
+                                const SizedBox(width: 10),
+                                Text('Pending 🔴 (${pendingTables.length})'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'accepted',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 18,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                                const SizedBox(width: 10),
+                                Text('Accepted 🟢 (${acceptedTables.length})'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'idle',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.radio_button_unchecked_rounded,
+                                  size: 18,
+                                  color: Color(0xFFFF9800),
+                                ),
+                                const SizedBox(width: 10),
+                                Text('Idle 🟠 (${idleTables.length})'),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-
-                  Text('Overview', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 1.4,
-                    children: [
-                      DashboardSummaryCard(
-                        title: 'Pending (Red)',
-                        count: '${pendingList.length}',
-                        icon: Icons.notifications_active_rounded,
-                        color: const Color(0xFFE53935),
-                      ),
-                      DashboardSummaryCard(
-                        title: 'Accepted (Green)',
-                        count: '${acceptedList.length}',
-                        icon: Icons.check_circle_outline,
-                        color: const Color(0xFF2E7D32),
-                      ),
-                      DashboardSummaryCard(
-                        title: 'Completed',
-                        count: '${completedList.length}',
-                        icon: Icons.task_alt,
-                        color: Colors.blue,
-                      ),
-                      DashboardSummaryCard(
-                        title: 'Total Today',
-                        count: '${combinedList.length}',
-                        icon: Icons.calendar_today,
-                        color: Colors.purple,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Service Requests', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                      Text('${displayList.length} items', style: const TextStyle(color: Colors.grey)),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  // Filter Chips
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildFilterChip('Pending 🔴 (${pendingList.length})', 'pending'),
-                        _buildFilterChip('Accepted 🟢 (${acceptedList.length})', 'accepted'),
-                        _buildFilterChip('Completed (${completedList.length})', 'completed'),
-                        _buildFilterChip('All (${combinedList.length})', 'all'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                 ],
               ),
             ),
@@ -464,26 +617,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             SliverToBoxAdapter(
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 48.0, horizontal: 16.0),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 48.0,
+                    horizontal: 16.0,
+                  ),
                   child: Column(
                     children: [
-                      Icon(Icons.check_circle_outline, size: 64, color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+                      Icon(
+                        Icons.table_bar_rounded,
+                        size: 64,
+                        color: theme.colorScheme.primary.withValues(alpha: 0.4),
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         _selectedFilter == 'pending'
-                            ? 'No pending requests!'
-                            : 'No requests in this category.',
+                            ? 'No pending table requests!'
+                            : (tablesList.isEmpty
+                                  ? 'Scanning for nearby table devices...'
+                                  : 'No tables in this category.'),
                         style: TextStyle(
                           fontSize: 16,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.6,
+                          ),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Tap the touch sensor on the ESP32 or press 👆 to test.',
+                        tablesList.isEmpty
+                            ? 'Make sure your ESP32 table device is powered on.'
+                            : 'Table devices connected via Bluetooth.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: Colors.grey.withValues(alpha: 0.7)),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.withValues(alpha: 0.7),
+                        ),
                       ),
                     ],
                   ),
@@ -491,94 +660,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             )
           else
+            // 3 Tables in One Row (SliverGrid crossAxisCount: 3)
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final req = displayList[index];
-                    return RequestCard(
-                      request: req,
-                      onTap: () => _showDetailsBottomSheet(req),
-                      onAccept: () async {
-                        // If direct local ESP32
-                        if (req.requestId == 'esp32_hardware_req') {
-                          await _sendEspAction('accept');
-                        } else {
-                          await repo.acceptRequest(req.requestId, user?.uid ?? 'manager');
-                        }
-
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('🟢 Request for Room ${req.roomNumber} Accepted (Hardware Green)'),
-                              backgroundColor: const Color(0xFF2E7D32),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                      onReject: () async {
-                        if (req.requestId == 'esp32_hardware_req') {
-                          await _sendEspAction('reject');
-                        } else {
-                          await repo.rejectRequest(req.requestId);
-                        }
-
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Request for Room ${req.roomNumber} Rejected'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                      onComplete: () async {
-                        if (req.requestId == 'esp32_hardware_req') {
-                          setState(() => _localEspRequest = null);
-                        } else {
-                          await repo.completeRequest(req.requestId);
-                        }
-
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('✓ Room ${req.roomNumber} marked Completed'),
-                              backgroundColor: Colors.blue,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                    );
-                  },
-                  childCount: displayList.length,
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.72,
                 ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final table = displayList[index];
+                  return TableCard(
+                    table: table,
+                    onTap: () {
+                      if (table.isPending) {
+                        _showAcceptDialog(table);
+                      } else if (table.isAccepted) {
+                        _showCompleteDialog(table);
+                      }
+                    },
+                  );
+                }, childCount: displayList.length),
               ),
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _selectedFilter == value;
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: isSelected,
-        selectedColor: theme.colorScheme.primary,
-        labelStyle: TextStyle(
-          color: isSelected ? Colors.white : theme.colorScheme.onSurface.withValues(alpha: 0.8),
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        ),
-        onSelected: (_) => setState(() => _selectedFilter = value),
       ),
     );
   }

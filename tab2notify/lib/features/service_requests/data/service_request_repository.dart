@@ -1,34 +1,33 @@
-import '../../../core/services/firebase_realtime_service.dart';
-import '../domain/service_request_model.dart';
+import '../../../core/services/ble_service.dart';
+import '../domain/table_model.dart';
 
 class ServiceRequestRepository {
-  final FirebaseRealtimeService _dbService;
+  final BleService _bleService;
 
-  ServiceRequestRepository(this._dbService);
+  ServiceRequestRepository(this._bleService);
 
-  Stream<List<ServiceRequestModel>> getServiceRequestsStream() {
-    return _dbService.getServiceRequestsStream();
+  // Dynamic Tables Stream from BLE Scanner
+  Stream<List<TableModel>> getTablesStream() {
+    return _bleService.tablesStream;
   }
 
-  Future<void> acceptRequest(String requestId, String managerUid) async {
-    await _dbService.updateRequestStatus(
-      requestId: requestId,
-      status: 'accepted',
+  Future<void> acceptTableRequest({
+    required String tableId,
+    required String waiterName,
+    String? managerUid,
+  }) async {
+    await _bleService.acceptTableRequest(
+      tableId: tableId,
+      waiterName: waiterName,
       managerUid: managerUid,
     );
   }
 
-  Future<void> rejectRequest(String requestId) async {
-    await _dbService.updateRequestStatus(
-      requestId: requestId,
-      status: 'rejected',
-    );
+  Future<void> resetTableStatus(String tableId) async {
+    await _bleService.resetTableStatus(tableId);
   }
 
-  Future<void> completeRequest(String requestId) async {
-    await _dbService.updateRequestStatus(
-      requestId: requestId,
-      status: 'completed',
-    );
+  Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {
+    await _bleService.triggerTableRequest(tableId, tableNumber: tableNumber);
   }
 }

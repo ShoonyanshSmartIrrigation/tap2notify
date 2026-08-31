@@ -34,7 +34,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1082574746898',
     projectId: 'tab2notify',
     authDomain: 'tab2notify.firebaseapp.com',
-    databaseURL: 'https://tab2notify-default-rtdb.firebaseio.com',
+    databaseURL: 'https://tab2notify-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'tab2notify.firebasestorage.app',
   );
 
@@ -44,7 +44,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1082574746898',
     projectId: 'tab2notify',
     authDomain: 'tab2notify.firebaseapp.com',
-    databaseURL: 'https://tab2notify-default-rtdb.firebaseio.com',
+    databaseURL: 'https://tab2notify-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'tab2notify.firebasestorage.app',
   );
 
@@ -54,7 +54,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1082574746898',
     projectId: 'tab2notify',
     authDomain: 'tab2notify.firebaseapp.com',
-    databaseURL: 'https://tab2notify-default-rtdb.firebaseio.com',
+    databaseURL: 'https://tab2notify-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'tab2notify.firebasestorage.app',
     iosBundleId: 'com.example.tab2notify',
   );
@@ -65,7 +65,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1082574746898',
     projectId: 'tab2notify',
     authDomain: 'tab2notify.firebaseapp.com',
-    databaseURL: 'https://tab2notify-default-rtdb.firebaseio.com',
+    databaseURL: 'https://tab2notify-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'tab2notify.firebasestorage.app',
     iosBundleId: 'com.example.tab2notify',
   );
@@ -76,7 +76,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1082574746898',
     projectId: 'tab2notify',
     authDomain: 'tab2notify.firebaseapp.com',
-    databaseURL: 'https://tab2notify-default-rtdb.firebaseio.com',
+    databaseURL: 'https://tab2notify-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'tab2notify.firebasestorage.app',
   );
 }

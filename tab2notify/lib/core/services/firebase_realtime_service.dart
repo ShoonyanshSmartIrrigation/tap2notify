@@ -1,11 +1,28 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 import '../../features/authentication/domain/user_model.dart';
 import '../../features/service_requests/domain/service_request_model.dart';
 import '../../features/service_requests/domain/table_model.dart';
-
+import '../../firebase_options.dart';
 
 class FirebaseRealtimeService {
-  final FirebaseDatabase _db = FirebaseDatabase.instance;
+  static const String databaseUrl =
+      'https://tab2notify-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+  late final FirebaseDatabase _db;
+
+  FirebaseRealtimeService() {
+    try {
+      _db = FirebaseDatabase.instanceFor(
+        app: Firebase.app(),
+        databaseURL: DefaultFirebaseOptions.currentPlatform.databaseURL ?? databaseUrl,
+      );
+    } catch (e) {
+      debugPrint('FirebaseRealtimeService instanceFor fallback: $e');
+      _db = FirebaseDatabase.instance;
+    }
+  }
 
   // Users Node
   DatabaseReference get _usersRef => _db.ref('users');
@@ -15,7 +32,14 @@ class FirebaseRealtimeService {
 
   // Create User Profile in DB
   Future<void> createUserProfile(UserModel user) async {
-    await _usersRef.child(user.uid).set(user.toMap());
+    try {
+      debugPrint('Writing user profile to Realtime Database: users/${user.uid}');
+      await _usersRef.child(user.uid).set(user.toMap());
+      debugPrint('Successfully saved user profile to Realtime Database for ${user.uid}');
+    } catch (e) {
+      debugPrint('Error saving user profile to Realtime Database: $e');
+      rethrow;
+    }
   }
 
   // Get User Profile

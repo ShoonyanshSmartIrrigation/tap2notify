@@ -40,10 +40,31 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
-    return await _authService.signInWithEmailAndPassword(
+    final cred = await _authService.signInWithEmailAndPassword(
       email: email,
       password: password,
     );
+
+    if (cred.user != null) {
+      try {
+        final profile = await _dbService.getUserProfile(cred.user!.uid);
+        if (profile == null) {
+          final fallbackUser = UserModel(
+            uid: cred.user!.uid,
+            fullName: cred.user!.displayName ?? email.split('@').first,
+            email: email,
+            phone: cred.user!.phoneNumber ?? '',
+            role: 'manager',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          );
+          await _dbService.createUserProfile(fallbackUser);
+        }
+      } catch (e) {
+        // Log error without failing sign in
+      }
+    }
+
+    return cred;
   }
 
   Future<void> sendPasswordResetEmail({required String email}) async {

@@ -672,6 +672,7 @@ class SettingsTabView extends ConsumerWidget {
           const SizedBox(height: 10),
 
           Container(
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1B26) : Colors.white,
               borderRadius: BorderRadius.circular(20),
@@ -679,27 +680,30 @@ class SettingsTabView extends ConsumerWidget {
                 color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
               ),
             ),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  secondary: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF9333EA).withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    secondary: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF9333EA).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                        color: const Color(0xFF9333EA),
+                        size: 20,
+                      ),
                     ),
-                    child: Icon(
-                      isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                      color: const Color(0xFF9333EA),
-                      size: 20,
-                    ),
+                    title: const Text('Dark Theme Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    subtitle: Text(isDark ? 'Dark theme enabled' : 'Light theme enabled', style: const TextStyle(fontSize: 12)),
+                    value: isDark,
+                    onChanged: (_) => ref.read(themeModeProvider.notifier).toggleTheme(),
                   ),
-                  title: const Text('Dark Theme Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                  subtitle: Text(isDark ? 'Dark theme enabled' : 'Light theme enabled', style: const TextStyle(fontSize: 12)),
-                  value: isDark,
-                  onChanged: (_) => ref.read(themeModeProvider.notifier).toggleTheme(),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
@@ -716,6 +720,7 @@ class SettingsTabView extends ConsumerWidget {
           const SizedBox(height: 10),
 
           Container(
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1B26) : Colors.white,
               borderRadius: BorderRadius.circular(20),
@@ -723,38 +728,41 @@ class SettingsTabView extends ConsumerWidget {
                 color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
               ),
             ),
-            child: Column(
-              children: [
-                ListTile(
-                  onTap: () => _showHelpModal(context),
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                children: [
+                  ListTile(
+                    onTap: () => _showHelpModal(context),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.headset_mic_rounded, color: Color(0xFF2E7D32), size: 20),
                     ),
-                    child: const Icon(Icons.headset_mic_rounded, color: Color(0xFF2E7D32), size: 20),
+                    title: const Text('Contact Tech Support & Hotline', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    subtitle: const Text('24/7 Hotel Support, Email & Phone', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  title: const Text('Contact Tech Support & Hotline', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                  subtitle: const Text('24/7 Hotel Support, Email & Phone', style: TextStyle(fontSize: 12)),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  onTap: () => _showTermsModal(context),
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7).withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
+                  const Divider(height: 1),
+                  ListTile(
+                    onTap: () => _showTermsModal(context),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.description_outlined, color: Color(0xFF0284C7), size: 20),
                     ),
-                    child: const Icon(Icons.description_outlined, color: Color(0xFF0284C7), size: 20),
+                    title: const Text('Terms & Conditions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    subtitle: const Text('User agreement, privacy policy & SLAs', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  title: const Text('Terms & Conditions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                  subtitle: const Text('User agreement, privacy policy & SLAs', style: TextStyle(fontSize: 12)),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 

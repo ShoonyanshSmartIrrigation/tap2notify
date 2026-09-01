@@ -2,6 +2,7 @@
   "project_info": {
     "project_number": "1082574746898",
     "project_id": "tab2notify",
+    "firebase_url": "https://tab2notify-default-rtdb.asia-southeast1.firebasedatabase.app",
     "storage_bucket": "tab2notify.firebasestorage.app"
   },
   "client": [

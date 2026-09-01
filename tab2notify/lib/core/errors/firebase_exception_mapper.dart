@@ -38,6 +38,9 @@ class FirebaseExceptionMapper {
     if (errStr.contains('CONFIGURATION_NOT_FOUND')) {
       return 'Email/Password Sign-In is not enabled in Firebase Console. Please enable it in Firebase Console > Authentication > Sign-in method.';
     }
+    if (errStr.toLowerCase().contains('permission_denied') || errStr.toLowerCase().contains('permission-denied')) {
+      return 'Realtime Database Permission Denied!\nPlease update your Realtime Database Rules in Firebase Console to allow read/write.';
+    }
     
     return errStr;
   }

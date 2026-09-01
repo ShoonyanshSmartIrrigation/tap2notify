@@ -18,7 +18,7 @@ class AppColors {
   static const Color darkText = Color(0xFFFFFFFF);
   static const Color darkSecondaryText = Color(0xFFBDBDBD);
 
-  // Shared Status Colors
+  // Status Colors
   static const Color success = Color(0xFF2E7D32);
   static const Color successDark = Color(0xFF66BB6A);
   static const Color error = Color(0xFFD32F2F);

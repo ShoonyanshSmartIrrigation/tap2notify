@@ -1,7 +1,26 @@
+/*
+ * Tab2Notify - ESP32 Smart Table Service Notifier (Two-Press Logic)
+ * 
+ * Hardware Pin Mapping:
+ * - TOUCH_PIN  : GPIO 1 (Touch / Press Sensor)
+ * - BUZZER_PIN : GPIO 2 (Active Buzzer - 3.3V Direct Drive)
+ * - LED_PIN    : GPIO 0 (7-LED Circular NeoPixel Ring)
+ *
+ * Physical Device Press Flow (GPIO 1):
+ * - 1st Press : LED -> RED, Buzzer -> 150ms Beep, BLE -> Flag 0 (REQ) -> App Card = RED
+ * - 2nd Press : LED -> GREEN, Buzzer -> 2 Confirmation Beeps, BLE -> Flag 1 (ACC) -> App Card = GREEN
+ * - 3rd Press / 6s Timer : Reset to IDLE -> LED -> OFF, BLE -> Flag -1 (IDLE) -> App Card = IDLE (Orange)
+ *
+ * Manager Accept in App:
+ * - Updates App Card to GREEN + saves Waiter Name
+ * - Strictly NO override commands sent to physical device LED
+ */
+
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <esp_gap_ble_api.h>
 #include <Adafruit_NeoPixel.h>
 
 // ==========================================
@@ -34,7 +53,6 @@ DeviceState currentState = STATE_IDLE;
 unsigned long acceptedTimestamp = 0;
 int lastTouchState              = LOW;
 unsigned long lastDebounceTime  = 0;
-String assignedWaiterName       = "";
 
 // ==========================================
 // --- LED & Buzzer Helper Functions ---
@@ -63,10 +81,7 @@ void updateBleAdvertisement() {
   BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->stop();
 
-  // Dynamic Name containing state (Instantly detected by Android / iOS)
-  // Pending:  "T2N_T1_REQ"
-  // Accepted: "T2N_T1_ACC"
-  // Idle:     "T2N_T1_IDLE"
+  // Dynamic Name containing state: T2N_T1_REQ / T2N_T1_ACC / T2N_T1_IDLE
   String dynamicName = "T2N_T" + String(TABLE_NUMBER) + "_";
   if (currentState == STATE_PENDING) {
     dynamicName += "REQ";
@@ -84,12 +99,12 @@ void updateBleAdvertisement() {
   advData.setName(dynamicName.c_str());
   advData.setFlags(0x06); // BR_EDR_NOT_SUPPORTED | LE_GENERAL_DISCOVERABLE
 
-  // Compact manufacturer data: "1:0" (Pending), "1:1:Staff" (Accepted), "1:-1" (Idle)
+  // Compact manufacturer data: "1:0" (Pending), "1:1" (Accepted), "1:-1" (Idle)
   String payload = String(TABLE_NUMBER) + ":";
   if (currentState == STATE_PENDING) {
     payload += "0";
   } else if (currentState == STATE_ACCEPTED) {
-    payload += "1:" + assignedWaiterName;
+    payload += "1";
   } else {
     payload += "-1";
   }
@@ -111,7 +126,7 @@ void updateBleAdvertisement() {
   pAdvertising->start();
   Serial.printf("[BLE ADV] Broadcast: [ %s ] -> State: %s (flag = %d)\n", 
                 dynamicName.c_str(), 
-                currentState == STATE_PENDING ? "PENDING / RED" : (currentState == STATE_ACCEPTED ? "ACCEPTED / GREEN" : "IDLE"),
+                currentState == STATE_PENDING ? "1st PRESS (PENDING / RED)" : (currentState == STATE_ACCEPTED ? "2nd PRESS (ACCEPTED / GREEN)" : "IDLE / OFF"),
                 currentState == STATE_PENDING ? 0 : (currentState == STATE_ACCEPTED ? 1 : -1));
 }
 
@@ -131,58 +146,12 @@ class MyServerCallbacks : public BLEServerCallbacks {
   }
 };
 
-// Callback when Manager writes to Characteristic (Accept / Reset Request)
+// Characteristic Callbacks (Telemetry only - Device LED is strictly controlled by physical touch button)
 class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
     String value = pCharacteristic->getValue().c_str();
-
     if (value.length() > 0) {
-      Serial.printf("[BLE RECEIVED] Command: %s\n", value.c_str());
-
-      // Parse command: {"flag":1,"waiter":"Rajesh"} or "1:Rajesh" or {"flag":-1}
-      if (value.indexOf("\"flag\":1") >= 0 || value.startsWith("1:") || value.indexOf("\"flag\": 1") >= 0) {
-        // Extract Waiter Name
-        String waiter = "Staff";
-        int waiterIdx = value.indexOf("\"waiter\":\"");
-        if (waiterIdx >= 0) {
-          int start = waiterIdx + 10;
-          int end = value.indexOf("\"", start);
-          if (end > start) {
-            waiter = value.substring(start, end);
-          }
-        } else if (value.startsWith("1:")) {
-          waiter = value.substring(2);
-        }
-
-        assignedWaiterName = waiter;
-        currentState = STATE_ACCEPTED;
-        acceptedTimestamp = millis();
-
-        Serial.printf("\n>>> [BLE ACCEPTED] Table %d Accepted! Assigned Server: %s <<<\n", TABLE_NUMBER, assignedWaiterName.c_str());
-
-        // Update BLE advertisement immediately
-        updateBleAdvertisement();
-
-        // Stop buzzer pin completely
-        digitalWrite(BUZZER_PIN, LOW);
-
-        // Turn LED GREEN (flag = 1)
-        setAllLeds(0, 255, 0);
-
-        // Play 2 clean confirmation beeps
-        triggerOriginalBeep(80);
-        delay(60);
-        triggerOriginalBeep(80);
-
-      } else if (value.indexOf("\"flag\":-1") >= 0 || value.startsWith("-1") || value.indexOf("\"flag\": -1") >= 0) {
-        // Reset to Idle
-        currentState = STATE_IDLE;
-        assignedWaiterName = "";
-        setAllLeds(0, 0, 0);
-        digitalWrite(BUZZER_PIN, LOW);
-        Serial.printf("[BLE RESET] Table %d reset to IDLE.\n", TABLE_NUMBER);
-        updateBleAdvertisement();
-      }
+      Serial.printf("[BLE RECEIVED] Info: %s\n", value.c_str());
     }
   }
 };
@@ -244,7 +213,7 @@ void setup() {
   Serial.println("-------------------------------------------");
   Serial.printf("✓ Bluetooth Low Energy (BLE) ACTIVE!\n");
   Serial.printf("✓ Assigned to Table %d\n", TABLE_NUMBER);
-  Serial.println("✓ Real-Time Instant State Advertising: ACTIVE\n");
+  Serial.println("✓ Two-Press Logic: 1st Press -> RED, 2nd Press -> GREEN, 3rd/6s -> IDLE\n");
   Serial.println("-------------------------------------------");
 }
 
@@ -267,44 +236,88 @@ void loop() {
   }
 
   // -------------------------------------------------------------
-  // 1. Detect Customer Button Press on GPIO 1 (Instant BLE Broadcast)
+  // Customer Physical Touch Button Press on GPIO 1 (Two-Press Logic)
   // -------------------------------------------------------------
   int reading = digitalRead(TOUCH_PIN);
 
-  // Detect state change from LOW to HIGH (Instant response on EVERY press)
+  // Detect state change from LOW to HIGH
   if (reading == HIGH && lastTouchState == LOW) {
     if (millis() - lastDebounceTime > 150) {
       lastDebounceTime = millis();
-      Serial.printf("\n[BUTTON TAP] Table %d touched! Instant BLE broadcast -> flag = 0 (PENDING / RED)...\n", TABLE_NUMBER);
 
-      // 1. Transition state to PENDING (flag = 0)
-      currentState = STATE_PENDING;
+      if (currentState == STATE_IDLE) {
+        // ========================================================
+        // 1. FIRST PRESS: Transition to PENDING (🔴 RED)
+        // ========================================================
+        Serial.printf("\n[1st PRESS] Table %d: Request Created -> RED / PENDING\n", TABLE_NUMBER);
+        currentState = STATE_PENDING;
 
-      // 2. LED turns RED (flag = 0)
-      setAllLeds(255, 0, 0);
+        // Turn LED RED
+        setAllLeds(255, 0, 0);
 
-      // 3. Immediately Broadcast updated BLE Advertisement (Instant name change to T2N_T1_REQ!)
-      updateBleAdvertisement();
+        // Immediate BLE Broadcast: T2N_T{N}_REQ with flag = 0
+        updateBleAdvertisement();
 
-      // 4. Update characteristic notification
-      if (pCharacteristic) {
-        String payload = String(TABLE_NUMBER) + ":0:pending";
-        pCharacteristic->setValue(payload.c_str());
-        pCharacteristic->notify();
+        if (pCharacteristic) {
+          String payload = String(TABLE_NUMBER) + ":0:pending";
+          pCharacteristic->setValue(payload.c_str());
+          pCharacteristic->notify();
+        }
+
+        // Sound Buzzer Beep on 1st Press
+        triggerOriginalBeep(150);
+
+      } else if (currentState == STATE_PENDING) {
+        // ========================================================
+        // 2. SECOND PRESS: Transition to ACCEPTED (🟢 GREEN)
+        // ========================================================
+        Serial.printf("\n[2nd PRESS] Table %d: Status Updated -> GREEN / ACCEPTED\n", TABLE_NUMBER);
+        currentState = STATE_ACCEPTED;
+        acceptedTimestamp = millis();
+
+        // Turn LED GREEN
+        setAllLeds(0, 255, 0);
+
+        // Immediate BLE Broadcast: T2N_T{N}_ACC with flag = 1
+        updateBleAdvertisement();
+
+        if (pCharacteristic) {
+          String payload = String(TABLE_NUMBER) + ":1:accepted";
+          pCharacteristic->setValue(payload.c_str());
+          pCharacteristic->notify();
+        }
+
+        // 2 Clean Confirmation Beeps on 2nd Press
+        triggerOriginalBeep(80);
+        delay(60);
+        triggerOriginalBeep(80);
+
+      } else if (currentState == STATE_ACCEPTED) {
+        // ========================================================
+        // 3. THIRD PRESS: Manual Reset back to IDLE / STANDBY
+        // ========================================================
+        Serial.printf("\n[3rd PRESS] Table %d: Manual Reset -> IDLE / OFF\n", TABLE_NUMBER);
+        currentState = STATE_IDLE;
+
+        setAllLeds(0, 0, 0);
+        updateBleAdvertisement();
+
+        if (pCharacteristic) {
+          String payload = String(TABLE_NUMBER) + ":-1:idle";
+          pCharacteristic->setValue(payload.c_str());
+          pCharacteristic->notify();
+        }
       }
-
-      // 5. Sound buzzer
-      triggerOriginalBeep(150);
     }
   }
   lastTouchState = reading;
 
   // -------------------------------------------------------------
-  // 2. Accepted State (flag = 1): Green LED stays for 5 seconds
+  // Automatic Reset after 6 Seconds in ACCEPTED (Green) State
   // -------------------------------------------------------------
   if (currentState == STATE_ACCEPTED) {
-    if (millis() - acceptedTimestamp > 5000) {
-      Serial.println("[TIMER] Resetting LEDs back to Standby/Idle");
+    if (millis() - acceptedTimestamp > 6000) {
+      Serial.println("[TIMER] 6s Elapsed -> Resetting Table to Standby / Idle");
       setAllLeds(0, 0, 0);
       currentState = STATE_IDLE;
       updateBleAdvertisement();

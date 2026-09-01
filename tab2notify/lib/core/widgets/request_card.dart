@@ -30,9 +30,9 @@ class RequestCard extends StatelessWidget {
   Color _getStatusColor() {
     switch (request.status) {
       case 'pending':
-        return const Color(0xFFE53935); // Vivid RED (Matches ESP32 Red LED)
+        return const Color(0xFFE53935); // Vivid RED
       case 'accepted':
-        return const Color(0xFF2E7D32); // Vivid GREEN (Matches ESP32 Green LED)
+        return const Color(0xFF2E7D32); // Previous GREEN
       case 'completed':
         return const Color(0xFF1E88E5); // Blue
       case 'rejected':
@@ -58,20 +58,24 @@ class RequestCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
           color: isPending
-              ? (isDark ? const Color(0xFF261214) : const Color(0xFFFFEBEE))
+              ? (isDark ? const Color(0xFF3B1115) : const Color(0xFFFFEBEE))
               : isAccepted
-                  ? (isDark ? const Color(0xFF112415) : const Color(0xFFE8F5E9))
+                  ? (isDark ? const Color(0xFF0F3318) : const Color(0xFFE8F5E9))
                   : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: statusColor.withValues(alpha: isPending || isAccepted ? 0.8 : 0.2),
+            color: isAccepted
+                ? const Color(0xFF2E7D32)
+                : isPending
+                    ? const Color(0xFFE53935)
+                    : statusColor.withValues(alpha: 0.2),
             width: isPending || isAccepted ? 2.0 : 1.0,
           ),
           boxShadow: [
             BoxShadow(
-              color: statusColor.withValues(alpha: isPending ? 0.25 : (isAccepted ? 0.2 : 0.05)),
-              blurRadius: isPending || isAccepted ? 16 : 8,
-              offset: const Offset(0, 4),
+              color: statusColor.withValues(alpha: isPending ? 0.35 : (isAccepted ? 0.25 : 0.05)),
+              blurRadius: isPending || isAccepted ? 10 : 4,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -85,9 +89,13 @@ class RequestCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: statusColor,
+                      color: isAccepted
+                          ? const Color(0xFF2E7D32)
+                          : isPending
+                              ? const Color(0xFFE53935)
+                              : statusColor,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
@@ -108,10 +116,10 @@ class RequestCard extends StatelessWidget {
                                   : request.status == 'completed'
                                       ? Icons.task_alt
                                       : Icons.cancel_rounded,
-                          size: 16,
+                          size: 15,
                           color: Colors.white,
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 5),
                         Text(
                           isPending
                               ? '🔴 PENDING (RED LED)'
@@ -120,9 +128,8 @@ class RequestCard extends StatelessWidget {
                                   : request.status.toUpperCase(),
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
@@ -153,21 +160,28 @@ class RequestCard extends StatelessWidget {
                               'Room ${request.roomNumber}',
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                color: isAccepted
+                                    ? const Color(0xFF2E7D32).withValues(alpha: 0.15)
+                                    : (isPending
+                                        ? const Color(0xFFE53935).withValues(alpha: 0.15)
+                                        : theme.colorScheme.primary.withValues(alpha: 0.15)),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 'Table ${request.tableNumber}',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
+                                  color: isAccepted
+                                      ? (isDark ? const Color(0xFF81C784) : const Color(0xFF1B5E20))
+                                      : (isPending
+                                          ? const Color(0xFFE53935)
+                                          : theme.colorScheme.primary),
                                   fontSize: 13,
                                 ),
                               ),
@@ -187,17 +201,16 @@ class RequestCard extends StatelessWidget {
                     ),
                   ),
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
                       color: statusColor.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
-                      border: Border.all(color: statusColor.withValues(alpha: 0.3), width: 1.5),
                     ),
                     child: Center(
                       child: Text(
                         request.requestType.toLowerCase() == 'water' ? '💧' : '🔔',
-                        style: const TextStyle(fontSize: 26),
+                        style: const TextStyle(fontSize: 24),
                       ),
                     ),
                   ),
@@ -228,11 +241,11 @@ class RequestCard extends StatelessWidget {
                       child: ElevatedButton.icon(
                         onPressed: onAccept,
                         icon: const Icon(Icons.check_circle, size: 20),
-                        label: const Text('ACCEPT REQUEST', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        label: const Text('ACCEPT REQUEST', style: TextStyle(fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF2E7D32),
                           foregroundColor: Colors.white,
-                          elevation: 3,
+                          elevation: 2,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),

@@ -258,7 +258,8 @@ class BleService {
     }
   }
 
-  // Manager Accepts Request: Connects via BLE & writes flag = 1
+  // Manager Accepts Request: Updates App State to GREEN + saves Waiter Name
+  // (Strictly NO override command sent to physical device LED)
   Future<void> acceptTableRequest({
     required String tableId,
     required String waiterName,
@@ -273,38 +274,12 @@ class BleService {
         acceptedAt: DateTime.now().millisecondsSinceEpoch,
       );
       _emitTables();
-    }
-
-    final device = _discoveredDevices[tableId];
-    if (device != null) {
-      try {
-        debugPrint('[BLE] Connecting to ${device.remoteId} for $tableId...');
-        await device.connect(timeout: const Duration(seconds: 4));
-
-        final services = await device.discoverServices();
-        for (final s in services) {
-          if (s.uuid.toString().toLowerCase().contains(serviceUuid.toLowerCase())) {
-            for (final c in s.characteristics) {
-              if (c.uuid.toString().toLowerCase().contains(charUuid.toLowerCase())) {
-                final payload = jsonEncode({
-                  'flag': 1,
-                  'status': 'accepted',
-                  'waiter': waiterName,
-                });
-                await c.write(utf8.encode(payload), withoutResponse: false);
-                debugPrint('[BLE] Sent acceptance to $tableId: $payload');
-                break;
-              }
-            }
-          }
-        }
-        await device.disconnect();
-      } catch (e) {
-        debugPrint('[BLE] Error sending accept command: $e');
-      }
+      debugPrint('[APP] Manager accepted $tableId for server "$waiterName". App status -> GREEN (Device LED remains under physical button control)');
     }
   }
 
+  // Manager Completes/Resets Request: Updates App State to IDLE
+  // (Strictly NO override command sent to physical device LED)
   Future<void> resetTableStatus(String tableId) async {
     final current = _tables[tableId];
     if (current != null) {
@@ -314,26 +289,7 @@ class BleService {
         waiterName: '',
       );
       _emitTables();
-    }
-
-    final device = _discoveredDevices[tableId];
-    if (device != null) {
-      try {
-        await device.connect(timeout: const Duration(seconds: 3));
-        final services = await device.discoverServices();
-        for (final s in services) {
-          if (s.uuid.toString().toLowerCase().contains(serviceUuid.toLowerCase())) {
-            for (final c in s.characteristics) {
-              if (c.uuid.toString().toLowerCase().contains(charUuid.toLowerCase())) {
-                final payload = jsonEncode({'flag': -1, 'status': 'idle'});
-                await c.write(utf8.encode(payload), withoutResponse: false);
-                break;
-              }
-            }
-          }
-        }
-        await device.disconnect();
-      } catch (_) {}
+      debugPrint('[APP] Manager reset $tableId to IDLE.');
     }
   }
 

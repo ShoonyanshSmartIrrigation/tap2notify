@@ -3,9 +3,12 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/theme_provider.dart';
-import '../../../core/widgets/table_card.dart';
+import '../../../core/widgets/custom_bottom_navbar.dart';
 import '../../service_requests/domain/table_model.dart';
 import '../../service_requests/presentation/service_request_providers.dart';
+import '../../overview/view/overview_tab_view.dart';
+import '../../setting/view/settings_tab_view.dart';
+import 'views/tables_tab_view.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -15,6 +18,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  int _currentTabIndex = 0; // 0 = Tables, 1 = Overview, 2 = Settings
   String _selectedFilter = 'all'; // 'all', 'pending', 'accepted', 'idle'
 
   @override
@@ -26,6 +30,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _showAcceptDialog(TableModel table) {
+    final waiterController = TextEditingController(
+      text: table.waiterName.isNotEmpty ? table.waiterName : 'Staff',
+    );
+
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -54,12 +62,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 4),
-              Text(
-                'Customer requested service',
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+              const Text(
+                'Guest is calling for service 🔴',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: waiterController,
+                decoration: InputDecoration(
+                  labelText: 'Assigned Waiter / Staff Name',
+                  hintText: 'e.g. John / Sarah',
+                  prefixIcon: const Icon(Icons.person),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ],
           ),
@@ -70,39 +93,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(
-                'DISMISS',
-                style: TextStyle(color: Colors.grey),
-              ),
+              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2E7D32),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
+                  horizontal: 20,
                   vertical: 12,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 2,
               ),
               onPressed: () async {
                 final messenger = ScaffoldMessenger.of(context);
+                final assignedWaiter = waiterController.text.trim();
                 Navigator.pop(dialogContext);
 
                 final repo = ref.read(serviceRequestRepositoryProvider);
                 await repo.acceptTableRequest(
                   tableId: table.id,
-                  waiterName: 'Staff',
+                  waiterName: assignedWaiter.isNotEmpty ? assignedWaiter : 'Staff',
                 );
 
                 if (mounted) {
                   messenger.showSnackBar(
                     SnackBar(
                       content: Text(
-                        '🟢 Table ${table.tableNumber} Request Accepted!',
+                        '🟢 Table ${table.tableNumber} Accepted! Waiter: ${assignedWaiter.isNotEmpty ? assignedWaiter : "Staff"}',
                       ),
                       backgroundColor: const Color(0xFF2E7D32),
                       duration: const Duration(seconds: 2),
@@ -111,7 +131,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 }
               },
               child: const Text(
-                'ACCEPT',
+                'ACCEPT REQUEST',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
             ),
@@ -215,8 +235,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     BluetoothAdapterState adapterState,
   ) {
     final theme = Theme.of(context);
-    final isBtOn = adapterState == BluetoothAdapterState.on;
-    final onlineCount = tables.where((t) => t.isDeviceOnline).length;
+    final isDark = theme.brightness == Brightness.dark;
 
     showModalBottomSheet(
       context: context,
@@ -224,7 +243,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
+      builder: (ctx) {
         return Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -247,86 +266,63 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        Icons.bluetooth_rounded,
-                        color: isBtOn
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFE53935),
-                        size: 28,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.bluetooth_audio_rounded,
+                          color: Color(0xFF0284C7),
+                          size: 22,
+                        ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Text(
-                        'BLE Network Status',
-                        style: theme.textTheme.titleLarge?.copyWith(
+                        'BLE Radar Diagnostics',
+                        style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isBtOn
-                          ? const Color(0xFF2E7D32).withValues(alpha: 0.15)
-                          : const Color(0xFFE53935).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      isBtOn
-                          ? (isScanning ? 'SCANNING' : 'ONLINE')
-                          : 'BLUETOOTH OFF',
-                      style: TextStyle(
-                        color: isBtOn
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFE53935),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded),
+                    tooltip: 'Restart Scan',
+                    onPressed: () {
+                      ref.read(bleServiceProvider).startScan();
+                      Navigator.pop(ctx);
+                    },
                   ),
                 ],
               ),
-              const Divider(height: 32),
-              _buildDetailRow(
-                'Protocol',
-                'Bluetooth Low Energy (BLE Advertising & GATT)',
+              const Divider(height: 24),
+              _buildDiagRow(
+                'Adapter Status',
+                adapterState == BluetoothAdapterState.on
+                    ? 'Bluetooth ON ✓'
+                    : 'Bluetooth OFF ✗',
+                adapterState == BluetoothAdapterState.on
+                    ? const Color(0xFF2E7D32)
+                    : const Color(0xFFE53935),
               ),
-              _buildDetailRow(
-                'Active Connected Tables',
-                '$onlineCount of ${tables.length} in range',
+              _buildDiagRow(
+                'Radar Scanner',
+                isScanning ? 'Actively Scanning...' : 'Idle',
+                isScanning ? const Color(0xFF0284C7) : Colors.grey,
               ),
-              _buildDetailRow(
-                'Service UUID',
-                '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
-              ),
-              _buildDetailRow(
-                'Zero Configuration',
-                'No Wi-Fi / Router / Internet needed',
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    ref.read(bleServiceProvider).startScan();
-                  },
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text(
-                    'Re-scan Nearby Tables',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
+              _buildDiagRow(
+                'Total Devices Found',
+                '${tables.length} Tables Registered',
+                isDark ? Colors.white : Colors.black87,
               ),
               const SizedBox(height: 12),
+              const Text(
+                'Pressing your physical ESP32 device button transmits raw BLE manufacturer packets to this app instantly.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
         );
@@ -334,18 +330,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDiagRow(String label, String value, Color valueColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: valueColor,
             ),
           ),
         ],
@@ -357,20 +354,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tablesAsync = ref.watch(tablesStreamProvider);
-    final isScanningAsync = ref.watch(bleScanningStreamProvider);
-    final adapterStateAsync = ref.watch(bleAdapterStateStreamProvider);
+    final bleScanState = ref.watch(bleScanningStreamProvider).value ?? false;
+    final adapterState = ref.watch(bleAdapterStateStreamProvider).value ?? BluetoothAdapterState.unknown;
 
     final tablesList = tablesAsync.value ?? [];
-    final isScanning = isScanningAsync.value ?? false;
-    final adapterState =
-        adapterStateAsync.value ?? BluetoothAdapterState.unknown;
-
-    final onlineCount = tablesList.where((t) => t.isDeviceOnline).length;
-    final hasOnlineDevices = onlineCount > 0;
 
     final pendingTables = tablesList.where((t) => t.isPending).toList();
     final acceptedTables = tablesList.where((t) => t.isAccepted).toList();
-    final idleTables = tablesList.where((t) => t.isIdle).toList();
+    final idleTables = tablesList
+        .where((t) => !t.isPending && !t.isAccepted)
+        .toList();
 
     List<TableModel> displayList = [];
     if (_selectedFilter == 'pending') {
@@ -384,6 +377,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     return Scaffold(
+      extendBody: true,
       appBar: AppBar(
         title: Row(
           children: [
@@ -396,61 +390,53 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ),
         actions: [
-          // Live BLE Status Badge (Green Dot = Online, Red Dot = Offline)
-          Center(
+          // BLE Radar Scanner Pill
+          Padding(
+            padding: const EdgeInsets.only(right: 6.0),
             child: InkWell(
-              onTap: () =>
-                  _showBleInfoModal(tablesList, isScanning, adapterState),
               borderRadius: BorderRadius.circular(20),
+              onTap: () => _showBleInfoModal(
+                tablesList,
+                bleScanState,
+                adapterState,
+              ),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 5,
                 ),
-                margin: const EdgeInsets.only(right: 6),
                 decoration: BoxDecoration(
-                  color: hasOnlineDevices
-                      ? const Color(0xFF2E7D32).withValues(alpha: 0.15)
-                      : const Color(0xFFE53935).withValues(alpha: 0.12),
+                  color: (bleScanState
+                          ? const Color(0xFF0284C7)
+                          : Colors.grey)
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: hasOnlineDevices
-                        ? const Color(0xFF2E7D32)
-                        : const Color(0xFFE53935),
-                    width: 1.2,
+                    color: (bleScanState
+                            ? const Color(0xFF0284C7)
+                            : Colors.grey)
+                        .withValues(alpha: 0.4),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 9,
-                      height: 9,
-                      decoration: BoxDecoration(
-                        color: hasOnlineDevices
-                            ? const Color(0xFF00E676)
-                            : const Color(0xFFE53935),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                (hasOnlineDevices
-                                        ? const Color(0xFF00E676)
-                                        : const Color(0xFFE53935))
-                                    .withValues(alpha: 0.7),
-                            blurRadius: 6,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
+                    Icon(
+                      bleScanState
+                          ? Icons.bluetooth_searching_rounded
+                          : Icons.bluetooth_disabled_rounded,
+                      size: 15,
+                      color: bleScanState
+                          ? const Color(0xFF0284C7)
+                          : Colors.grey,
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     Text(
-                      hasOnlineDevices ? '$onlineCount Online' : 'No Devices',
+                      bleScanState ? 'BLE Active' : 'Offline',
                       style: TextStyle(
-                        color: hasOnlineDevices
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFE53935),
+                        color: bleScanState
+                            ? const Color(0xFF0284C7)
+                            : Colors.grey,
                         fontWeight: FontWeight.bold,
                         fontSize: 11,
                       ),
@@ -471,221 +457,48 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Hotel Tables',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        tooltip: 'Filter Tables',
-                        initialValue: _selectedFilter,
-                        onSelected: (value) {
-                          setState(() => _selectedFilter = value);
-                        },
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.1,
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.3,
-                              ),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.filter_list_rounded,
-                                size: 16,
-                                color: theme.colorScheme.primary,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _selectedFilter == 'all'
-                                    ? 'All (${tablesList.length})'
-                                    : (_selectedFilter == 'pending'
-                                          ? 'Pending (${pendingTables.length})'
-                                          : (_selectedFilter == 'accepted'
-                                                ? 'Accepted (${acceptedTables.length})'
-                                                : 'Idle (${idleTables.length})')),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              Icon(
-                                Icons.arrow_drop_down_rounded,
-                                size: 18,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ],
-                          ),
-                        ),
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'all',
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.table_restaurant_rounded,
-                                  size: 18,
-                                  color: Colors.blueGrey,
-                                ),
-                                const SizedBox(width: 10),
-                                Text('All Tables (${tablesList.length})'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'pending',
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.notifications_active_rounded,
-                                  size: 18,
-                                  color: Color(0xFFE53935),
-                                ),
-                                const SizedBox(width: 10),
-                                Text('Pending 🔴 (${pendingTables.length})'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'accepted',
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.check_circle_rounded,
-                                  size: 18,
-                                  color: Color(0xFF2E7D32),
-                                ),
-                                const SizedBox(width: 10),
-                                Text('Accepted 🟢 (${acceptedTables.length})'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'idle',
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.radio_button_unchecked_rounded,
-                                  size: 18,
-                                  color: Color(0xFFFF9800),
-                                ),
-                                const SizedBox(width: 10),
-                                Text('Idle 🟠 (${idleTables.length})'),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
+      body: IndexedStack(
+        index: _currentTabIndex,
+        children: [
+          // Tab 0: Tables Grid
+          TablesTabView(
+            tablesList: tablesList,
+            displayList: displayList,
+            pendingTables: pendingTables,
+            acceptedTables: acceptedTables,
+            idleTables: idleTables,
+            selectedFilter: _selectedFilter,
+            onFilterChanged: (val) => setState(() => _selectedFilter = val),
+            onTableTap: (table) {
+              if (table.isPending) {
+                _showAcceptDialog(table);
+              } else if (table.isAccepted) {
+                _showCompleteDialog(table);
+              }
+            },
+            isScanning: bleScanState,
+            adapterState: adapterState,
+            onBleInfoTap: () => _showBleInfoModal(
+              tablesList,
+              bleScanState,
+              adapterState,
             ),
           ),
-          if (displayList.isEmpty)
-            SliverToBoxAdapter(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 48.0,
-                    horizontal: 16.0,
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.table_bar_rounded,
-                        size: 64,
-                        color: theme.colorScheme.primary.withValues(alpha: 0.4),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _selectedFilter == 'pending'
-                            ? 'No pending table requests!'
-                            : (tablesList.isEmpty
-                                  ? 'Scanning for nearby table devices...'
-                                  : 'No tables in this category.'),
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.6,
-                          ),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        tablesList.isEmpty
-                            ? 'Make sure your ESP32 table device is powered on.'
-                            : 'Table devices connected via Bluetooth.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else
-            // 3 Tables in One Row (SliverGrid crossAxisCount: 3)
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 0.72,
-                ),
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final table = displayList[index];
-                  return TableCard(
-                    table: table,
-                    onTap: () {
-                      if (table.isPending) {
-                        _showAcceptDialog(table);
-                      } else if (table.isAccepted) {
-                        _showCompleteDialog(table);
-                      }
-                    },
-                  );
-                }, childCount: displayList.length),
-              ),
-            ),
+
+          // Tab 1: Overview Analytics
+          OverviewTabView(
+            tables: tablesList,
+            onSelectTab: (idx) => setState(() => _currentTabIndex = idx),
+          ),
+
+          // Tab 2: Settings & Profile
+          const SettingsTabView(),
         ],
+      ),
+      bottomNavigationBar: CustomBottomNavBar(
+        currentIndex: _currentTabIndex,
+        onTap: (index) => setState(() => _currentTabIndex = index),
+        pendingCount: pendingTables.length,
       ),
     );
   }

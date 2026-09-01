@@ -5,11 +5,7 @@ class TableCard extends StatelessWidget {
   final TableModel table;
   final VoidCallback onTap;
 
-  const TableCard({
-    super.key,
-    required this.table,
-    required this.onTap,
-  });
+  const TableCard({super.key, required this.table, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -28,14 +24,14 @@ class TableCard extends StatelessWidget {
 
     if (isPending) {
       // 🔴 RED STATE (Customer Requested Assistance)
-      cardBg = isDark ? const Color(0xFF3B1115) : const Color(0xFFFFEBEE);
+      cardBg = theme.colorScheme.surface;
       borderColor = const Color(0xFFE53935);
       statusColor = const Color(0xFFE53935);
       statusLabel = 'PENDING';
       statusIcon = Icons.notifications_active_rounded;
     } else if (isAccepted) {
-      // 🟢 GREEN STATE (Accepted)
-      cardBg = isDark ? const Color(0xFF0F3318) : const Color(0xFFE8F5E9);
+      // 🟢 PREVIOUS GREEN STATE (Accepted)
+      cardBg = theme.colorScheme.surface;
       borderColor = const Color(0xFF2E7D32);
       statusColor = const Color(0xFF2E7D32);
       statusLabel = 'ACCEPTED';
@@ -43,8 +39,8 @@ class TableCard extends StatelessWidget {
     } else {
       // 🟠 IDLE STATE (Orange Icon & Light Orange Border)
       cardBg = theme.colorScheme.surface;
-      borderColor = const Color(0xFFFFB74D).withValues(alpha: 0.5); // Light orange border
-      statusColor = const Color(0xFFFF9800); // 🟠 Orange table icon for Idle state
+      borderColor = const Color(0xFFFFB74D).withValues(alpha: 0.5);
+      statusColor = const Color(0xFFFF9800);
       statusLabel = 'IDLE';
       statusIcon = Icons.radio_button_unchecked_rounded;
     }
@@ -63,8 +59,10 @@ class TableCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: statusColor.withValues(alpha: isPending ? 0.35 : (isAccepted ? 0.2 : 0.04)),
-              blurRadius: isPending ? 10 : 4,
+              color: statusColor.withValues(
+                alpha: isPending ? 0.35 : (isAccepted ? 0.25 : 0.04),
+              ),
+              blurRadius: isPending || isAccepted ? 8 : 4,
               offset: const Offset(0, 2),
             ),
           ],
@@ -79,12 +77,17 @@ class TableCard extends StatelessWidget {
                 width: 7,
                 height: 7,
                 decoration: BoxDecoration(
-                  color: table.isDeviceOnline ? const Color(0xFF00E676) : const Color(0xFFE53935),
+                  color: table.isDeviceOnline
+                      ? const Color(0xFF2E7D32)
+                      : const Color(0xFFE53935),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: (table.isDeviceOnline ? const Color(0xFF00E676) : const Color(0xFFE53935))
-                          .withValues(alpha: 0.8),
+                      color:
+                          (table.isDeviceOnline
+                                  ? const Color(0xFF2E7D32)
+                                  : const Color(0xFFE53935))
+                              .withValues(alpha: 0.8),
                       blurRadius: 4,
                     ),
                   ],
@@ -95,7 +98,10 @@ class TableCard extends StatelessWidget {
             // Card Content (Centered, Fitted to prevent any overflow)
             Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6.0,
+                  vertical: 8.0,
+                ),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Column(
@@ -112,7 +118,9 @@ class TableCard extends StatelessWidget {
                         ),
                         child: Icon(
                           Icons.table_restaurant_rounded,
-                          color: statusColor,
+                          color: isDark && isAccepted
+                              ? const Color(0xFF81C784)
+                              : statusColor,
                           size: 24,
                         ),
                       ),
@@ -124,6 +132,9 @@ class TableCard extends StatelessWidget {
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
+                          color: isDark
+                              ? Colors.white
+                              : (isAccepted ? const Color(0xFF1B5E20) : null),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -133,20 +144,35 @@ class TableCard extends StatelessWidget {
 
                       // Status Badge
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2.5,
+                        ),
                         decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.15),
+                          color: isAccepted
+                              ? const Color(0xFF2E7D32)
+                              : (isPending
+                                    ? const Color(0xFFE53935)
+                                    : statusColor.withValues(alpha: 0.15)),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(statusIcon, color: statusColor, size: 10),
+                            Icon(
+                              statusIcon,
+                              color: (isAccepted || isPending)
+                                  ? Colors.white
+                                  : statusColor,
+                              size: 10,
+                            ),
                             const SizedBox(width: 3),
                             Text(
                               statusLabel,
                               style: TextStyle(
-                                color: statusColor,
+                                color: (isAccepted || isPending)
+                                    ? Colors.white
+                                    : statusColor,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 9.5,
                               ),

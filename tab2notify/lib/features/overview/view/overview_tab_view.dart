@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../service_requests/domain/table_model.dart';
 
@@ -25,9 +26,33 @@ class OverviewTabView extends StatelessWidget {
     final acceptedCount = acceptedList.length;
     final idleCount = tables.isNotEmpty ? idleList.length : 6;
 
-    final pendingPercent = totalCount > 0 ? (pendingCount / totalCount) : 0.0;
-    final acceptedPercent = totalCount > 0 ? (acceptedCount / totalCount) : 0.0;
-    final idlePercent = totalCount > 0 ? (idleCount / totalCount) : 1.0;
+    final pendingPercent = totalCount > 0 ? (pendingCount / totalCount) * 100 : 0.0;
+    final acceptedPercent = totalCount > 0 ? (acceptedCount / totalCount) * 100 : 0.0;
+    final idlePercent = totalCount > 0 ? (idleCount / totalCount) * 100 : 100.0;
+
+    final List<DonutSliceData> chartSlices = [
+      if (pendingCount > 0)
+        DonutSliceData(
+          label: 'Pending',
+          value: pendingCount.toDouble(),
+          displayValue: '$pendingCount',
+          color: const Color(0xFFE53935),
+        ),
+      if (acceptedCount > 0)
+        DonutSliceData(
+          label: 'Accepted',
+          value: acceptedCount.toDouble(),
+          displayValue: '$acceptedCount',
+          color: const Color(0xFF2E7D32),
+        ),
+      if (idleCount > 0 || (pendingCount == 0 && acceptedCount == 0))
+        DonutSliceData(
+          label: 'Idle',
+          value: (idleCount > 0 ? idleCount : 6).toDouble(),
+          displayValue: '${idleCount > 0 ? idleCount : 6}',
+          color: const Color(0xFFFF9800),
+        ),
+    ];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 100.0),
@@ -97,9 +122,10 @@ class OverviewTabView extends StatelessWidget {
             crossAxisCount: 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
+            padding: EdgeInsets.zero,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.35,
+            childAspectRatio: 1.5,
             children: [
               _buildKpiCard(
                 title: 'Pending Alert',
@@ -140,9 +166,9 @@ class OverviewTabView extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Service Distribution Card
+          // Modern Donut / Pie Chart Request Status Card
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -159,16 +185,17 @@ class OverviewTabView extends StatelessWidget {
                         const Color(0xFFF8FAFC),
                       ],
               ),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: isDark
                     ? Colors.white.withValues(alpha: 0.1)
                     : Colors.black.withValues(alpha: 0.08),
+                width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
-                  blurRadius: 12,
+                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.05),
+                  blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -176,145 +203,205 @@ class OverviewTabView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Card Header
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Live Table Capacity',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                      ),
-                    ),
-                    Text(
-                      '${((pendingCount + acceptedCount) / (totalCount > 0 ? totalCount : 1) * 100).toInt()}% Active',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                        color: pendingCount > 0
-                            ? const Color(0xFFE53935)
-                            : const Color(0xFF2E7D32),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-
-                // Multi-color Segmented Progress Bar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    height: 12,
-                    child: Row(
+                    Row(
                       children: [
-                        if (pendingPercent > 0)
-                          Expanded(
-                            flex: (pendingPercent * 100).round(),
-                            child: Container(color: const Color(0xFFE53935)),
+                        Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF97316).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
                           ),
-                        if (acceptedPercent > 0)
-                          Expanded(
-                            flex: (acceptedPercent * 100).round(),
-                            child: Container(color: const Color(0xFF2E7D32)),
+                          child: const Icon(
+                            Icons.pie_chart_rounded,
+                            color: Color(0xFFF97316),
+                            size: 17,
                           ),
-                        if (idlePercent > 0)
-                          Expanded(
-                            flex: (idlePercent * 100).round(),
-                            child: Container(
-                              color: isDark
-                                  ? const Color(0xFF334155)
-                                  : const Color(0xFFE2E8F0),
-                            ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Request Status Distribution',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
                           ),
+                        ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // Legend
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildLegendItem(
-                      color: const Color(0xFFE53935),
-                      label: 'Pending ($pendingCount)',
-                      isDark: isDark,
-                    ),
-                    _buildLegendItem(
-                      color: const Color(0xFF2E7D32),
-                      label: 'In Service ($acceptedCount)',
-                      isDark: isDark,
-                    ),
-                    _buildLegendItem(
-                      color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-                      label: 'Idle ($idleCount)',
-                      isDark: isDark,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: pendingCount > 0
+                            ? const Color(0xFFE53935).withValues(alpha: 0.15)
+                            : const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        pendingCount > 0 ? '$pendingCount Alert' : 'Normal',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: pendingCount > 0
+                              ? const Color(0xFFE53935)
+                              : const Color(0xFF2E7D32),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
+                const SizedBox(height: 18),
 
-          const SizedBox(height: 20),
+                // Donut Chart & Left Legend Row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Left Legend List (matching reference image style)
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLegendRow(
+                            color: const Color(0xFFE53935),
+                            label: 'Pending',
+                            count: pendingCount,
+                            percent: pendingPercent,
+                            isDark: isDark,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildLegendRow(
+                            color: const Color(0xFF2E7D32),
+                            label: 'In Service',
+                            count: acceptedCount,
+                            percent: acceptedPercent,
+                            isDark: isDark,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildLegendRow(
+                            color: const Color(0xFFFF9800),
+                            label: 'Idle / Ready',
+                            count: idleCount,
+                            percent: idlePercent,
+                            isDark: isDark,
+                          ),
+                        ],
+                      ),
+                    ),
 
-          // Speed & System Performance Metrics
-          Text(
-            'System Performance',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 12),
+                    const SizedBox(width: 8),
 
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1E1B26)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.black.withValues(alpha: 0.08),
-              ),
-            ),
-            child: Column(
-              children: [
-                _buildMetricRow(
-                  icon: Icons.bolt_rounded,
-                  iconColor: const Color(0xFFF59E0B),
-                  title: 'Average Response Time',
-                  value: '< 12 sec',
-                  status: 'Fast ⚡',
-                  isDark: isDark,
-                ),
-                const Divider(height: 24),
-                _buildMetricRow(
-                  icon: Icons.bluetooth_audio_rounded,
-                  iconColor: const Color(0xFF0284C7),
-                  title: 'BLE Wireless Signal',
-                  value: '-42 dBm',
-                  status: 'Strong 📶',
-                  isDark: isDark,
-                ),
-                const Divider(height: 24),
-                _buildMetricRow(
-                  icon: Icons.shield_rounded,
-                  iconColor: const Color(0xFF2E7D32),
-                  title: 'Hardware Link Status',
-                  value: 'ESP32 Online',
-                  status: 'Synced ✓',
-                  isDark: isDark,
+                    // Donut Chart with Center Summary (matching reference image style)
+                    Expanded(
+                      flex: 6,
+                      child: Center(
+                        child: SizedBox(
+                          width: 165,
+                          height: 165,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CustomPaint(
+                                size: const Size(165, 165),
+                                painter: DonutChartPainter(
+                                  slices: chartSlices,
+                                  isDark: isDark,
+                                ),
+                              ),
+                              // Center Total Ring Content
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '$totalCount',
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                      color: isDark ? Colors.white : const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  Text(
+                                    'TABLES',
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.8,
+                                      color: isDark
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLegendRow({
+    required Color color,
+    required String label,
+    required int count,
+    required double percent,
+    required bool isDark,
+  }) {
+    return Row(
+      children: [
+        // Colored Dot (matching image style)
+        Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.4),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? const Color(0xFFE2E8F0) : const Color(0xFF334155),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                '$count tables (${percent.toInt()}%)',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -401,85 +488,100 @@ class OverviewTabView extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildLegendItem({
-    required Color color,
-    required String label,
-    required bool isDark,
-  }) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
+class DonutSliceData {
+  final String label;
+  final double value;
+  final String displayValue;
+  final Color color;
+
+  DonutSliceData({
+    required this.label,
+    required this.value,
+    required this.displayValue,
+    required this.color,
+  });
+}
+
+class DonutChartPainter extends CustomPainter {
+  final List<DonutSliceData> slices;
+  final bool isDark;
+
+  DonutChartPainter({
+    required this.slices,
+    required this.isDark,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double total = slices.fold(0.0, (sum, s) => sum + s.value);
+    if (total == 0) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final strokeWidth = size.width * 0.20;
+    final radius = (size.width - strokeWidth) / 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    double startAngle = -math.pi / 2; // Start from top
+    const double gapAngle = 0.03; // Sleek slice gap
+
+    for (final slice in slices) {
+      final sweepAngle = (slice.value / total) * 2 * math.pi;
+      final effectiveSweep = slices.length > 1
+          ? math.max(0.0, sweepAngle - gapAngle)
+          : sweepAngle;
+
+      final paint = Paint()
+        ..color = slice.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.butt;
+
+      canvas.drawArc(rect, startAngle, effectiveSweep, false, paint);
+
+      // Draw value on slice if slice is large enough
+      if (sweepAngle > 0.45) {
+        final midAngle = startAngle + (effectiveSweep / 2);
+        final labelRadius = radius;
+        final labelOffset = Offset(
+          center.dx + labelRadius * math.cos(midAngle),
+          center.dy + labelRadius * math.sin(midAngle),
+        );
+
+        final textSpan = TextSpan(
+          text: slice.displayValue,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w900,
+            shadows: [
+              Shadow(color: Colors.black45, blurRadius: 2, offset: Offset(0, 1)),
+            ],
           ),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+        );
+
+        final textPainter = TextPainter(
+          text: textSpan,
+          textAlign: TextAlign.center,
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        textPainter.paint(
+          canvas,
+          Offset(
+            labelOffset.dx - (textPainter.width / 2),
+            labelOffset.dy - (textPainter.height / 2),
           ),
-        ),
-      ],
-    );
+        );
+      }
+
+      startAngle += sweepAngle;
+    }
   }
 
-  Widget _buildMetricRow({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String value,
-    required String status,
-    required bool isDark,
-  }) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: iconColor, size: 18),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
-            ),
-          ),
-        ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            Text(
-              status,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+  @override
+  bool shouldRepaint(covariant DonutChartPainter oldDelegate) {
+    return oldDelegate.slices != slices || oldDelegate.isDark != isDark;
   }
 }

@@ -68,16 +68,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
-      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(left: 24, right: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: Form(
               key: _formKey,
               child: Column(
@@ -92,7 +86,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   const SizedBox(height: 32),
                   AppTextField(
                     label: 'Full Name',
-                    hint: 'John Doe',
+                    hint: 'Enter your full name',
                     prefixIcon: Icons.person_outline,
                     controller: _nameController,
                     validator: (val) {
@@ -105,7 +99,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   const SizedBox(height: 16),
                   AppTextField(
                     label: 'Email Address',
-                    hint: 'manager@hotel.com',
+                    hint: 'Enter your email address',
                     prefixIcon: Icons.email_outlined,
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -122,7 +116,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   const SizedBox(height: 16),
                   AppTextField(
                     label: 'Phone Number',
-                    hint: '+1 234 567 8900',
+                    hint: 'Enter your phone number',
                     prefixIcon: Icons.phone_outlined,
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
@@ -136,7 +130,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   const SizedBox(height: 16),
                   AppTextField(
                     label: 'Password',
-                    hint: '••••••••',
+                    hint: 'Enter your password',
                     prefixIcon: Icons.lock_outline,
                     controller: _passwordController,
                     isPassword: true,
@@ -153,7 +147,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   const SizedBox(height: 16),
                   AppTextField(
                     label: 'Confirm Password',
-                    hint: '••••••••',
+                    hint: 'Re-enter your password',
                     prefixIcon: Icons.lock_outline,
                     controller: _confirmController,
                     isPassword: true,
@@ -166,9 +160,26 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                   const SizedBox(height: 32),
                   AppButton(
-                    text: 'SIGN IN',
+                    text: 'CREATE ACCOUNT',
                     isLoading: _isLoading,
                     onPressed: _handleSignup,
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Already have an account? ',
+                        style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+                      ),
+                      TextButton(
+                        onPressed: () => context.go('/login'),
+                        child: Text(
+                          'Login',
+                          style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

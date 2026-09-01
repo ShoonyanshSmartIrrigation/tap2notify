@@ -86,7 +86,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 40),
                   AppTextField(
                     label: 'Email Address',
-                    hint: 'manager@hotel.com',
+                    hint: 'Enter your email address',
                     prefixIcon: Icons.email_outlined,
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -99,7 +99,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 16),
                   AppTextField(
                     label: 'Password',
-                    hint: '••••••••',
+                    hint: 'Enter your password',
                     prefixIcon: Icons.lock_outline,
                     controller: _passwordController,
                     isPassword: true,

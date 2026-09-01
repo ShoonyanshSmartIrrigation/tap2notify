@@ -98,6 +98,171 @@ class SettingsTabView extends ConsumerWidget {
     );
   }
 
+  void _showTermsModal(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (sheetCtx, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.description_outlined, color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Terms & Conditions',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const Text(
+                            'Tab2Notify Service Agreement & Privacy',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _buildTermItem(
+                    title: '1. Authorized Staff & Guest Usage',
+                    desc:
+                        'Tab2Notify is deployed exclusively for registered hotel service staff, floor managers, and dining guests for instant table assistance signaling and dispatch.',
+                    isDark: isDark,
+                  ),
+                  _buildTermItem(
+                    title: '2. Hardware & Bluetooth Mesh Safety',
+                    desc:
+                        'Physical ESP32 table nodes transmit low-energy beacon packets. Staff must ensure hardware buttons, touch sensors, and status LED rings remain undamaged and properly mounted.',
+                    isDark: isDark,
+                  ),
+                  _buildTermItem(
+                    title: '3. Realtime Telemetry & Data Privacy',
+                    desc:
+                        'The system records table call timestamps, assigned waiter names, and response durations for hospitality quality metrics. No sensitive payment or personal guest information is captured.',
+                    isDark: isDark,
+                  ),
+                  _buildTermItem(
+                    title: '4. Service Level Standard (SLA)',
+                    desc:
+                        'Floor staff agree to acknowledge table assistance alerts promptly within the targeted service window (< 30 seconds) to maintain 5-star hospitality standards.',
+                    isDark: isDark,
+                  ),
+                  _buildTermItem(
+                    title: '5. Updates & System Availability',
+                    desc:
+                        'Firmware and software updates may periodically optimize wireless range and battery efficiency. Continued operation implies acceptance of active version standards.',
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'I AGREE & UNDERSTAND',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  static Widget _buildTermItem({
+    required String title,
+    required String desc,
+    required bool isDark,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14.0),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 13.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              desc,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   static Widget _buildContactTile({
     required IconData icon,
     required String title,
@@ -153,6 +318,64 @@ class SettingsTabView extends ConsumerWidget {
     );
   }
 
+  Future<void> _handleSignOut(BuildContext context, WidgetRef ref) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Text(
+          'Sign Out',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to sign out from Tab2Notify?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'CANCEL',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'SIGN OUT',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ref.read(authRepositoryProvider).signOut();
+        ref.invalidate(currentUserProfileProvider);
+      } catch (_) {}
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ Signed out successfully.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        context.go('/login');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -205,88 +428,231 @@ class SettingsTabView extends ConsumerWidget {
                 ),
               ],
             ),
-            child: Row(
+            child: Column(
               children: [
-                // Avatar with Glowing Orange Ring
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Avatar with Glowing Orange Ring
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFEA580C).withValues(alpha: 0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.person_rounded, color: Colors.white, size: 30),
+                      ),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFEA580C).withValues(alpha: 0.4),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.person_rounded, color: Colors.white, size: 30),
-                  ),
-                ),
-                const SizedBox(width: 16),
+                    const SizedBox(width: 16),
 
-                // Name & Details
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      userProfileAsync.when(
-                        data: (profile) => Text(
-                          profile?.fullName ?? (user?.email?.split('@').first ?? 'Manager'),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16.5,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        loading: () => const Text('Loading Profile...'),
-                        error: (error, stack) => const Text('Manager'),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        user?.email ?? 'manager@hotel.com',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: const Color(0xFF2E7D32).withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.verified_rounded, size: 12, color: Color(0xFF2E7D32)),
-                            SizedBox(width: 4),
-                            Text(
-                              'HOTEL FLOOR MANAGER',
-                              style: TextStyle(
-                                fontSize: 9.5,
+                    // Name & Details
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          userProfileAsync.when(
+                            data: (profile) => Text(
+                              profile?.fullName ?? (user?.displayName ?? (user?.email?.split('@').first.toUpperCase() ?? 'Manager')),
+                              style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w900,
-                                color: Color(0xFF2E7D32),
-                                letterSpacing: 0.4,
+                                fontSize: 16.5,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ],
+                            loading: () => const Text('Loading Profile...'),
+                            error: (error, stack) => const Text('Manager'),
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.mail_outline_rounded,
+                                size: 13,
+                                color: isDark
+                                    ? const Color(0xFF94A3B8)
+                                    : const Color(0xFF64748B),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: userProfileAsync.when(
+                                  data: (profile) => Text(
+                                    (profile?.email.isNotEmpty == true)
+                                        ? profile!.email
+                                        : (user?.email ?? 'manager@hotel.com'),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF64748B),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  loading: () => Text(
+                                    user?.email ?? 'manager@hotel.com',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  error: (error, stack) => Text(
+                                    user?.email ?? 'manager@hotel.com',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          userProfileAsync.when(
+                            data: (profile) {
+                              final phone = (profile?.phone.isNotEmpty == true)
+                                  ? profile!.phone
+                                  : (user?.phoneNumber ?? '+91 98765 43210');
+                              return Row(
+                                children: [
+                                  Icon(
+                                    Icons.phone_android_rounded,
+                                    size: 13,
+                                    color: const Color(0xFFF97316),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    phone,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? const Color(0xFFCBD5E1)
+                                          : const Color(0xFF475569),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                            loading: () => const SizedBox.shrink(),
+                            error: (error, stack) => const SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+                Divider(
+                  height: 1,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+                const SizedBox(height: 12),
+
+                // Bottom Row inside Profile Card: Role Badge + Sign Out Button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    userProfileAsync.when(
+                      data: (profile) {
+                        final role = (profile?.role.isNotEmpty == true)
+                            ? profile!.role.toUpperCase()
+                            : 'HOTEL FLOOR MANAGER';
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFF2E7D32).withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.verified_rounded,
+                                size: 12,
+                                color: Color(0xFF2E7D32),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                role,
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF2E7D32),
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      loading: () => const SizedBox.shrink(),
+                      error: (error, stack) => const SizedBox.shrink(),
+                    ),
+
+                    // Sign Out Pill Button inside Profile Card
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _handleSignOut(context, ref),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE53935).withValues(alpha: isDark ? 0.15 : 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFFE53935).withValues(alpha: 0.35),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.logout_rounded,
+                                size: 13,
+                                color: Color(0xFFE53935),
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Sign Out',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFE53935),
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -373,54 +739,26 @@ class SettingsTabView extends ConsumerWidget {
                   subtitle: const Text('24/7 Hotel Support, Email & Phone', style: TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.chevron_right_rounded),
                 ),
+                const Divider(height: 1),
+                ListTile(
+                  onTap: () => _showTermsModal(context),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.description_outlined, color: Color(0xFF0284C7), size: 20),
+                  ),
+                  title: const Text('Terms & Conditions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  subtitle: const Text('User agreement, privacy policy & SLAs', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                ),
               ],
             ),
           ),
 
-          const SizedBox(height: 32),
-
-          // 5. Sign Out Button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Sign Out'),
-                    content: const Text('Are you sure you want to sign out from Tab2Notify?'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE53935)),
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('SIGN OUT', style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (confirm == true) {
-                  await ref.read(authRepositoryProvider).signOut();
-                  if (context.mounted) {
-                    context.go('/login');
-                  }
-                }
-              },
-              icon: const Icon(Icons.logout_rounded, color: Color(0xFFE53935), size: 20),
-              label: const Text(
-                'SIGN OUT',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE53935), fontSize: 14),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFFE53935), width: 1.5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
+          const SizedBox(height: 36),
 
           // App Footer
           Center(

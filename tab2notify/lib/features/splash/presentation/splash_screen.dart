@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:firebase_auth/firebase_auth.dart';
+
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -38,7 +40,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
   Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
-    context.go('/dashboard');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      context.go('/dashboard');
+    } else {
+      context.go('/login');
+    }
   }
 
   @override

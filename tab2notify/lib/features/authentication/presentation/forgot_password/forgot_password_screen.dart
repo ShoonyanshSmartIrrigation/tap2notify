@@ -100,7 +100,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       const SizedBox(height: 32),
                       AppTextField(
                         label: 'Email Address',
-                        hint: 'manager@hotel.com',
+                        hint: 'Enter your registered email',
                         prefixIcon: Icons.email_outlined,
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,

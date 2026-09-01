@@ -42,6 +42,13 @@ class AppTextField extends StatelessWidget {
           validator: validator,
           decoration: InputDecoration(
             hintText: hint,
+            hintStyle: TextStyle(
+              color: theme.brightness == Brightness.dark
+                  ? const Color(0xFF64748B)
+                  : const Color(0xFFA0AEC0),
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+            ),
             prefixIcon: Icon(prefixIcon, color: theme.colorScheme.primary),
             filled: true,
             fillColor: theme.colorScheme.surface,

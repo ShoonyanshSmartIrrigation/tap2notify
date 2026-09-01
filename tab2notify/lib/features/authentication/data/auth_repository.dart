@@ -61,4 +61,13 @@ class AuthRepository {
     }
     return null;
   }
+
+  Stream<UserModel?> get currentUserProfileStream {
+    return _authService.authStateChanges.asyncExpand((user) {
+      if (user == null) {
+        return Stream.value(null);
+      }
+      return _dbService.getUserProfileStream(user.uid);
+    });
+  }
 }

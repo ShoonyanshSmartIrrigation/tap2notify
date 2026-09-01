@@ -24,7 +24,7 @@ final authStateProvider = StreamProvider<User?>((ref) {
   return repository.authStateChanges;
 });
 
-final currentUserProfileProvider = FutureProvider<UserModel?>((ref) async {
+final currentUserProfileProvider = StreamProvider<UserModel?>((ref) {
   final repository = ref.watch(authRepositoryProvider);
-  return await repository.getCurrentUserProfile();
+  return repository.currentUserProfileStream;
 });

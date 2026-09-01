@@ -5,6 +5,7 @@ class AppButton extends StatelessWidget {
   final VoidCallback onPressed;
   final bool isLoading;
   final bool isSecondary;
+  final IconData? icon;
 
   const AppButton({
     super.key,
@@ -12,49 +13,98 @@ class AppButton extends StatelessWidget {
     required this.onPressed,
     this.isLoading = false,
     this.isSecondary = false,
+    this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
     return SizedBox(
       width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: isLoading ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isSecondary 
-              ? Colors.transparent 
-              : theme.elevatedButtonTheme.style?.backgroundColor?.resolve({}),
-          foregroundColor: isSecondary 
-              ? theme.colorScheme.primary 
-              : Colors.white,
-          elevation: isSecondary ? 0 : 2,
-          side: isSecondary 
-              ? BorderSide(color: theme.colorScheme.primary) 
-              : BorderSide.none,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: isLoading
-            ? const SizedBox(
-                height: 24,
-                width: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
+      height: 54,
+      child: isSecondary
+          ? OutlinedButton(
+              onPressed: isLoading ? null : onPressed,
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFEA580C), width: 1.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              )
-            : Text(
-                text,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.1,
+                foregroundColor: const Color(0xFFEA580C),
+              ),
+              child: _buildChild(Colors.orange),
+            )
+          : Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFFB923C),
+                    Color(0xFFEA580C),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFEA580C).withValues(alpha: 0.38),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: isLoading ? null : onPressed,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Center(
+                    child: _buildChild(Colors.white),
+                  ),
                 ),
               ),
+            ),
+    );
+  }
+
+  Widget _buildChild(Color textColor) {
+    if (isLoading) {
+      return const SizedBox(
+        height: 22,
+        width: 22,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.2,
+          color: Colors.white,
+        ),
+      );
+    }
+
+    if (icon != null) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: textColor, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: textColor,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.8,
+        color: textColor,
       ),
     );
   }

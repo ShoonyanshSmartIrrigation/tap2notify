@@ -27,6 +27,21 @@ class FirebaseRealtimeService {
     return null;
   }
 
+  // Listen to User Profile in real time
+  Stream<UserModel?> getUserProfileStream(String uid) {
+    return _usersRef.child(uid).onValue.map((event) {
+      final snapshot = event.snapshot;
+      if (!snapshot.exists || snapshot.value == null) {
+        return null;
+      }
+      final raw = snapshot.value;
+      if (raw is Map) {
+        return UserModel.fromMap(raw, uid);
+      }
+      return null;
+    });
+  }
+
   // Listen to Service Requests in real time
   Stream<List<ServiceRequestModel>> getServiceRequestsStream() {
     return _requestsRef.onValue.map((event) {

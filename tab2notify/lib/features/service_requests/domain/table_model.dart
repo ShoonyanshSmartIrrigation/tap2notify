@@ -2,9 +2,10 @@ class TableModel {
   final String id;
   final int tableNumber;
   final String deviceId;
-  final String status; // 'idle', 'pending', 'accepted', 'completed'
+  final String status; // 'idle', 'pending', 'accepted', 'completed', 'in_progress'
   final int flag; // 0 = pending, 1 = accepted, -1 = idle
   final String waiterName;
+  final String assignedWaiterId;
   final bool isDeviceOnline;
   final int createdAt;
   final int? updatedAt;
@@ -17,16 +18,18 @@ class TableModel {
     this.status = 'idle',
     this.flag = -1,
     this.waiterName = '',
+    this.assignedWaiterId = '',
     this.isDeviceOnline = false,
     required this.createdAt,
     this.updatedAt,
     this.acceptedAt,
   });
 
-  bool get isPending => flag == 0 || status == 'pending';
-  bool get isAccepted => flag == 1 || status == 'accepted';
+  bool get isPending => flag == 0 || status == 'pending' || status == 'new_request';
+  bool get isAccepted => flag == 1 || status == 'accepted' || status == 'in_progress';
   bool get isIdle => !isPending && !isAccepted;
   bool get isOnline => isDeviceOnline;
+  bool get isAssigned => assignedWaiterId.isNotEmpty || waiterName.isNotEmpty;
 
   Map<String, dynamic> toMap() {
     return {
@@ -36,6 +39,8 @@ class TableModel {
       'status': status,
       'flag': flag,
       'waiter_name': waiterName,
+      'assigned_waiter_id': assignedWaiterId,
+      'assigned_waiter_name': waiterName,
       'device_online': isDeviceOnline,
       'created_at': createdAt,
       'updated_at': updatedAt,
@@ -53,9 +58,9 @@ class TableModel {
       } else if (map['flag'].toString() == '1') {
         parsedFlag = 1;
       }
-    } else if (map['status'] == 'pending') {
+    } else if (map['status'] == 'pending' || map['status'] == 'new_request') {
       parsedFlag = 0;
-    } else if (map['status'] == 'accepted') {
+    } else if (map['status'] == 'accepted' || map['status'] == 'in_progress') {
       parsedFlag = 1;
     }
 
@@ -76,13 +81,24 @@ class TableModel {
         (map['online'] == true) ||
         (map['is_online'] == true);
 
+    final String wName = map['assigned_waiter_name']?.toString() ??
+        map['waiter_name']?.toString() ??
+        map['waiterName']?.toString() ??
+        '';
+
+    final String wId = map['assigned_waiter_id']?.toString() ??
+        map['waiter_id']?.toString() ??
+        map['waiterId']?.toString() ??
+        '';
+
     return TableModel(
       id: map['id']?.toString() ?? id,
       tableNumber: parsedTableNumber,
       deviceId: map['device_id']?.toString() ?? map['deviceId']?.toString() ?? 'device_$parsedTableNumber',
       status: map['status']?.toString() ?? (parsedFlag == 0 ? 'pending' : (parsedFlag == 1 ? 'accepted' : 'idle')),
       flag: parsedFlag,
-      waiterName: map['waiter_name']?.toString() ?? map['waiterName']?.toString() ?? '',
+      waiterName: wName,
+      assignedWaiterId: wId,
       isDeviceOnline: online,
       createdAt: (map['created_at'] as num?)?.toInt() ?? (map['createdAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
       updatedAt: (map['updated_at'] as num?)?.toInt() ?? (map['updatedAt'] as num?)?.toInt(),
@@ -94,6 +110,7 @@ class TableModel {
     String? status,
     int? flag,
     String? waiterName,
+    String? assignedWaiterId,
     bool? isDeviceOnline,
     int? updatedAt,
     int? acceptedAt,
@@ -105,6 +122,7 @@ class TableModel {
       status: status ?? this.status,
       flag: flag ?? this.flag,
       waiterName: waiterName ?? this.waiterName,
+      assignedWaiterId: assignedWaiterId ?? this.assignedWaiterId,
       isDeviceOnline: isDeviceOnline ?? this.isDeviceOnline,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

@@ -9,6 +9,9 @@ import '../../service_requests/presentation/service_request_providers.dart';
 import '../../overview/view/overview_tab_view.dart';
 import '../../setting/view/settings_tab_view.dart';
 import 'views/tables_tab_view.dart';
+import 'widgets/table_setup_dialog.dart';
+import 'widgets/assign_waiter_modal.dart';
+import 'widgets/waiter_management_sheet.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -19,7 +22,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _currentTabIndex = 0; // 0 = Tables, 1 = Overview, 2 = Settings
-  String _selectedFilter = 'all'; // 'all', 'pending', 'accepted', 'idle'
+  String _selectedFilter = 'all'; // 'all', 'pending', 'accepted', 'idle', 'assigned', 'unassigned'
 
   @override
   void initState() {
@@ -77,7 +80,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 controller: waiterController,
                 decoration: InputDecoration(
                   labelText: 'Assigned Waiter / Staff Name',
-                  hintText: 'e.g. John / Sarah',
+                  hintText: 'e.g. Rahul Sharma (W001)',
                   prefixIcon: const Icon(Icons.person),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -174,7 +177,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Request is currently ACCEPTED 🟢',
+                table.waiterName.isNotEmpty
+                    ? 'Assigned: ${table.waiterName}'
+                    : 'Request is currently ACCEPTED 🟢',
                 style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
               ),
             ],
@@ -372,6 +377,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       displayList = acceptedTables;
     } else if (_selectedFilter == 'idle') {
       displayList = idleTables;
+    } else if (_selectedFilter == 'assigned') {
+      displayList = tablesList.where((t) => t.isAssigned).toList();
+    } else if (_selectedFilter == 'unassigned') {
+      displayList = tablesList.where((t) => !t.isAssigned).toList();
     } else {
       displayList = tablesList;
     }
@@ -469,11 +478,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             idleTables: idleTables,
             selectedFilter: _selectedFilter,
             onFilterChanged: (val) => setState(() => _selectedFilter = val),
+            onConfigureTables: () => TableSetupDialog.show(context, tablesList.length),
+            onManageWaiters: () => WaiterManagementSheet.show(context),
+            onAssignWaiters: () => AssignWaiterModal.show(context, allTables: tablesList),
             onTableTap: (table) {
               if (table.isPending) {
                 _showAcceptDialog(table);
               } else if (table.isAccepted) {
                 _showCompleteDialog(table);
+              } else {
+                // Tapping idle table opens quick assign modal for this table
+                AssignWaiterModal.show(
+                  context,
+                  initialTable: table,
+                  allTables: tablesList,
+                );
               }
             },
             isScanning: bleScanState,
@@ -503,3 +522,4 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 }
+

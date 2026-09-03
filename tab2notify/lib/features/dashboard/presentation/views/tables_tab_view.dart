@@ -17,6 +17,9 @@ class TablesTabView extends StatelessWidget {
   final bool isScanning;
   final BluetoothAdapterState adapterState;
   final VoidCallback onBleInfoTap;
+  final VoidCallback onConfigureTables;
+  final VoidCallback onManageWaiters;
+  final VoidCallback onAssignWaiters;
 
   const TablesTabView({
     super.key,
@@ -31,11 +34,15 @@ class TablesTabView extends StatelessWidget {
     required this.isScanning,
     required this.adapterState,
     required this.onBleInfoTap,
+    required this.onConfigureTables,
+    required this.onManageWaiters,
+    required this.onAssignWaiters,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return CustomScrollView(
       slivers: [
@@ -47,13 +54,149 @@ class TablesTabView extends StatelessWidget {
               children: [
                 // Modern App Information Hero Card
                 const AppInfoCard(),
+                const SizedBox(height: 12),
+
+                // Manager Fast Action Bar (Configure Tables, Waiters, Assign)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Configure Total Tables
+                      Expanded(
+                        child: InkWell(
+                          onTap: onConfigureTables,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.tune_rounded,
+                                    color: theme.colorScheme.primary,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Set Tables',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(width: 1, height: 32, color: Colors.grey.withValues(alpha: 0.2)),
+
+                      // Assign Waiters
+                      Expanded(
+                        child: InkWell(
+                          onTap: onAssignWaiters,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.assignment_ind_rounded,
+                                    color: theme.colorScheme.primary,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Assign Staff',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(width: 1, height: 32, color: Colors.grey.withValues(alpha: 0.2)),
+
+                      // Manage Waiters
+                      Expanded(
+                        child: InkWell(
+                          onTap: onManageWaiters,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.group_rounded,
+                                    color: theme.colorScheme.primary,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Waiters',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
 
                 // Hotel Tables Section Title & Filter Dropdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Hotel Tables',
+                      'Hotel Tables (${tablesList.length})',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -95,7 +238,11 @@ class TablesTabView extends StatelessWidget {
                                       ? 'Pending (${pendingTables.length})'
                                       : (selectedFilter == 'accepted'
                                           ? 'Accepted (${acceptedTables.length})'
-                                          : 'Idle (${idleTables.length})')),
+                                          : (selectedFilter == 'assigned'
+                                              ? 'Assigned'
+                                              : (selectedFilter == 'unassigned'
+                                                  ? 'Unassigned'
+                                                  : 'Idle (${idleTables.length})')))),
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -165,6 +312,35 @@ class TablesTabView extends StatelessWidget {
                               ),
                               const SizedBox(width: 10),
                               Text('Idle 🟠 (${idleTables.length})'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'assigned',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.person_rounded,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              const Text('Assigned Tables 👤'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'unassigned',
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.person_off_rounded,
+                                size: 18,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(width: 10),
+                              const Text('Unassigned Tables ⚠️'),
                             ],
                           ),
                         ),

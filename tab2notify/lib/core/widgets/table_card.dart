@@ -180,6 +180,41 @@ class TableCard extends StatelessWidget {
                           ],
                         ),
                       ),
+                      const SizedBox(height: 3),
+
+                      // Assigned Waiter Pill
+                      if (table.isAssigned)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.person_rounded,
+                                size: 9,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                table.waiterName.split(' ').first,
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),

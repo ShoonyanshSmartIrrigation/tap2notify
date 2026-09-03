@@ -32,8 +32,8 @@ class TableCard extends StatelessWidget {
     } else if (isAccepted) {
       // 🟢 PREVIOUS GREEN STATE (Accepted)
       cardBg = theme.colorScheme.surface;
-      borderColor = const Color(0xFF2E7D32);
-      statusColor = const Color(0xFF2E7D32);
+      borderColor = const Color.fromARGB(255, 40, 150, 45);
+      statusColor = const Color.fromARGB(255, 28, 175, 36);
       statusLabel = 'ACCEPTED';
       statusIcon = Icons.check_circle_rounded;
     } else {
@@ -74,13 +74,17 @@ class TableCard extends StatelessWidget {
               top: 8,
               right: 8,
               child: Container(
-                width: 7,
-                height: 7,
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(
                   color: table.isDeviceOnline
-                      ? const Color(0xFF2E7D32)
+                      ? const Color.fromARGB(255, 25, 202, 34)
                       : const Color(0xFFE53935),
                   shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDark ? Colors.black45 : Colors.white,
+                    width: 1.2,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color:
@@ -190,7 +194,9 @@ class TableCard extends StatelessWidget {
                             vertical: 1.5,
                           ),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.08,
+                            ),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(

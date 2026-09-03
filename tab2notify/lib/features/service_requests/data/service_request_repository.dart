@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import '../../../core/services/ble_service.dart';
 import '../../../core/services/firebase_realtime_service.dart';
 import '../../waiter/domain/waiter_model.dart';
@@ -7,16 +9,140 @@ class ServiceRequestRepository {
   final BleService _bleService;
   final FirebaseRealtimeService _dbService;
 
-  ServiceRequestRepository(this._bleService, this._dbService);
+  ServiceRequestRepository(this._bleService, this._dbService) {
+    // Forward BLE physical device discoveries to Firebase Realtime Database asynchronously
+    _bleService.onDeviceDiscovered = (TableModel bleTable) {
+      _dbService.syncBleDeviceStatus(
+        tableId: bleTable.id,
+        tableNumber: bleTable.tableNumber,
+        status: bleTable.status,
+        flag: bleTable.flag,
+        isOnline: true,
+      ).catchError((err) {
+        debugPrint('[SYNC ERROR] Failed to sync BLE device to cloud: $err');
+      });
+    };
 
-  // Stream all tables from Firebase Realtime Database
-  Stream<List<TableModel>> getTablesStream() {
-    return _dbService.getTablesStream();
+    _bleService.onDeviceLost = (String tableId) {
+      _dbService.updateDeviceOnlineStatus(tableId, false).catchError((err) {
+        debugPrint('[SYNC ERROR] Failed to update offline status: $err');
+      });
+    };
   }
 
-  // Stream only tables assigned to a specific waiter
+  // Stream all tables with live merged BLE online status
+  Stream<List<TableModel>> getTablesStream() {
+    late StreamController<List<TableModel>> controller;
+    StreamSubscription? dbSub;
+    StreamSubscription? bleSub;
+    List<TableModel> lastDbTables = [];
+
+    List<TableModel> computeMerged() {
+      if (lastDbTables.isEmpty) {
+        return _bleService.currentTables;
+      }
+      return lastDbTables.map((t) {
+        final isBleOnline = _bleService.isTableOnline(t.id);
+        final liveBleTable = _bleService.getLiveBleTable(t.id);
+        if (liveBleTable != null) {
+          return t.copyWith(
+            isDeviceOnline: isBleOnline,
+            status: liveBleTable.status,
+            flag: liveBleTable.flag,
+            waiterName: liveBleTable.waiterName.isNotEmpty ? liveBleTable.waiterName : t.waiterName,
+          );
+        }
+        return t.copyWith(isDeviceOnline: isBleOnline);
+      }).toList();
+    }
+
+    controller = StreamController<List<TableModel>>(
+      onListen: () {
+        _bleService.requestPermissionsAndStartScan();
+
+        dbSub = _dbService.getTablesStream().listen(
+          (dbList) {
+            lastDbTables = dbList;
+            if (!controller.isClosed) {
+              controller.add(computeMerged());
+            }
+          },
+          onError: (e) {
+            if (!controller.isClosed) controller.addError(e);
+          },
+        );
+
+        bleSub = _bleService.tablesStream.listen(
+          (_) {
+            if (!controller.isClosed) {
+              controller.add(computeMerged());
+            }
+          },
+        );
+      },
+      onCancel: () {
+        dbSub?.cancel();
+        bleSub?.cancel();
+      },
+    );
+
+    return controller.stream;
+  }
+
+  // Stream only tables assigned to a specific waiter with live merged BLE online status
   Stream<List<TableModel>> getTablesForWaiterStream(String waiterId) {
-    return _dbService.getTablesForWaiterStream(waiterId);
+    late StreamController<List<TableModel>> controller;
+    StreamSubscription? dbSub;
+    StreamSubscription? bleSub;
+    List<TableModel> lastDbTables = [];
+
+    List<TableModel> computeMerged() {
+      return lastDbTables.map((t) {
+        final isBleOnline = _bleService.isTableOnline(t.id);
+        final liveBleTable = _bleService.getLiveBleTable(t.id);
+        if (liveBleTable != null) {
+          return t.copyWith(
+            isDeviceOnline: isBleOnline,
+            status: liveBleTable.status,
+            flag: liveBleTable.flag,
+            waiterName: liveBleTable.waiterName.isNotEmpty ? liveBleTable.waiterName : t.waiterName,
+          );
+        }
+        return t.copyWith(isDeviceOnline: isBleOnline);
+      }).toList();
+    }
+
+    controller = StreamController<List<TableModel>>(
+      onListen: () {
+        _bleService.requestPermissionsAndStartScan();
+
+        dbSub = _dbService.getTablesForWaiterStream(waiterId).listen(
+          (dbList) {
+            lastDbTables = dbList;
+            if (!controller.isClosed) {
+              controller.add(computeMerged());
+            }
+          },
+          onError: (e) {
+            if (!controller.isClosed) controller.addError(e);
+          },
+        );
+
+        bleSub = _bleService.tablesStream.listen(
+          (_) {
+            if (!controller.isClosed) {
+              controller.add(computeMerged());
+            }
+          },
+        );
+      },
+      onCancel: () {
+        dbSub?.cancel();
+        bleSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   // Stream registered waiters

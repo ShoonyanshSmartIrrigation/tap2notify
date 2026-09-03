@@ -54,7 +54,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -65,63 +65,95 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: _isSuccess 
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.check_circle_outline, size: 80, color: theme.colorScheme.primary),
-                    const SizedBox(height: 24),
-                    Text('Reset Email Sent', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'If an account exists for ${_emailController.text.trim()}, you will receive password reset instructions shortly.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
-                    ),
-                    const SizedBox(height: 36),
-                    AppButton(
-                      text: 'RETURN TO LOGIN',
-                      onPressed: () => context.go('/login'),
-                    ),
-                  ],
-                )
-              : Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text('Forgot Password', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Enter your registered email to receive a password reset link.',
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: _isSuccess
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline,
+                            size: 80,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            'Reset Email Sent',
+                            style: theme.textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'If an account exists for ${_emailController.text.trim()}, you will receive password reset instructions shortly.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 36),
+                          AppButton(
+                            text: 'RETURN TO LOGIN',
+                            onPressed: () => context.go('/login'),
+                          ),
+                        ],
+                      )
+                    : Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Forgot Password',
+                              style: theme.textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Enter your registered email to receive a password reset link.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+                            AppTextField(
+                              label: 'Email Address',
+                              hint: 'Enter your registered email',
+                              prefixIcon: Icons.email_outlined,
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.done,
+                              autofillHints: const [AutofillHints.email],
+                              onFieldSubmitted: (_) => _handleReset(),
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Email is required';
+                                }
+                                final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                                if (!emailRegex.hasMatch(val.trim())) {
+                                  return 'Enter a valid email address';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 32),
+                            AppButton(
+                              text: 'SEND RESET LINK',
+                              isLoading: _isLoading,
+                              onPressed: _handleReset,
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 32),
-                      AppTextField(
-                        label: 'Email Address',
-                        hint: 'Enter your registered email',
-                        prefixIcon: Icons.email_outlined,
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) return 'Email is required';
-                          if (!val.contains('@') || !val.contains('.')) return 'Enter a valid email';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 32),
-                      AppButton(
-                        text: 'SEND RESET LINK',
-                        isLoading: _isLoading,
-                        onPressed: _handleReset,
-                      ),
-                    ],
-                  ),
-                ),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 }
+

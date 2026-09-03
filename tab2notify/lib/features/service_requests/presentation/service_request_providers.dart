@@ -1,5 +1,8 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/services/ble_service.dart';
 import '../../authentication/presentation/auth_providers.dart';
@@ -38,11 +41,40 @@ final waiterTablesStreamProvider = StreamProvider.family<List<TableModel>, Strin
 });
 
 class CurrentLoggedWaiterNotifier extends Notifier<WaiterModel?> {
-  @override
-  WaiterModel? build() => null;
+  static const String _storageKey = 'active_waiter_session';
 
-  void setWaiter(WaiterModel? waiter) {
+  @override
+  WaiterModel? build() {
+    _loadPersistedWaiter();
+    return null;
+  }
+
+  Future<void> _loadPersistedWaiter() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_storageKey);
+      if (raw != null && raw.isNotEmpty) {
+        final map = jsonDecode(raw) as Map<String, dynamic>;
+        final waiter = WaiterModel.fromMap(map, map['waiterId']?.toString() ?? 'W001');
+        state = waiter;
+      }
+    } catch (e) {
+      debugPrint('[WAITER_SESSION] Error loading saved waiter session: $e');
+    }
+  }
+
+  Future<void> setWaiter(WaiterModel? waiter) async {
     state = waiter;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (waiter != null) {
+        await prefs.setString(_storageKey, jsonEncode(waiter.toMap()));
+      } else {
+        await prefs.remove(_storageKey);
+      }
+    } catch (e) {
+      debugPrint('[WAITER_SESSION] Error saving waiter session: $e');
+    }
   }
 }
 

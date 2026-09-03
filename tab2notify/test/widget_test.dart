@@ -9,6 +9,8 @@ void main() {
         child: Tab2NotifyApp(),
       ),
     );
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('Tab2Notify'), findsWidgets);
+    await tester.pump(const Duration(seconds: 3));
   });
 }

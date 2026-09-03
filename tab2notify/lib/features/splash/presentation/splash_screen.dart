@@ -1,8 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -40,12 +40,31 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
   Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      context.go('/dashboard');
-    } else {
-      context.go('/login');
-    }
+
+    // 1. Check Manager Auth
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        context.go('/dashboard');
+        return;
+      }
+    } catch (_) {}
+
+    // 2. Check Persisted Waiter Session
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      final raw = prefs.getString('active_waiter_session');
+      if (raw != null && raw.isNotEmpty) {
+        context.go('/waiter-dashboard');
+        return;
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    // 3. Default to Login
+    context.go('/login');
   }
 
   @override

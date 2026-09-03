@@ -508,6 +508,47 @@ class FirebaseRealtimeService {
     await _requestsRef.child(request.requestId).set(request.toMap());
   }
 
+  // Sync live BLE table status and online presence to Firebase
+  Future<void> syncBleDeviceStatus({
+    required String tableId,
+    required int tableNumber,
+    required String status,
+    required int flag,
+    required bool isOnline,
+  }) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, dynamic> updates = {
+      'id': tableId,
+      'table_number': tableNumber,
+      'device_id': 'device_$tableNumber',
+      'device_online': isOnline,
+      'status': status,
+      'flag': flag,
+      'updated_at': now,
+    };
+    await _tablesRef.child(tableId).update(updates);
+    if (flag == 0) {
+      // Ensure urgent request exists in /requests
+      await _requestsRef.child(tableId).set({
+        'requestId': tableId,
+        'roomNumber': '101',
+        'tableNumber': 'T$tableNumber',
+        'requestType': 'assistance',
+        'status': 'pending',
+        'priority': 'urgent',
+        'createdAt': now,
+      });
+    }
+  }
+
+  Future<void> updateDeviceOnlineStatus(String tableId, bool isOnline) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await _tablesRef.child(tableId).update({
+      'device_online': isOnline,
+      'updated_at': now,
+    });
+  }
+
   Stream<Map<String, dynamic>?> getDeviceStatusStream(String deviceId) {
     return _devicesRef.child(deviceId).onValue.map((event) {
       final snapshot = event.snapshot;

@@ -18,6 +18,14 @@ class WaiterDashboardScreen extends ConsumerStatefulWidget {
 class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
   String _selectedFilter = 'all'; // 'all', 'pending', 'accepted', 'idle'
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(bleServiceProvider).requestPermissionsAndStartScan();
+    });
+  }
+
   void _showAcceptDialog(TableModel table, String waiterName, String waiterId) {
     showDialog(
       context: context,
@@ -191,9 +199,11 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     );
   }
 
-  void _handleSignOut() {
-    ref.read(currentLoggedWaiterProvider.notifier).setWaiter(null);
-    context.go('/waiter-login');
+  void _handleSignOut() async {
+    await ref.read(currentLoggedWaiterProvider.notifier).setWaiter(null);
+    if (mounted) {
+      context.go('/login');
+    }
   }
 
   @override
@@ -202,9 +212,31 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final currentWaiter = ref.watch(currentLoggedWaiterProvider);
 
-    // Fallback if not logged in
-    final waiterId = currentWaiter?.waiterId ?? 'W001';
-    final waiterName = currentWaiter?.name ?? 'Rahul Sharma';
+    if (currentWaiter == null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text(
+                'Loading Staff Session...',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => context.go('/login'),
+                child: const Text('Return to Staff Login'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final waiterId = currentWaiter.waiterId;
+    final waiterName = currentWaiter.name;
 
     final tablesAsync = ref.watch(waiterTablesStreamProvider(waiterId));
     final assignedTables = tablesAsync.value ?? [];
@@ -357,7 +389,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
 
           // Filter Row
           SliverToBoxAdapter(
-            child: Padding(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
               child: Row(
                 children: [

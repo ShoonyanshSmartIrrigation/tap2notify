@@ -8,29 +8,49 @@ import '../domain/table_model.dart';
 class ServiceRequestRepository {
   final BleService _bleService;
   final FirebaseRealtimeService _dbService;
+  final String managerPhone;
+  final String managerUid;
+  final String? managerEmail;
 
-  ServiceRequestRepository(this._bleService, this._dbService) {
-    // Forward BLE physical device discoveries to Firebase Realtime Database asynchronously
+  ServiceRequestRepository(
+    this._bleService,
+    this._dbService, {
+    this.managerPhone = '',
+    this.managerUid = '',
+    this.managerEmail,
+  }) {
+    // Forward BLE physical device discoveries to Firebase Realtime Database asynchronously for this manager's phone
     _bleService.onDeviceDiscovered = (TableModel bleTable) {
-      _dbService.syncBleDeviceStatus(
-        tableId: bleTable.id,
-        tableNumber: bleTable.tableNumber,
-        status: bleTable.status,
-        flag: bleTable.flag,
-        isOnline: true,
-      ).catchError((err) {
-        debugPrint('[SYNC ERROR] Failed to sync BLE device to cloud: $err');
-      });
+      if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+        _dbService.syncBleDeviceStatus(
+          tableId: bleTable.id,
+          tableNumber: bleTable.tableNumber,
+          status: bleTable.status,
+          flag: bleTable.flag,
+          isOnline: true,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        ).catchError((err) {
+          debugPrint('[SYNC ERROR] Failed to sync BLE device to cloud: $err');
+        });
+      }
     };
 
     _bleService.onDeviceLost = (String tableId) {
-      _dbService.updateDeviceOnlineStatus(tableId, false).catchError((err) {
-        debugPrint('[SYNC ERROR] Failed to update offline status: $err');
-      });
+      if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+        _dbService.updateDeviceOnlineStatus(
+          tableId,
+          false,
+          managerPhone: managerPhone,
+        ).catchError((err) {
+          debugPrint('[SYNC ERROR] Failed to update offline status: $err');
+        });
+      }
     };
   }
 
-  // Stream all tables with live merged BLE online status
+  // Stream all tables for the manager with live merged BLE online status
   Stream<List<TableModel>> getTablesStream() {
     late StreamController<List<TableModel>> controller;
     StreamSubscription? dbSub;
@@ -60,7 +80,11 @@ class ServiceRequestRepository {
       onListen: () {
         _bleService.requestPermissionsAndStartScan();
 
-        dbSub = _dbService.getTablesStream().listen(
+        dbSub = _dbService.getTablesStream(
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        ).listen(
           (dbList) {
             lastDbTables = dbList;
             if (!controller.isClosed) {
@@ -116,7 +140,12 @@ class ServiceRequestRepository {
       onListen: () {
         _bleService.requestPermissionsAndStartScan();
 
-        dbSub = _dbService.getTablesForWaiterStream(waiterId).listen(
+        dbSub = _dbService.getTablesForWaiterStream(
+          waiterId,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        ).listen(
           (dbList) {
             lastDbTables = dbList;
             if (!controller.isClosed) {
@@ -145,17 +174,26 @@ class ServiceRequestRepository {
     return controller.stream;
   }
 
-  // Stream registered waiters
+  // Stream registered waiters for this manager
   Stream<List<WaiterModel>> getWaitersStream() {
-    return _dbService.getWaitersStream();
+    return _dbService.getWaitersStream(
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+      managerEmail: managerEmail,
+    );
   }
 
-  // Configure total tables (e.g. 20)
+  // Configure total tables for this manager (e.g. 20)
   Future<void> batchConfigureTables(int count) async {
-    await _dbService.batchConfigureTables(count);
+    await _dbService.batchConfigureTables(
+      count,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+      managerEmail: managerEmail,
+    );
   }
 
-  // Assign Waiter to tables
+  // Assign Waiter to tables for this manager
   Future<void> assignWaiterToTables({
     required String waiterId,
     required String waiterName,
@@ -165,34 +203,46 @@ class ServiceRequestRepository {
       waiterId: waiterId,
       waiterName: waiterName,
       tableIds: tableIds,
+      managerPhone: managerPhone,
     );
   }
 
   // Remove waiter assignment from a table
   Future<void> removeWaiterFromTable(String tableId) async {
-    await _dbService.removeWaiterFromTable(tableId);
+    await _dbService.removeWaiterFromTable(
+      tableId,
+      managerPhone: managerPhone,
+    );
   }
 
-  // Save/Edit waiter
+  // Save/Edit waiter for this manager
   Future<void> saveWaiter(WaiterModel waiter) async {
-    await _dbService.saveWaiter(waiter);
+    await _dbService.saveWaiter(
+      waiter,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+      managerEmail: managerEmail,
+    );
   }
 
-  // Delete waiter
+  // Delete waiter for this manager
   Future<void> deleteWaiter(String waiterId) async {
-    await _dbService.deleteWaiter(waiterId);
+    await _dbService.deleteWaiter(
+      waiterId,
+      managerPhone: managerPhone,
+    );
   }
 
   Future<void> acceptTableRequest({
     required String tableId,
     required String waiterName,
     String? waiterId,
-    String? managerUid,
   }) async {
     await _dbService.acceptTableRequest(
       tableId: tableId,
       waiterName: waiterName,
       waiterId: waiterId,
+      managerPhone: managerPhone,
       managerUid: managerUid,
     );
     await _bleService.acceptTableRequest(
@@ -203,12 +253,21 @@ class ServiceRequestRepository {
   }
 
   Future<void> resetTableStatus(String tableId) async {
-    await _dbService.resetTableStatus(tableId);
+    await _dbService.resetTableStatus(
+      tableId,
+      managerPhone: managerPhone,
+    );
     await _bleService.resetTableStatus(tableId);
   }
 
   Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {
-    await _dbService.triggerTableRequest(tableId, tableNumber: tableNumber);
+    await _dbService.triggerTableRequest(
+      tableId,
+      tableNumber: tableNumber,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+      managerEmail: managerEmail,
+    );
     await _bleService.triggerTableRequest(tableId, tableNumber: tableNumber);
   }
 }

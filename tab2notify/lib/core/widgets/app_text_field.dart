@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class AppTextField extends StatefulWidget {
   final String label;
@@ -9,9 +10,13 @@ class AppTextField extends StatefulWidget {
   final TextInputType keyboardType;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onFieldSubmitted;
+  final ValueChanged<String>? onChanged;
   final Iterable<String>? autofillHints;
   final TextCapitalization textCapitalization;
   final String? Function(String?)? validator;
+  final Widget? suffixIcon;
+  final List<TextInputFormatter>? inputFormatters;
+  final int? maxLength;
 
   const AppTextField({
     super.key,
@@ -23,9 +28,13 @@ class AppTextField extends StatefulWidget {
     this.keyboardType = TextInputType.text,
     this.textInputAction,
     this.onFieldSubmitted,
+    this.onChanged,
     this.autofillHints,
     this.textCapitalization = TextCapitalization.none,
     this.validator,
+    this.suffixIcon,
+    this.inputFormatters,
+    this.maxLength,
   });
 
   @override
@@ -62,10 +71,14 @@ class _AppTextFieldState extends State<AppTextField> {
           keyboardType: widget.keyboardType,
           textInputAction: widget.textInputAction,
           onFieldSubmitted: widget.onFieldSubmitted,
+          onChanged: widget.onChanged,
+          inputFormatters: widget.inputFormatters,
+          maxLength: widget.maxLength,
           autofillHints: widget.autofillHints,
           textCapitalization: widget.textCapitalization,
           validator: widget.validator,
           decoration: InputDecoration(
+            counterText: '',
             hintText: widget.hint,
             hintStyle: TextStyle(
               color: theme.brightness == Brightness.dark
@@ -86,7 +99,7 @@ class _AppTextFieldState extends State<AppTextField> {
                     ),
                     onPressed: () => setState(() => _obscureText = !_obscureText),
                   )
-                : null,
+                : widget.suffixIcon,
             filled: true,
             fillColor: theme.colorScheme.surface,
             border: OutlineInputBorder(

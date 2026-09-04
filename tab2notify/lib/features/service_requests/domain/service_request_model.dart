@@ -6,6 +6,9 @@ class ServiceRequestModel {
   final String requestType;
   final String status; // pending, accepted, rejected, completed
   final String priority; // normal, urgent
+  final String managerPhone;
+  final String managerUid;
+  final String? managerEmail;
   final int createdAt;
   final int? updatedAt;
   final String? acceptedBy;
@@ -19,6 +22,9 @@ class ServiceRequestModel {
     required this.requestType,
     required this.status,
     this.priority = 'normal',
+    this.managerPhone = '',
+    this.managerUid = '',
+    this.managerEmail,
     required this.createdAt,
     this.updatedAt,
     this.acceptedBy,
@@ -34,6 +40,10 @@ class ServiceRequestModel {
       'requestType': requestType,
       'status': status,
       'priority': priority,
+      'managerPhone': managerPhone,
+      'manager_phone': managerPhone,
+      'managerUid': managerUid,
+      'managerEmail': managerEmail,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
       'acceptedBy': acceptedBy,
@@ -50,6 +60,9 @@ class ServiceRequestModel {
       requestType: map['requestType'] as String? ?? 'water',
       status: map['status'] as String? ?? 'pending',
       priority: map['priority'] as String? ?? 'normal',
+      managerPhone: map['managerPhone']?.toString() ?? map['manager_phone']?.toString() ?? '',
+      managerUid: map['managerUid']?.toString() ?? map['manager_uid']?.toString() ?? '',
+      managerEmail: map['managerEmail']?.toString() ?? map['manager_email']?.toString(),
       createdAt: (map['createdAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
       updatedAt: (map['updatedAt'] as num?)?.toInt(),
       acceptedBy: map['acceptedBy'] as String?,
@@ -62,6 +75,9 @@ class ServiceRequestModel {
     int? updatedAt,
     String? acceptedBy,
     int? acceptedAt,
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
   }) {
     return ServiceRequestModel(
       requestId: requestId,
@@ -71,6 +87,9 @@ class ServiceRequestModel {
       requestType: requestType,
       status: status ?? this.status,
       priority: priority,
+      managerPhone: managerPhone ?? this.managerPhone,
+      managerUid: managerUid ?? this.managerUid,
+      managerEmail: managerEmail ?? this.managerEmail,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       acceptedBy: acceptedBy ?? this.acceptedBy,

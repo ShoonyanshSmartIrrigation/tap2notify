@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/errors/firebase_exception_mapper.dart';
@@ -69,7 +70,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manager Onboarding', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Manager Onboarding',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/manager-login'),
@@ -88,18 +92,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'Manager Account Registration',
+                        'Manager Registration',
                         style: theme.textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Set up your administrator profile to manage hotel tables and staff',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                        ),
-                      ),
+
                       const SizedBox(height: 28),
                       AppTextField(
                         label: 'Full Name',
@@ -129,7 +127,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           if (val == null || val.trim().isEmpty) {
                             return 'Email is required';
                           }
-                          final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                          final emailRegex = RegExp(
+                            r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                          );
                           if (!emailRegex.hasMatch(val.trim())) {
                             return 'Enter a valid email address';
                           }
@@ -138,16 +138,25 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                       const SizedBox(height: 16),
                       AppTextField(
-                        label: 'Phone Number',
-                        hint: 'Enter your phone number',
-                        prefixIcon: Icons.phone_outlined,
+                        label: 'Mobile Number',
+                        hint: 'Enter 10-digit mobile number',
+                        prefixIcon: Icons.phone_android_rounded,
                         controller: _phoneController,
-                        keyboardType: TextInputType.phone,
+                        keyboardType: TextInputType.number,
                         textInputAction: TextInputAction.next,
+                        maxLength: 10,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
+                        ],
                         autofillHints: const [AutofillHints.telephoneNumber],
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
-                            return 'Phone number is required';
+                            return 'Mobile number is required';
+                          }
+                          final digits = val.replaceAll(RegExp(r'[^0-9]'), '');
+                          if (digits.length != 10) {
+                            return 'Please enter a valid 10-digit mobile number';
                           }
                           return null;
                         },

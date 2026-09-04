@@ -59,16 +59,19 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
 
     setState(() => _isLoading = true);
     try {
+      final repo = ref.read(serviceRequestRepositoryProvider);
       final newWaiter = WaiterModel(
         waiterId: id,
         name: name,
         phone: phone,
         passcode: pin.isNotEmpty ? pin : '1234',
         status: 'active',
+        managerPhone: repo.managerPhone,
+        managerUid: repo.managerUid,
+        managerEmail: repo.managerEmail,
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
 
-      final repo = ref.read(serviceRequestRepositoryProvider);
       await repo.saveWaiter(newWaiter);
 
       _nameController.clear();

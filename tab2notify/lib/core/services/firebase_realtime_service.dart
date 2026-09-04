@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
@@ -25,19 +26,49 @@ class FirebaseRealtimeService {
     }
   }
 
-  // Users Node
+  String get _currentAuthUid => FirebaseAuth.instance.currentUser?.uid ?? '';
+  String? get _currentAuthEmail => FirebaseAuth.instance.currentUser?.email;
+  String? get _currentAuthPhone => FirebaseAuth.instance.currentUser?.phoneNumber;
+
+  static String sanitizePhone(String phone) {
+    // Keep only numeric digits
+    final digits = phone.trim().replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length > 10) {
+      // In case a country code prefix exists (e.g. 919876543210), extract the 10-digit mobile number
+      return digits.substring(digits.length - 10);
+    }
+    return digits.isNotEmpty ? digits : 'default_manager';
+  }
+
+  String _resolvePhone(String? managerPhone) {
+    if (managerPhone != null && managerPhone.trim().isNotEmpty) {
+      return sanitizePhone(managerPhone);
+    }
+    final authPhone = _currentAuthPhone;
+    if (authPhone != null && authPhone.trim().isNotEmpty) {
+      return sanitizePhone(authPhone);
+    }
+    final authUid = _currentAuthUid;
+    if (authUid.isNotEmpty) return authUid;
+    return 'default_manager';
+  }
+
+  // Users Node (Root)
   DatabaseReference get _usersRef => _db.ref('users');
   
-  // Waiters Node
-  DatabaseReference get _waitersRef => _db.ref('waiters');
+  // Manager-Scoped Waiters Node: /waiters/$managerPhone
+  DatabaseReference _waitersRef(String? managerPhone) =>
+      _db.ref('waiters/${_resolvePhone(managerPhone)}');
 
-  // Tables Node
-  DatabaseReference get _tablesRef => _db.ref('tables');
+  // Manager-Scoped Tables Node: /tables/$managerPhone
+  DatabaseReference _tablesRef(String? managerPhone) =>
+      _db.ref('tables/${_resolvePhone(managerPhone)}');
 
-  // Service Requests Node
-  DatabaseReference get _requestsRef => _db.ref('serviceRequests');
+  // Manager-Scoped Service Requests Node: /serviceRequests/$managerPhone
+  DatabaseReference _requestsRef(String? managerPhone) =>
+      _db.ref('serviceRequests/${_resolvePhone(managerPhone)}');
 
-  // Device Status Node
+  // Hardware Device Status Node (Global device telemetry)
   DatabaseReference get _devicesRef => _db.ref('devices');
 
   // -------------------------------------------------------------
@@ -78,14 +109,25 @@ class FirebaseRealtimeService {
   }
 
   // -------------------------------------------------------------
-  // WAITER MANAGEMENT METHODS
+  // WAITER MANAGEMENT METHODS (Manager-Scoped by Phone)
   // -------------------------------------------------------------
 
-  Stream<List<WaiterModel>> getWaitersStream() {
-    return _waitersRef.onValue.map((event) {
+  Stream<List<WaiterModel>> getWaitersStream({
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final ref = _waitersRef(resolvedPhone);
+
+    return ref.onValue.map((event) {
       final snapshot = event.snapshot;
       if (!snapshot.exists || snapshot.value == null) {
-        seedInitialWaitersIfEmpty();
+        seedInitialWaitersIfEmpty(
+          managerPhone: resolvedPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        );
         return <WaiterModel>[];
       }
 
@@ -101,7 +143,11 @@ class FirebaseRealtimeService {
       }
 
       if (waiters.isEmpty) {
-        seedInitialWaitersIfEmpty();
+        seedInitialWaitersIfEmpty(
+          managerPhone: resolvedPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        );
       }
 
       waiters.sort((a, b) => a.waiterId.compareTo(b.waiterId));
@@ -109,14 +155,61 @@ class FirebaseRealtimeService {
     });
   }
 
-  Future<void> saveWaiter(WaiterModel waiter) async {
-    await _waitersRef.child(waiter.waiterId).set(waiter.toMap());
+  Future<List<WaiterModel>> fetchWaitersByPhone(String managerPhone) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final snapshot = await _waitersRef(resolvedPhone).get();
+    if (!snapshot.exists || snapshot.value == null) {
+      return <WaiterModel>[];
+    }
+
+    final raw = snapshot.value;
+    final List<WaiterModel> waiters = [];
+
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        if (value is Map) {
+          waiters.add(WaiterModel.fromMap(value, key.toString()));
+        }
+      });
+    }
+
+    waiters.sort((a, b) => a.waiterId.compareTo(b.waiterId));
+    return waiters;
   }
 
-  Future<void> deleteWaiter(String waiterId) async {
-    await _waitersRef.child(waiterId).remove();
-    // Also remove waiter assignment from all tables assigned to this waiter
-    final snapshot = await _tablesRef.get();
+  Future<void> saveWaiter(
+    WaiterModel waiter, {
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) async {
+    final resolvedPhone = waiter.managerPhone.isNotEmpty
+        ? sanitizePhone(waiter.managerPhone)
+        : _resolvePhone(managerPhone);
+    final resolvedUid = waiter.managerUid.isNotEmpty ? waiter.managerUid : _currentAuthUid;
+    final resolvedEmail = waiter.managerEmail ?? managerEmail ?? _currentAuthEmail;
+
+    final updatedWaiter = waiter.copyWith(
+      managerPhone: resolvedPhone,
+      managerUid: resolvedUid,
+      managerEmail: resolvedEmail,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    await _waitersRef(resolvedPhone)
+        .child(updatedWaiter.waiterId)
+        .set(updatedWaiter.toMap());
+  }
+
+  Future<void> deleteWaiter(
+    String waiterId, {
+    String? managerPhone,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    await _waitersRef(resolvedPhone).child(waiterId).remove();
+
+    // Also remove waiter assignment from all tables belonging to this manager
+    final snapshot = await _tablesRef(resolvedPhone).get();
     if (snapshot.exists && snapshot.value is Map) {
       final tablesMap = snapshot.value as Map;
       final Map<String, dynamic> updates = {};
@@ -129,13 +222,22 @@ class FirebaseRealtimeService {
         }
       });
       if (updates.isNotEmpty) {
-        await _tablesRef.update(updates);
+        await _tablesRef(resolvedPhone).update(updates);
       }
     }
   }
 
-  Future<void> seedInitialWaitersIfEmpty() async {
-    final snapshot = await _waitersRef.get();
+  Future<void> seedInitialWaitersIfEmpty({
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedUid = managerUid ?? _currentAuthUid;
+    final resolvedEmail = managerEmail ?? _currentAuthEmail;
+    final ref = _waitersRef(resolvedPhone);
+
+    final snapshot = await ref.get();
     if (!snapshot.exists || snapshot.value == null) {
       final int now = DateTime.now().millisecondsSinceEpoch;
       final Map<String, dynamic> initialWaiters = {
@@ -146,7 +248,12 @@ class FirebaseRealtimeService {
           'passcode': '1234',
           'status': 'active',
           'assignedTableIds': ['table_1', 'table_2'],
+          'managerPhone': resolvedPhone,
+          'manager_phone': resolvedPhone,
+          'managerUid': resolvedUid,
+          'managerEmail': resolvedEmail,
           'createdAt': now,
+          'updatedAt': now,
         },
         'W002': {
           'waiterId': 'W002',
@@ -155,7 +262,12 @@ class FirebaseRealtimeService {
           'passcode': '1234',
           'status': 'active',
           'assignedTableIds': ['table_3', 'table_4'],
+          'managerPhone': resolvedPhone,
+          'manager_phone': resolvedPhone,
+          'managerUid': resolvedUid,
+          'managerEmail': resolvedEmail,
           'createdAt': now,
+          'updatedAt': now,
         },
         'W003': {
           'waiterId': 'W003',
@@ -164,20 +276,35 @@ class FirebaseRealtimeService {
           'passcode': '1234',
           'status': 'active',
           'assignedTableIds': ['table_5'],
+          'managerPhone': resolvedPhone,
+          'manager_phone': resolvedPhone,
+          'managerUid': resolvedUid,
+          'managerEmail': resolvedEmail,
           'createdAt': now,
+          'updatedAt': now,
         },
       };
-      await _waitersRef.set(initialWaiters);
+      await ref.set(initialWaiters);
     }
   }
 
   // -------------------------------------------------------------
-  // TABLE CONFIGURATION & ASSIGNMENT METHODS
+  // TABLE CONFIGURATION & ASSIGNMENT METHODS (Manager-Scoped by Phone)
   // -------------------------------------------------------------
 
-  // Batch configure / generate N tables (e.g. 20 tables)
-  Future<void> batchConfigureTables(int totalCount) async {
-    final snapshot = await _tablesRef.get();
+  // Batch configure / generate N tables for a manager (e.g. 20 tables)
+  Future<void> batchConfigureTables(
+    int totalCount, {
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedUid = managerUid ?? _currentAuthUid;
+    final resolvedEmail = managerEmail ?? _currentAuthEmail;
+    final ref = _tablesRef(resolvedPhone);
+
+    final snapshot = await ref.get();
     final Map<dynamic, dynamic> existingTables =
         (snapshot.exists && snapshot.value is Map) ? snapshot.value as Map : {};
 
@@ -198,6 +325,9 @@ class FirebaseRealtimeService {
           'waiter_name': existing['waiter_name'] ?? existing['assigned_waiter_name'] ?? '',
           'assigned_waiter_id': existing['assigned_waiter_id'] ?? '',
           'assigned_waiter_name': existing['assigned_waiter_name'] ?? existing['waiter_name'] ?? '',
+          'manager_phone': resolvedPhone,
+          'manager_uid': resolvedUid,
+          'manager_email': resolvedEmail,
           'created_at': existing['created_at'] ?? now,
           'updated_at': now,
         };
@@ -212,21 +342,26 @@ class FirebaseRealtimeService {
           'waiter_name': '',
           'assigned_waiter_id': '',
           'assigned_waiter_name': '',
+          'manager_phone': resolvedPhone,
+          'manager_uid': resolvedUid,
+          'manager_email': resolvedEmail,
           'created_at': now,
           'updated_at': now,
         };
       }
     }
 
-    await _tablesRef.set(updatedTables);
+    await ref.set(updatedTables);
   }
 
-  // Assign Waiter to one or multiple tables
+  // Assign Waiter to one or multiple tables (scoped to manager's phone)
   Future<void> assignWaiterToTables({
     required String waiterId,
     required String waiterName,
     required List<String> tableIds,
+    String? managerPhone,
   }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {};
 
@@ -238,11 +373,11 @@ class FirebaseRealtimeService {
     }
 
     if (updates.isNotEmpty) {
-      await _tablesRef.update(updates);
+      await _tablesRef(resolvedPhone).update(updates);
     }
 
-    // Synchronize all waiters' assignedTableIds in /waiters
-    final allWaitersSnap = await _waitersRef.get();
+    // Synchronize all waiters' assignedTableIds in /waiters/$managerPhone
+    final allWaitersSnap = await _waitersRef(resolvedPhone).get();
     if (allWaitersSnap.exists && allWaitersSnap.value is Map) {
       final allWaiters = allWaitersSnap.value as Map;
       final Map<String, dynamic> waiterUpdates = {};
@@ -272,24 +407,28 @@ class FirebaseRealtimeService {
       });
 
       if (waiterUpdates.isNotEmpty) {
-        await _waitersRef.update(waiterUpdates);
+        await _waitersRef(resolvedPhone).update(waiterUpdates);
       }
     }
   }
 
   // Remove Waiter Assignment from a Table
-  Future<void> removeWaiterFromTable(String tableId) async {
+  Future<void> removeWaiterFromTable(
+    String tableId, {
+    String? managerPhone,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
     final int now = DateTime.now().millisecondsSinceEpoch;
 
-    await _tablesRef.child(tableId).update({
+    await _tablesRef(resolvedPhone).child(tableId).update({
       'assigned_waiter_id': '',
       'assigned_waiter_name': '',
       'waiter_name': '',
       'updated_at': now,
     });
 
-    // Remove tableId from all waiters in /waiters
-    final allWaitersSnap = await _waitersRef.get();
+    // Remove tableId from all waiters in /waiters/$managerPhone
+    final allWaitersSnap = await _waitersRef(resolvedPhone).get();
     if (allWaitersSnap.exists && allWaitersSnap.value is Map) {
       final allWaiters = allWaitersSnap.value as Map;
       final Map<String, dynamic> waiterUpdates = {};
@@ -306,17 +445,28 @@ class FirebaseRealtimeService {
       });
 
       if (waiterUpdates.isNotEmpty) {
-        await _waitersRef.update(waiterUpdates);
+        await _waitersRef(resolvedPhone).update(waiterUpdates);
       }
     }
   }
 
-  // Listen to ALL Tables in real time (for Manager)
-  Stream<List<TableModel>> getTablesStream() {
-    return _tablesRef.onValue.map((event) {
+  // Listen to ALL Tables for a specific Manager in real time (scoped by Phone)
+  Stream<List<TableModel>> getTablesStream({
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final ref = _tablesRef(resolvedPhone);
+
+    return ref.onValue.map((event) {
       final snapshot = event.snapshot;
       if (!snapshot.exists || snapshot.value == null) {
-        seedInitialTablesIfEmpty();
+        seedInitialTablesIfEmpty(
+          managerPhone: resolvedPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        );
         return <TableModel>[];
       }
 
@@ -336,10 +486,10 @@ class FirebaseRealtimeService {
             }
           }
         });
-        // Auto purge rogue/phantom keys from database
+        // Auto purge rogue/phantom keys from manager's node
         if (invalidKeys.isNotEmpty) {
           for (final rogueKey in invalidKeys) {
-            _tablesRef.child(rogueKey).remove();
+            ref.child(rogueKey).remove();
           }
         }
       } else if (raw is List) {
@@ -355,7 +505,11 @@ class FirebaseRealtimeService {
       }
 
       if (tables.isEmpty) {
-        seedInitialTablesIfEmpty();
+        seedInitialTablesIfEmpty(
+          managerPhone: resolvedPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        );
       }
 
       tables.sort((a, b) => a.tableNumber.compareTo(b.tableNumber));
@@ -363,22 +517,46 @@ class FirebaseRealtimeService {
     });
   }
 
-  // Listen to STRICTLY Assigned Tables in real time (for Waiter)
-  Stream<List<TableModel>> getTablesForWaiterStream(String waiterId) {
-    return getTablesStream().map((allTables) {
+  // Listen to STRICTLY Assigned Tables in real time for a Waiter under a Manager Phone
+  Stream<List<TableModel>> getTablesForWaiterStream(
+    String waiterId, {
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) {
+    return getTablesStream(
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+      managerEmail: managerEmail,
+    ).map((allTables) {
       return allTables
           .where((t) => t.assignedWaiterId == waiterId || t.waiterName == waiterId)
           .toList();
     });
   }
 
-  // Seed default 5 tables if none exist
-  Future<void> seedInitialTablesIfEmpty() async {
-    final snapshot = await _tablesRef.get();
+  // Seed default 5 tables if none exist for this manager
+  Future<void> seedInitialTablesIfEmpty({
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedUid = managerUid ?? _currentAuthUid;
+    final resolvedEmail = managerEmail ?? _currentAuthEmail;
+    final ref = _tablesRef(resolvedPhone);
+
+    final snapshot = await ref.get();
     if (!snapshot.exists || snapshot.value == null) {
       final int now = DateTime.now().millisecondsSinceEpoch;
       final Map<String, dynamic> initialTables = {};
-      final initialWaiters = ['Rahul Sharma (W001)', 'Rahul Sharma (W001)', 'Priya Singh (W002)', 'Priya Singh (W002)', 'Amit Patel (W003)'];
+      final initialWaiters = [
+        'Rahul Sharma (W001)',
+        'Rahul Sharma (W001)',
+        'Priya Singh (W002)',
+        'Priya Singh (W002)',
+        'Amit Patel (W003)'
+      ];
       final initialWaiterIds = ['W001', 'W001', 'W002', 'W002', 'W003'];
 
       for (int i = 1; i <= 5; i++) {
@@ -392,23 +570,32 @@ class FirebaseRealtimeService {
           'waiter_name': initialWaiters[i - 1],
           'assigned_waiter_id': initialWaiterIds[i - 1],
           'assigned_waiter_name': initialWaiters[i - 1],
+          'manager_phone': resolvedPhone,
+          'manager_uid': resolvedUid,
+          'manager_email': resolvedEmail,
           'created_at': now,
           'updated_at': now,
         };
       }
-      await _tablesRef.set(initialTables);
+      await ref.set(initialTables);
     }
   }
+
+  // -------------------------------------------------------------
+  // SERVICE REQUEST METHODS (Manager-Scoped by Phone)
+  // -------------------------------------------------------------
 
   // Accept a Table Request with Waiter Name (flag = 1)
   Future<void> acceptTableRequest({
     required String tableId,
     required String waiterName,
     String? waiterId,
+    String? managerPhone,
     String? managerUid,
   }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
     final int now = DateTime.now().millisecondsSinceEpoch;
-    final Map<String, dynamic> updates = {
+    final Map<String, dynamic> tableUpdates = {
       'flag': 1,
       'status': 'accepted',
       'waiter_name': waiterName,
@@ -416,15 +603,15 @@ class FirebaseRealtimeService {
       'updated_at': now,
     };
     if (waiterId != null && waiterId.isNotEmpty) {
-      updates['assigned_waiter_id'] = waiterId;
-      updates['assigned_waiter_name'] = waiterName;
+      tableUpdates['assigned_waiter_id'] = waiterId;
+      tableUpdates['assigned_waiter_name'] = waiterName;
     }
-    if (managerUid != null) {
-      updates['accepted_by'] = managerUid;
+    if (managerUid != null && managerUid.isNotEmpty) {
+      tableUpdates['accepted_by'] = managerUid;
     }
-    await _tablesRef.child(tableId).update(updates);
+    await _tablesRef(resolvedPhone).child(tableId).update(tableUpdates);
 
-    await _requestsRef.child(tableId).update({
+    await _requestsRef(resolvedPhone).child(tableId).update({
       'status': 'accepted',
       'acceptedBy': waiterName,
       'assignedWaiterId': waiterId ?? '',
@@ -434,27 +621,40 @@ class FirebaseRealtimeService {
   }
 
   // Complete / Reset a Table back to Idle state (flag = -1)
-  Future<void> resetTableStatus(String tableId) async {
+  Future<void> resetTableStatus(
+    String tableId, {
+    String? managerPhone,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {
       'flag': -1,
       'status': 'idle',
       'updated_at': now,
     };
-    await _tablesRef.child(tableId).update(updates);
-    await _requestsRef.child(tableId).update({
+    await _tablesRef(resolvedPhone).child(tableId).update(updates);
+    await _requestsRef(resolvedPhone).child(tableId).update({
       'status': 'idle',
       'updatedAt': now,
     });
   }
 
   // Trigger a Table Request (Customer / ESP32 Pressed Button, flag = 0)
-  Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {
+  Future<void> triggerTableRequest(
+    String tableId, {
+    int? tableNumber,
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedUid = managerUid ?? _currentAuthUid;
+    final resolvedEmail = managerEmail ?? _currentAuthEmail;
     final int now = DateTime.now().millisecondsSinceEpoch;
     final int tNum = tableNumber ?? (int.tryParse(tableId.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1);
     
     // Get existing table assignment
-    final snapshot = await _tablesRef.child(tableId).get();
+    final snapshot = await _tablesRef(resolvedPhone).child(tableId).get();
     String wName = '';
     String wId = '';
     if (snapshot.exists && snapshot.value is Map) {
@@ -469,11 +669,14 @@ class FirebaseRealtimeService {
       'device_id': 'device_$tNum',
       'flag': 0,
       'status': 'pending',
+      'manager_phone': resolvedPhone,
+      'manager_uid': resolvedUid,
+      'manager_email': resolvedEmail,
       'updated_at': now,
       'created_at': now,
     };
-    await _tablesRef.child(tableId).update(updates);
-    await _requestsRef.child(tableId).set({
+    await _tablesRef(resolvedPhone).child(tableId).update(updates);
+    await _requestsRef(resolvedPhone).child(tableId).set({
       'requestId': tableId,
       'roomNumber': '101',
       'tableNumber': 'T$tNum',
@@ -482,13 +685,21 @@ class FirebaseRealtimeService {
       'requestType': 'assistance',
       'status': 'pending',
       'priority': 'urgent',
+      'managerPhone': resolvedPhone,
+      'manager_phone': resolvedPhone,
+      'managerUid': resolvedUid,
+      'managerEmail': resolvedEmail,
       'createdAt': now,
+      'updatedAt': now,
     });
   }
 
-  // Listen to Service Requests in real time
-  Stream<List<ServiceRequestModel>> getServiceRequestsStream() {
-    return _requestsRef.onValue.map((event) {
+  // Listen to Service Requests in real time (scoped by Phone)
+  Stream<List<ServiceRequestModel>> getServiceRequestsStream({
+    String? managerPhone,
+  }) {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    return _requestsRef(resolvedPhone).onValue.map((event) {
       final snapshot = event.snapshot;
       if (!snapshot.exists || snapshot.value == null) {
         return <ServiceRequestModel>[];
@@ -520,37 +731,65 @@ class FirebaseRealtimeService {
   Future<void> updateRequestStatus({
     required String requestId,
     required String status,
+    String? managerPhone,
     String? managerUid,
   }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {
       'status': status,
       'updatedAt': now,
     };
 
-    if (status == 'accepted' && managerUid != null) {
+    if (status == 'accepted' && managerUid != null && managerUid.isNotEmpty) {
       updates['acceptedBy'] = managerUid;
       updates['acceptedAt'] = now;
     }
 
-    await _requestsRef.child(requestId).update(updates);
+    await _requestsRef(resolvedPhone).child(requestId).update(updates);
   }
 
-  Future<void> createRequest(ServiceRequestModel request) async {
-    await _requestsRef.child(request.requestId).set(request.toMap());
+  Future<void> createRequest(
+    ServiceRequestModel request, {
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
+  }) async {
+    final resolvedPhone = request.managerPhone.isNotEmpty
+        ? sanitizePhone(request.managerPhone)
+        : _resolvePhone(managerPhone);
+    final resolvedUid = request.managerUid.isNotEmpty
+        ? request.managerUid
+        : _currentAuthUid;
+    final resolvedEmail = request.managerEmail ?? managerEmail ?? _currentAuthEmail;
+
+    final updated = request.copyWith(
+      managerPhone: resolvedPhone,
+      managerUid: resolvedUid,
+      managerEmail: resolvedEmail,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    await _requestsRef(resolvedPhone).child(updated.requestId).set(updated.toMap());
   }
 
-  // Sync live BLE table status and online presence to Firebase (ONLY for existing configured tables)
+  // Sync live BLE table status and online presence to Firebase (ONLY for existing configured tables of manager)
   Future<void> syncBleDeviceStatus({
     required String tableId,
     required int tableNumber,
     required String status,
     required int flag,
     required bool isOnline,
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
   }) async {
-    final tableSnap = await _tablesRef.child(tableId).get();
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedUid = managerUid ?? _currentAuthUid;
+    final resolvedEmail = managerEmail ?? _currentAuthEmail;
+    final tableSnap = await _tablesRef(resolvedPhone).child(tableId).get();
     if (!tableSnap.exists) {
-      // Table is not part of the configured restaurant floor tables; ignore to prevent phantom tables
+      // Table is not part of this manager's configured tables; ignore to prevent phantom tables
       return;
     }
 
@@ -559,29 +798,42 @@ class FirebaseRealtimeService {
       'device_online': isOnline,
       'status': status,
       'flag': flag,
+      'manager_phone': resolvedPhone,
+      'manager_uid': resolvedUid,
+      'manager_email': resolvedEmail,
       'updated_at': now,
     };
-    await _tablesRef.child(tableId).update(updates);
+    await _tablesRef(resolvedPhone).child(tableId).update(updates);
     if (flag == 0) {
-      // Ensure urgent request exists in /requests
-      await _requestsRef.child(tableId).set({
+      // Ensure urgent request exists in /serviceRequests/$managerPhone
+      await _requestsRef(resolvedPhone).child(tableId).set({
         'requestId': tableId,
         'roomNumber': '101',
         'tableNumber': 'T$tableNumber',
         'requestType': 'assistance',
         'status': 'pending',
         'priority': 'urgent',
+        'managerPhone': resolvedPhone,
+        'manager_phone': resolvedPhone,
+        'managerUid': resolvedUid,
+        'managerEmail': resolvedEmail,
         'createdAt': now,
+        'updatedAt': now,
       });
     }
   }
 
-  Future<void> updateDeviceOnlineStatus(String tableId, bool isOnline) async {
-    final tableSnap = await _tablesRef.child(tableId).get();
+  Future<void> updateDeviceOnlineStatus(
+    String tableId,
+    bool isOnline, {
+    String? managerPhone,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final tableSnap = await _tablesRef(resolvedPhone).child(tableId).get();
     if (!tableSnap.exists) return;
 
     final int now = DateTime.now().millisecondsSinceEpoch;
-    await _tablesRef.child(tableId).update({
+    await _tablesRef(resolvedPhone).child(tableId).update({
       'device_online': isOnline,
       'updated_at': now,
     });

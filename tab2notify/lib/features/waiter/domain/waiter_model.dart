@@ -5,6 +5,9 @@ class WaiterModel {
   final String passcode; // e.g. "1234"
   final String status; // "active" | "inactive" | "on_break"
   final List<String> assignedTableIds;
+  final String managerPhone;
+  final String managerUid;
+  final String? managerEmail;
   final int createdAt;
   final int? updatedAt;
 
@@ -15,6 +18,9 @@ class WaiterModel {
     this.passcode = '1234',
     this.status = 'active',
     this.assignedTableIds = const [],
+    this.managerPhone = '',
+    this.managerUid = '',
+    this.managerEmail,
     required this.createdAt,
     this.updatedAt,
   });
@@ -30,6 +36,10 @@ class WaiterModel {
       'passcode': passcode,
       'status': status,
       'assignedTableIds': assignedTableIds,
+      'managerPhone': managerPhone,
+      'manager_phone': managerPhone,
+      'managerUid': managerUid,
+      'managerEmail': managerEmail,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -50,6 +60,15 @@ class WaiterModel {
       }
     }
 
+    final String mPhone = map['managerPhone']?.toString() ??
+        map['manager_phone']?.toString() ??
+        '';
+    final String mUid = map['managerUid']?.toString() ??
+        map['manager_uid']?.toString() ??
+        '';
+    final String? mEmail = map['managerEmail']?.toString() ??
+        map['manager_email']?.toString();
+
     return WaiterModel(
       waiterId: map['waiterId']?.toString() ?? waiterId,
       name: map['name']?.toString() ?? 'Waiter',
@@ -57,6 +76,9 @@ class WaiterModel {
       passcode: map['passcode']?.toString() ?? '1234',
       status: map['status']?.toString() ?? 'active',
       assignedTableIds: tables,
+      managerPhone: mPhone,
+      managerUid: mUid,
+      managerEmail: mEmail,
       createdAt: (map['createdAt'] as num?)?.toInt() ??
           DateTime.now().millisecondsSinceEpoch,
       updatedAt: (map['updatedAt'] as num?)?.toInt(),
@@ -69,6 +91,9 @@ class WaiterModel {
     String? passcode,
     String? status,
     List<String>? assignedTableIds,
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
     int? updatedAt,
   }) {
     return WaiterModel(
@@ -78,6 +103,9 @@ class WaiterModel {
       passcode: passcode ?? this.passcode,
       status: status ?? this.status,
       assignedTableIds: assignedTableIds ?? this.assignedTableIds,
+      managerPhone: managerPhone ?? this.managerPhone,
+      managerUid: managerUid ?? this.managerUid,
+      managerEmail: managerEmail ?? this.managerEmail,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

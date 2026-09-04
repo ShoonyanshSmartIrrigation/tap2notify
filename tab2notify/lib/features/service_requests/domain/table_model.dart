@@ -7,6 +7,9 @@ class TableModel {
   final String waiterName;
   final String assignedWaiterId;
   final bool isDeviceOnline;
+  final String managerPhone;
+  final String managerUid;
+  final String? managerEmail;
   final int createdAt;
   final int? updatedAt;
   final int? acceptedAt;
@@ -20,6 +23,9 @@ class TableModel {
     this.waiterName = '',
     this.assignedWaiterId = '',
     this.isDeviceOnline = false,
+    this.managerPhone = '',
+    this.managerUid = '',
+    this.managerEmail,
     required this.createdAt,
     this.updatedAt,
     this.acceptedAt,
@@ -42,6 +48,9 @@ class TableModel {
       'assigned_waiter_id': assignedWaiterId,
       'assigned_waiter_name': waiterName,
       'device_online': isDeviceOnline,
+      'manager_phone': managerPhone,
+      'manager_uid': managerUid,
+      'manager_email': managerEmail,
       'created_at': createdAt,
       'updated_at': updatedAt,
       'accepted_at': acceptedAt,
@@ -91,6 +100,17 @@ class TableModel {
         map['waiterId']?.toString() ??
         '';
 
+    final String mPhone = map['manager_phone']?.toString() ??
+        map['managerPhone']?.toString() ??
+        '';
+
+    final String mUid = map['manager_uid']?.toString() ??
+        map['managerUid']?.toString() ??
+        '';
+
+    final String? mEmail = map['manager_email']?.toString() ??
+        map['managerEmail']?.toString();
+
     return TableModel(
       id: map['id']?.toString() ?? id,
       tableNumber: parsedTableNumber,
@@ -100,6 +120,9 @@ class TableModel {
       waiterName: wName,
       assignedWaiterId: wId,
       isDeviceOnline: online,
+      managerPhone: mPhone,
+      managerUid: mUid,
+      managerEmail: mEmail,
       createdAt: (map['created_at'] as num?)?.toInt() ?? (map['createdAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
       updatedAt: (map['updated_at'] as num?)?.toInt() ?? (map['updatedAt'] as num?)?.toInt(),
       acceptedAt: (map['accepted_at'] as num?)?.toInt() ?? (map['acceptedAt'] as num?)?.toInt(),
@@ -112,6 +135,9 @@ class TableModel {
     String? waiterName,
     String? assignedWaiterId,
     bool? isDeviceOnline,
+    String? managerPhone,
+    String? managerUid,
+    String? managerEmail,
     int? updatedAt,
     int? acceptedAt,
   }) {
@@ -124,6 +150,9 @@ class TableModel {
       waiterName: waiterName ?? this.waiterName,
       assignedWaiterId: assignedWaiterId ?? this.assignedWaiterId,
       isDeviceOnline: isDeviceOnline ?? this.isDeviceOnline,
+      managerPhone: managerPhone ?? this.managerPhone,
+      managerUid: managerUid ?? this.managerUid,
+      managerEmail: managerEmail ?? this.managerEmail,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       acceptedAt: acceptedAt ?? this.acceptedAt,

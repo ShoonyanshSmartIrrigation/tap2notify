@@ -8,6 +8,7 @@ import '../../../core/services/ble_service.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../waiter/domain/waiter_model.dart';
 import '../data/service_request_repository.dart';
+import '../domain/service_request_model.dart';
 import '../domain/table_model.dart';
 
 final bleServiceProvider = Provider<BleService>((ref) {
@@ -19,7 +20,30 @@ final bleServiceProvider = Provider<BleService>((ref) {
 final serviceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
-  return ServiceRequestRepository(bleService, dbService);
+  final authUser = ref.watch(authStateProvider).value;
+  final profileAsync = ref.watch(currentUserProfileProvider);
+  final currentWaiter = ref.watch(currentLoggedWaiterProvider);
+
+  // Active Manager Phone:
+  // 1. From authenticated manager's profile (profileAsync.value?.phone)
+  // 2. Or from active floor waiter session (currentWaiter?.managerPhone)
+  // 3. Or authUser?.phoneNumber / authUser?.uid
+  final managerPhone = (profileAsync.value?.phone.isNotEmpty ?? false)
+      ? profileAsync.value!.phone
+      : (currentWaiter?.managerPhone.isNotEmpty ?? false)
+          ? currentWaiter!.managerPhone
+          : (authUser?.phoneNumber ?? authUser?.uid ?? '');
+
+  final managerUid = authUser?.uid ?? currentWaiter?.managerUid ?? '';
+  final managerEmail = profileAsync.value?.email ?? authUser?.email ?? currentWaiter?.managerEmail;
+
+  return ServiceRequestRepository(
+    bleService,
+    dbService,
+    managerPhone: managerPhone,
+    managerUid: managerUid,
+    managerEmail: managerEmail,
+  );
 });
 
 // Real-time Stream of all Dynamic Hotel Tables (from Firebase Realtime Database)
@@ -38,6 +62,13 @@ final waitersStreamProvider = StreamProvider<List<WaiterModel>>((ref) {
 final waiterTablesStreamProvider = StreamProvider.family<List<TableModel>, String>((ref, waiterId) {
   final repo = ref.watch(serviceRequestRepositoryProvider);
   return repo.getTablesForWaiterStream(waiterId);
+});
+
+// Real-time Stream of Service Requests
+final serviceRequestsStreamProvider = StreamProvider<List<ServiceRequestModel>>((ref) {
+  final repo = ref.watch(serviceRequestRepositoryProvider);
+  final dbService = ref.watch(firebaseRealtimeServiceProvider);
+  return dbService.getServiceRequestsStream(managerPhone: repo.managerPhone);
 });
 
 class CurrentLoggedWaiterNotifier extends Notifier<WaiterModel?> {

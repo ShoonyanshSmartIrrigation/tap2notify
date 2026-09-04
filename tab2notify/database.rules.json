@@ -1,0 +1,35 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "tables": {
+      "$managerPhone": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".indexOn": ["table_number", "flag", "status", "assigned_waiter_id"]
+      }
+    },
+    "waiters": {
+      "$managerPhone": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".indexOn": ["waiterId", "status", "name"]
+      }
+    },
+    "serviceRequests": {
+      "$managerPhone": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".indexOn": ["createdAt", "status", "priority", "tableNumber"]
+      }
+    },
+    "devices": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

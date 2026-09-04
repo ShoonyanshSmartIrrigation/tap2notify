@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -292,6 +293,26 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Refresh Status',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: () async {
+              HapticFeedback.lightImpact();
+              // Restart and force-poll BLE scanner
+              await ref.read(bleServiceProvider).startScan();
+              // Invalidate waiter stream provider to re-merge
+              ref.invalidate(waiterTablesStreamProvider(waiterId));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⚡ Refreshed table statuses & BLE scanner!'),
+                    duration: Duration(seconds: 1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
           IconButton(
             tooltip: 'Toggle Theme',
             icon: Icon(

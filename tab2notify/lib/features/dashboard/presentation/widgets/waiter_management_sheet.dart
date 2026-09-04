@@ -147,6 +147,8 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
     final isDark = theme.brightness == Brightness.dark;
     final waitersAsync = ref.watch(waitersStreamProvider);
     final waitersList = waitersAsync.value ?? [];
+    final tablesAsync = ref.watch(tablesStreamProvider);
+    final allTables = tablesAsync.value ?? [];
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -174,7 +176,10 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
 
               // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -183,7 +188,9 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.15,
+                            ),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -207,7 +214,9 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                               '${waitersList.length} Registered Staff Members',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
                               ),
                             ),
                           ],
@@ -221,7 +230,6 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                   ],
                 ),
               ),
-              const Divider(height: 1),
 
               // Content List
               Expanded(
@@ -255,10 +263,14 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E1B26) : const Color(0xFFF1F5F9),
+                          color: isDark
+                              ? const Color(0xFF1E1B26)
+                              : const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.4),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.4,
+                            ),
                           ),
                         ),
                         child: Column(
@@ -269,12 +281,19 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                               children: [
                                 const Text(
                                   'Register New Floor Waiter',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
                                 ),
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.close_rounded, size: 18),
-                                  onPressed: () => setState(() => _isAdding = false),
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 18,
+                                  ),
+                                  onPressed: () =>
+                                      setState(() => _isAdding = false),
                                 ),
                               ],
                             ),
@@ -317,7 +336,9 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                                       labelText: 'Login PIN',
                                       hintText: '1234',
                                       isDense: true,
-                                      prefixIcon: const Icon(Icons.pin_outlined),
+                                      prefixIcon: const Icon(
+                                        Icons.pin_outlined,
+                                      ),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
@@ -350,7 +371,9 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                              onPressed: _isLoading ? null : _handleCreateWaiter,
+                              onPressed: _isLoading
+                                  ? null
+                                  : _handleCreateWaiter,
                               child: _isLoading
                                   ? const SizedBox(
                                       width: 18,
@@ -362,7 +385,9 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                                     )
                                   : const Text(
                                       'SAVE WAITER',
-                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                             ),
                           ],
@@ -388,10 +413,38 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                       )
                     else
                       ...waitersList.map((waiter) {
+                        final waiterAssignedTables = allTables.where((t) {
+                          if (t.assignedWaiterId.isNotEmpty &&
+                              t.assignedWaiterId == waiter.waiterId) {
+                            return true;
+                          }
+                          if (t.waiterName.isNotEmpty) {
+                            if (t.waiterName == waiter.waiterId ||
+                                t.waiterName == waiter.name) {
+                              return true;
+                            }
+                            if (t.waiterName.contains(waiter.waiterId) ||
+                                t.waiterName.toLowerCase().contains(
+                                  waiter.name.toLowerCase(),
+                                )) {
+                              return true;
+                            }
+                          }
+                          return false;
+                        }).toList();
+
+                        final int activeCount = waiterAssignedTables.length;
+                        final String tablesListStr =
+                            waiterAssignedTables.isNotEmpty
+                            ? ' (${waiterAssignedTables.map((t) => 'T-${t.tableNumber}').join(', ')})'
+                            : '';
+
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                            color: isDark
+                                ? const Color(0xFF1E1B26)
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isDark
@@ -404,7 +457,9 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.15,
+                                ),
                                 shape: BoxShape.circle,
                               ),
                               child: Center(
@@ -420,16 +475,26 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                             ),
                             title: Text(
                               waiter.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
                             ),
                             subtitle: Text(
-                              'PIN: ${waiter.passcode} • ${waiter.tableCount} Tables (${waiter.assignedTableIds.join(', ')})',
-                              style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                              'PIN: ${waiter.passcode} • $activeCount Active Table${activeCount == 1 ? '' : 's'}$tablesListStr',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.grey,
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                             trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.red,
+                                size: 20,
+                              ),
                               onPressed: () => _handleDeleteWaiter(waiter),
                             ),
                           ),

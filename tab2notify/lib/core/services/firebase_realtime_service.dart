@@ -241,34 +241,45 @@ class FirebaseRealtimeService {
       await _tablesRef.update(updates);
     }
 
-    // Also update waiter assignedTableIds in /waiters/$waiterId
-    final waiterSnap = await _waitersRef.child(waiterId).get();
-    if (waiterSnap.exists && waiterSnap.value is Map) {
-      final waiterData = waiterSnap.value as Map;
-      List<String> currentTables = [];
-      if (waiterData['assignedTableIds'] is List) {
-        currentTables = (waiterData['assignedTableIds'] as List).map((e) => e.toString()).toList();
-      }
-      for (final tId in tableIds) {
-        if (!currentTables.contains(tId)) {
-          currentTables.add(tId);
+    // Synchronize all waiters' assignedTableIds in /waiters
+    final allWaitersSnap = await _waitersRef.get();
+    if (allWaitersSnap.exists && allWaitersSnap.value is Map) {
+      final allWaiters = allWaitersSnap.value as Map;
+      final Map<String, dynamic> waiterUpdates = {};
+
+      allWaiters.forEach((wKey, wVal) {
+        if (wVal is Map) {
+          final String currentWId = wKey.toString();
+          List<String> currentTables = [];
+          if (wVal['assignedTableIds'] is List) {
+            currentTables = (wVal['assignedTableIds'] as List)
+                .map((e) => e.toString())
+                .where((t) => !tableIds.contains(t))
+                .toList();
+          }
+
+          if (currentWId == waiterId) {
+            for (final tId in tableIds) {
+              if (!currentTables.contains(tId)) {
+                currentTables.add(tId);
+              }
+            }
+          }
+
+          waiterUpdates['$currentWId/assignedTableIds'] = currentTables;
+          waiterUpdates['$currentWId/updatedAt'] = now;
         }
-      }
-      await _waitersRef.child(waiterId).update({
-        'assignedTableIds': currentTables,
-        'updatedAt': now,
       });
+
+      if (waiterUpdates.isNotEmpty) {
+        await _waitersRef.update(waiterUpdates);
+      }
     }
   }
 
   // Remove Waiter Assignment from a Table
   Future<void> removeWaiterFromTable(String tableId) async {
     final int now = DateTime.now().millisecondsSinceEpoch;
-    final tableSnap = await _tablesRef.child(tableId).get();
-    String? prevWaiterId;
-    if (tableSnap.exists && tableSnap.value is Map) {
-      prevWaiterId = (tableSnap.value as Map)['assigned_waiter_id']?.toString();
-    }
 
     await _tablesRef.child(tableId).update({
       'assigned_waiter_id': '',
@@ -277,20 +288,25 @@ class FirebaseRealtimeService {
       'updated_at': now,
     });
 
-    if (prevWaiterId != null && prevWaiterId.isNotEmpty) {
-      final waiterSnap = await _waitersRef.child(prevWaiterId).get();
-      if (waiterSnap.exists && waiterSnap.value is Map) {
-        final waiterData = waiterSnap.value as Map;
-        if (waiterData['assignedTableIds'] is List) {
-          final List<String> current = (waiterData['assignedTableIds'] as List)
+    // Remove tableId from all waiters in /waiters
+    final allWaitersSnap = await _waitersRef.get();
+    if (allWaitersSnap.exists && allWaitersSnap.value is Map) {
+      final allWaiters = allWaitersSnap.value as Map;
+      final Map<String, dynamic> waiterUpdates = {};
+
+      allWaiters.forEach((wKey, wVal) {
+        if (wVal is Map && wVal['assignedTableIds'] is List) {
+          final current = (wVal['assignedTableIds'] as List)
               .map((e) => e.toString())
               .where((id) => id != tableId)
               .toList();
-          await _waitersRef.child(prevWaiterId).update({
-            'assignedTableIds': current,
-            'updatedAt': now,
-          });
+          waiterUpdates['$wKey/assignedTableIds'] = current;
+          waiterUpdates['$wKey/updatedAt'] = now;
         }
+      });
+
+      if (waiterUpdates.isNotEmpty) {
+        await _waitersRef.update(waiterUpdates);
       }
     }
   }

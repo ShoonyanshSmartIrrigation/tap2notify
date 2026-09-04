@@ -46,7 +46,11 @@ class SettingsTabView extends ConsumerWidget {
                       ),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.support_agent_rounded, color: Colors.white, size: 24),
+                    child: const Icon(
+                      Icons.support_agent_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Column(
@@ -142,7 +146,11 @@ class SettingsTabView extends ConsumerWidget {
                           ),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.description_outlined, color: Colors.white, size: 24),
+                        child: const Icon(
+                          Icons.description_outlined,
+                          color: Colors.white,
+                          size: 24,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Column(
@@ -209,7 +217,10 @@ class SettingsTabView extends ConsumerWidget {
                       ),
                       child: const Text(
                         'I AGREE & UNDERSTAND',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   ),
@@ -232,10 +243,14 @@ class SettingsTabView extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.06),
           ),
         ),
         child: Column(
@@ -253,7 +268,9 @@ class SettingsTabView extends ConsumerWidget {
               desc,
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                color: isDark
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF64748B),
                 height: 1.4,
               ),
             ),
@@ -273,10 +290,14 @@ class SettingsTabView extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.black.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.06),
         ),
       ),
       child: Row(
@@ -298,7 +319,9 @@ class SettingsTabView extends ConsumerWidget {
                   title,
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    color: isDark
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF64748B),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -322,9 +345,7 @@ class SettingsTabView extends ConsumerWidget {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Sign Out',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -335,10 +356,7 @@ class SettingsTabView extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
-              'CANCEL',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -406,23 +424,21 @@ class SettingsTabView extends ConsumerWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: isDark
-                    ? [
-                        const Color(0xFF261912),
-                        const Color(0xFF1B1422),
-                      ]
-                    : [
-                        Colors.white,
-                        const Color(0xFFFFF7ED),
-                      ],
+                    ? [const Color(0xFF261912), const Color(0xFF1B1422)]
+                    : [Colors.white, const Color(0xFFFFF7ED)],
               ),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: const Color(0xFFF97316).withValues(alpha: isDark ? 0.3 : 0.2),
+                color: const Color(
+                  0xFFF97316,
+                ).withValues(alpha: isDark ? 0.3 : 0.2),
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFF97316).withValues(alpha: isDark ? 0.15 : 0.08),
+                  color: const Color(
+                    0xFFF97316,
+                  ).withValues(alpha: isDark ? 0.15 : 0.08),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
@@ -444,14 +460,20 @@ class SettingsTabView extends ConsumerWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFEA580C).withValues(alpha: 0.4),
+                            color: const Color(
+                              0xFFEA580C,
+                            ).withValues(alpha: 0.4),
                             blurRadius: 10,
                             offset: const Offset(0, 3),
                           ),
                         ],
                       ),
                       child: const Center(
-                        child: Icon(Icons.person_rounded, color: Colors.white, size: 30),
+                        child: Icon(
+                          Icons.person_rounded,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -463,7 +485,13 @@ class SettingsTabView extends ConsumerWidget {
                         children: [
                           userProfileAsync.when(
                             data: (profile) => Text(
-                              profile?.fullName ?? (user?.displayName ?? (user?.email?.split('@').first.toUpperCase() ?? 'Manager')),
+                              profile?.fullName ??
+                                  (user?.displayName ??
+                                      (user?.email
+                                              ?.split('@')
+                                              .first
+                                              .toUpperCase() ??
+                                          'Manager')),
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16.5,
@@ -504,14 +532,18 @@ class SettingsTabView extends ConsumerWidget {
                                     user?.email ?? 'manager@hotel.com',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                      color: isDark
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF64748B),
                                     ),
                                   ),
                                   error: (error, stack) => Text(
                                     user?.email ?? 'manager@hotel.com',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                      color: isDark
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF64748B),
                                     ),
                                   ),
                                 ),
@@ -578,10 +610,14 @@ class SettingsTabView extends ConsumerWidget {
                             vertical: 3.5,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                            color: const Color(
+                              0xFF2E7D32,
+                            ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: const Color(0xFF2E7D32).withValues(alpha: 0.35),
+                              color: const Color(
+                                0xFF2E7D32,
+                              ).withValues(alpha: 0.35),
                             ),
                           ),
                           child: Row(
@@ -622,10 +658,14 @@ class SettingsTabView extends ConsumerWidget {
                             vertical: 4.5,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE53935).withValues(alpha: isDark ? 0.15 : 0.08),
+                            color: const Color(
+                              0xFFE53935,
+                            ).withValues(alpha: isDark ? 0.15 : 0.08),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: const Color(0xFFE53935).withValues(alpha: 0.35),
+                              color: const Color(
+                                0xFFE53935,
+                              ).withValues(alpha: 0.35),
                               width: 1,
                             ),
                           ),
@@ -658,7 +698,6 @@ class SettingsTabView extends ConsumerWidget {
             ),
           ),
 
-
           const SizedBox(height: 24),
 
           // 3. App Appearance & Preferences
@@ -677,7 +716,9 @@ class SettingsTabView extends ConsumerWidget {
               color: isDark ? const Color(0xFF1E1B26) : Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.08),
               ),
             ),
             child: Material(
@@ -692,15 +733,27 @@ class SettingsTabView extends ConsumerWidget {
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                        isDark
+                            ? Icons.dark_mode_rounded
+                            : Icons.light_mode_rounded,
                         color: const Color(0xFF9333EA),
                         size: 20,
                       ),
                     ),
-                    title: const Text('Dark Theme Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                    subtitle: Text(isDark ? 'Dark theme enabled' : 'Light theme enabled', style: const TextStyle(fontSize: 12)),
+                    title: const Text(
+                      'Dark Theme Mode',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: Text(
+                      isDark ? 'Dark theme enabled' : 'Light theme enabled',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                     value: isDark,
-                    onChanged: (_) => ref.read(themeModeProvider.notifier).toggleTheme(),
+                    onChanged: (_) =>
+                        ref.read(themeModeProvider.notifier).toggleTheme(),
                   ),
                 ],
               ),
@@ -725,7 +778,9 @@ class SettingsTabView extends ConsumerWidget {
               color: isDark ? const Color(0xFF1E1B26) : Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.08),
               ),
             ),
             child: Material(
@@ -740,13 +795,26 @@ class SettingsTabView extends ConsumerWidget {
                         color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.headset_mic_rounded, color: Color(0xFF2E7D32), size: 20),
+                      child: const Icon(
+                        Icons.headset_mic_rounded,
+                        color: Color(0xFF2E7D32),
+                        size: 20,
+                      ),
                     ),
-                    title: const Text('Contact Tech Support & Hotline', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                    subtitle: const Text('24/7 Hotel Support, Email & Phone', style: TextStyle(fontSize: 12)),
+                    title: const Text(
+                      'Contact Tech Support & Hotline',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      '24/7 Hotel Support, Email & Phone',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  const Divider(height: 1),
+                  const Divider(height: 1, color: Colors.grey),
                   ListTile(
                     onTap: () => _showTermsModal(context),
                     leading: Container(
@@ -755,10 +823,23 @@ class SettingsTabView extends ConsumerWidget {
                         color: const Color(0xFF0284C7).withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.description_outlined, color: Color(0xFF0284C7), size: 20),
+                      child: const Icon(
+                        Icons.description_outlined,
+                        color: Color(0xFF0284C7),
+                        size: 20,
+                      ),
                     ),
-                    title: const Text('Terms & Conditions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                    subtitle: const Text('User agreement, privacy policy & SLAs', style: TextStyle(fontSize: 12)),
+                    title: const Text(
+                      'Terms & Conditions',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'User agreement, privacy policy & SLAs',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     trailing: const Icon(Icons.chevron_right_rounded),
                   ),
                 ],
@@ -777,7 +858,9 @@ class SettingsTabView extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                    color: isDark
+                        ? const Color(0xFF64748B)
+                        : const Color(0xFF94A3B8),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -786,7 +869,9 @@ class SettingsTabView extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                    color: isDark
+                        ? const Color(0xFF475569)
+                        : const Color(0xFFCBD5E1),
                   ),
                 ),
               ],

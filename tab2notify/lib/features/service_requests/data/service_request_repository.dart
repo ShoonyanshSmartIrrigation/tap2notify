@@ -39,7 +39,7 @@ class ServiceRequestRepository {
 
     List<TableModel> computeMerged() {
       if (lastDbTables.isEmpty) {
-        return _bleService.currentTables;
+        return const [];
       }
       return lastDbTables.map((t) {
         final isBleOnline = _bleService.isTableOnline(t.id);

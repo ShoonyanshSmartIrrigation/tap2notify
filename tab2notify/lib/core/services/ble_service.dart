@@ -172,14 +172,15 @@ class BleService {
         .any((u) => u.toString().toLowerCase().contains(serviceUuid.toLowerCase()));
 
     final mfgData = result.advertisementData.manufacturerData;
+    final bool hasCustomMfgData = mfgData.containsKey(0xFFFF);
 
-    // Match criteria for Tab2Notify ESP32 devices
+    // Match criteria strictly for genuine Tab2Notify ESP32 devices
     final bool isMatchingDevice = name.startsWith('T2N_') ||
         name.startsWith('Table_') ||
+        name.startsWith('Table-') ||
         name.contains('Tap2Notify') ||
         hasServiceUuid ||
-        mfgData.containsKey(0xFFFF) ||
-        mfgData.isNotEmpty;
+        hasCustomMfgData;
 
     if (!isMatchingDevice) return;
 
@@ -188,44 +189,34 @@ class BleService {
     String? detectedStatus;
     String? detectedWaiter;
 
-    // 1. Process Manufacturer Data (Direct Multi-Strategy Inspection)
-    if (mfgData.isNotEmpty) {
-      for (final entry in mfgData.entries) {
+    // 1. Process Manufacturer Data strictly for our 0xFFFF custom company identifier
+    if (mfgData.containsKey(0xFFFF)) {
+      final List<int> valBytes = mfgData[0xFFFF] ?? [];
+      if (valBytes.isNotEmpty) {
         try {
-          final List<int> valBytes = entry.value;
-          final List<int> fullBytes = [
-            entry.key & 0xFF,
-            (entry.key >> 8) & 0xFF,
-            ...valBytes,
-          ];
-
-          final String fullStr = String.fromCharCodes(fullBytes).trim();
           final String valStr = String.fromCharCodes(valBytes).trim();
 
-          // Strategy 1: ASCII Separated Payload (e.g. "1:0:12" or "1:0" or "0:12")
-          for (final candidate in [fullStr, valStr]) {
-            if (candidate.contains(':')) {
-              final parts = candidate.split(':');
-              if (parts.length >= 2) {
-                final tNum = int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), ''));
-                final f = int.tryParse(parts[1].trim());
-                if (tNum != null) extractedTableNumber = tNum;
-                if (f != null) {
-                  detectedFlag = f;
-                  if (f == 0) detectedStatus = 'pending';
-                  if (f == 1) detectedStatus = 'accepted';
-                  if (f == -1) detectedStatus = 'idle';
-                  break;
-                }
+          // Strategy 1: ASCII Separated Payload (e.g. "1:0" or "1:0:12")
+          if (valStr.contains(':')) {
+            final parts = valStr.split(':');
+            if (parts.length >= 2) {
+              final tNum = int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), ''));
+              final f = int.tryParse(parts[1].trim());
+              if (tNum != null && tNum > 0 && tNum <= 100) extractedTableNumber = tNum;
+              if (f != null) {
+                detectedFlag = f;
+                if (f == 0) detectedStatus = 'pending';
+                if (f == 1) detectedStatus = 'accepted';
+                if (f == -1) detectedStatus = 'idle';
               }
             }
           }
 
-          // Strategy 2: Binary 0xFFFF Protocol [TableNum, Flag, Sequence]
+          // Strategy 2: Binary Protocol [TableNum, Flag, Sequence]
           if (detectedFlag == null && valBytes.length >= 2) {
-            if (entry.key == 0xFFFF || (valBytes[0] > 0 && valBytes[0] <= 100)) {
-              final tNum = valBytes[0];
-              final rawFlag = valBytes[1];
+            final tNum = valBytes[0];
+            final rawFlag = valBytes[1];
+            if (tNum > 0 && tNum <= 100) {
               extractedTableNumber = tNum;
               if (rawFlag == 0) {
                 detectedFlag = 0;
@@ -241,10 +232,14 @@ class BleService {
           }
 
           // Strategy 3: JSON Payload
-          if (detectedFlag == null && (fullStr.contains('{') || valStr.contains('{'))) {
-            final targetJson = fullStr.contains('{') ? fullStr : valStr;
-            final json = jsonDecode(targetJson);
-            if (json['t'] != null) extractedTableNumber = int.tryParse(json['t'].toString());
+          if (detectedFlag == null && valStr.contains('{')) {
+            final json = jsonDecode(valStr);
+            if (json['t'] != null) {
+              final parsed = int.tryParse(json['t'].toString());
+              if (parsed != null && parsed > 0 && parsed <= 100) {
+                extractedTableNumber = parsed;
+              }
+            }
             if (json['f'] != null) {
               final f = int.tryParse(json['f'].toString());
               if (f != null) {
@@ -259,15 +254,22 @@ class BleService {
       }
     }
 
-    // 2. Extract Table Number from Device Name if needed
+    // 2. Extract Table Number strictly from Tab2Notify Device Names
     if (extractedTableNumber == null && name.isNotEmpty) {
       final match = RegExp(r'T2N_(?:Table_|T)?(\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'Table_(\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'_T(\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'(\d+)', caseSensitive: false).firstMatch(name);
+                    RegExp(r'Table[_-](\d+)', caseSensitive: false).firstMatch(name) ??
+                    RegExp(r'Tap2Notify[_-](\d+)', caseSensitive: false).firstMatch(name);
       if (match != null) {
-        extractedTableNumber = int.tryParse(match.group(1) ?? '1');
+        final parsed = int.tryParse(match.group(1) ?? '');
+        if (parsed != null && parsed > 0 && parsed <= 100) {
+          extractedTableNumber = parsed;
+        }
       }
+    }
+
+    // If no legitimate table number was determined, do NOT process this foreign device!
+    if (extractedTableNumber == null || extractedTableNumber <= 0 || extractedTableNumber > 100) {
+      return;
     }
 
     // 3. Fallback to Device Name status (e.g. T2N_T1_REQ, T2N_T1_ACC, T2N_T1_IDLE)
@@ -284,7 +286,7 @@ class BleService {
       }
     }
 
-    final tableNum = extractedTableNumber ?? 1;
+    final tableNum = extractedTableNumber;
     final tableId = 'table_$tableNum';
 
     _discoveredDevices[tableId] = result.device;

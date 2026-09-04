@@ -324,16 +324,32 @@ class FirebaseRealtimeService {
       final List<TableModel> tables = [];
 
       if (raw is Map) {
+        final List<String> invalidKeys = [];
         raw.forEach((key, value) {
           if (value is Map) {
-            tables.add(TableModel.fromMap(value, key.toString()));
+            final table = TableModel.fromMap(value, key.toString());
+            // Only accept valid configured floor tables (1 to 100)
+            if (table.tableNumber >= 1 && table.tableNumber <= 100) {
+              tables.add(table);
+            } else {
+              invalidKeys.add(key.toString());
+            }
           }
         });
+        // Auto purge rogue/phantom keys from database
+        if (invalidKeys.isNotEmpty) {
+          for (final rogueKey in invalidKeys) {
+            _tablesRef.child(rogueKey).remove();
+          }
+        }
       } else if (raw is List) {
         for (int i = 0; i < raw.length; i++) {
           final item = raw[i];
           if (item is Map) {
-            tables.add(TableModel.fromMap(item, 'table_$i'));
+            final table = TableModel.fromMap(item, 'table_$i');
+            if (table.tableNumber >= 1 && table.tableNumber <= 100) {
+              tables.add(table);
+            }
           }
         }
       }
@@ -524,7 +540,7 @@ class FirebaseRealtimeService {
     await _requestsRef.child(request.requestId).set(request.toMap());
   }
 
-  // Sync live BLE table status and online presence to Firebase
+  // Sync live BLE table status and online presence to Firebase (ONLY for existing configured tables)
   Future<void> syncBleDeviceStatus({
     required String tableId,
     required int tableNumber,
@@ -532,11 +548,14 @@ class FirebaseRealtimeService {
     required int flag,
     required bool isOnline,
   }) async {
+    final tableSnap = await _tablesRef.child(tableId).get();
+    if (!tableSnap.exists) {
+      // Table is not part of the configured restaurant floor tables; ignore to prevent phantom tables
+      return;
+    }
+
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {
-      'id': tableId,
-      'table_number': tableNumber,
-      'device_id': 'device_$tableNumber',
       'device_online': isOnline,
       'status': status,
       'flag': flag,
@@ -558,6 +577,9 @@ class FirebaseRealtimeService {
   }
 
   Future<void> updateDeviceOnlineStatus(String tableId, bool isOnline) async {
+    final tableSnap = await _tablesRef.child(tableId).get();
+    if (!tableSnap.exists) return;
+
     final int now = DateTime.now().millisecondsSinceEpoch;
     await _tablesRef.child(tableId).update({
       'device_online': isOnline,

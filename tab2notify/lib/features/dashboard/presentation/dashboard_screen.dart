@@ -22,7 +22,8 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _currentTabIndex = 0; // 0 = Tables, 1 = Overview, 2 = Settings
-  String _selectedFilter = 'all'; // 'all', 'pending', 'accepted', 'idle', 'assigned', 'unassigned'
+  String _selectedFilter =
+      'all'; // 'all', 'pending', 'accepted', 'idle', 'assigned', 'unassigned'
 
   @override
   void initState() {
@@ -118,7 +119,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 final repo = ref.read(serviceRequestRepositoryProvider);
                 await repo.acceptTableRequest(
                   tableId: table.id,
-                  waiterName: assignedWaiter.isNotEmpty ? assignedWaiter : 'Staff',
+                  waiterName: assignedWaiter.isNotEmpty
+                      ? assignedWaiter
+                      : 'Staff',
                 );
 
                 if (mounted) {
@@ -274,7 +277,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                          color: const Color(
+                            0xFF0284C7,
+                          ).withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -360,7 +365,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final theme = Theme.of(context);
     final tablesAsync = ref.watch(tablesStreamProvider);
     final bleScanState = ref.watch(bleScanningStreamProvider).value ?? false;
-    final adapterState = ref.watch(bleAdapterStateStreamProvider).value ?? BluetoothAdapterState.unknown;
+    final adapterState =
+        ref.watch(bleAdapterStateStreamProvider).value ??
+        BluetoothAdapterState.unknown;
 
     final tablesList = tablesAsync.value ?? [];
 
@@ -390,8 +397,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            Icon(Icons.hotel_rounded, color: theme.colorScheme.primary),
-            const SizedBox(width: 8),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset(
+                  'assets/images/app_logo.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.notifications_active_rounded,
+                    color: theme.colorScheme.primary,
+                    size: 30,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
             const Text(
               'Tab2Notify',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -404,27 +436,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             padding: const EdgeInsets.only(right: 6.0),
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
-              onTap: () => _showBleInfoModal(
-                tablesList,
-                bleScanState,
-                adapterState,
-              ),
+              onTap: () =>
+                  _showBleInfoModal(tablesList, bleScanState, adapterState),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: (bleScanState
-                          ? const Color(0xFF0284C7)
-                          : Colors.grey)
+                  color: (bleScanState ? const Color(0xFF0284C7) : Colors.grey)
                       .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: (bleScanState
-                            ? const Color(0xFF0284C7)
-                            : Colors.grey)
-                        .withValues(alpha: 0.4),
+                    color:
+                        (bleScanState ? const Color(0xFF0284C7) : Colors.grey)
+                            .withValues(alpha: 0.4),
                   ),
                 ),
                 child: Row(
@@ -478,9 +504,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             idleTables: idleTables,
             selectedFilter: _selectedFilter,
             onFilterChanged: (val) => setState(() => _selectedFilter = val),
-            onConfigureTables: () => TableSetupDialog.show(context, tablesList.length),
+            onConfigureTables: () =>
+                TableSetupDialog.show(context, tablesList.length),
             onManageWaiters: () => WaiterManagementSheet.show(context),
-            onAssignWaiters: () => AssignWaiterModal.show(context, allTables: tablesList),
+            onAssignWaiters: () =>
+                AssignWaiterModal.show(context, allTables: tablesList),
             onTableTap: (table) {
               if (table.isPending) {
                 _showAcceptDialog(table);
@@ -497,11 +525,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             },
             isScanning: bleScanState,
             adapterState: adapterState,
-            onBleInfoTap: () => _showBleInfoModal(
-              tablesList,
-              bleScanState,
-              adapterState,
-            ),
+            onBleInfoTap: () =>
+                _showBleInfoModal(tablesList, bleScanState, adapterState),
           ),
 
           // Tab 1: Overview Analytics
@@ -522,4 +547,3 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 }
-

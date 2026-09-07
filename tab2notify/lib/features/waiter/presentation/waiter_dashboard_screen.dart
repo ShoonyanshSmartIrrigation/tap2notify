@@ -262,15 +262,29 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(6),
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: Icon(
-                Icons.restaurant_menu_rounded,
-                color: theme.colorScheme.primary,
-                size: 20,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset(
+                  'assets/images/app_logo.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.notifications_active_rounded,
+                    color: theme.colorScheme.primary,
+                    size: 26,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -358,8 +372,22 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFFB923C),
+                            Color(0xFFEA580C),
+                          ],
+                        ),
                         shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFEA580C).withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
                       child: Center(
                         child: Text(

@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/services/ble_service.dart';
+import '../../../core/services/shared_preferences_provider.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../waiter/domain/waiter_model.dart';
 import '../data/service_request_repository.dart';
@@ -20,22 +20,29 @@ final bleServiceProvider = Provider<BleService>((ref) {
 final serviceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
-  final authUser = ref.watch(authStateProvider).value;
-  final profileAsync = ref.watch(currentUserProfileProvider);
   final currentWaiter = ref.watch(currentLoggedWaiterProvider);
 
-  // Active Manager Phone:
-  // 1. From authenticated manager's profile (profileAsync.value?.phone)
-  // 2. Or from active floor waiter session (currentWaiter?.managerPhone)
-  // 3. Or authUser?.phoneNumber / authUser?.uid
+  // If a waiter floor session is active, construct repository directly from waiter credentials
+  if (currentWaiter != null && currentWaiter.managerPhone.isNotEmpty) {
+    return ServiceRequestRepository(
+      bleService,
+      dbService,
+      managerPhone: currentWaiter.managerPhone,
+      managerUid: currentWaiter.managerUid,
+      managerEmail: currentWaiter.managerEmail,
+    );
+  }
+
+  // Otherwise, construct from authenticated manager's profile
+  final authUser = ref.watch(authStateProvider).value;
+  final profileAsync = ref.watch(currentUserProfileProvider);
+
   final managerPhone = (profileAsync.value?.phone.isNotEmpty ?? false)
       ? profileAsync.value!.phone
-      : (currentWaiter?.managerPhone.isNotEmpty ?? false)
-          ? currentWaiter!.managerPhone
-          : (authUser?.phoneNumber ?? authUser?.uid ?? '');
+      : (authUser?.phoneNumber ?? authUser?.uid ?? '');
 
-  final managerUid = authUser?.uid ?? currentWaiter?.managerUid ?? '';
-  final managerEmail = profileAsync.value?.email ?? authUser?.email ?? currentWaiter?.managerEmail;
+  final managerUid = authUser?.uid ?? '';
+  final managerEmail = profileAsync.value?.email ?? authUser?.email;
 
   return ServiceRequestRepository(
     bleService,
@@ -76,28 +83,23 @@ class CurrentLoggedWaiterNotifier extends Notifier<WaiterModel?> {
 
   @override
   WaiterModel? build() {
-    _loadPersistedWaiter();
-    return null;
-  }
-
-  Future<void> _loadPersistedWaiter() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = ref.watch(sharedPreferencesProvider);
       final raw = prefs.getString(_storageKey);
       if (raw != null && raw.isNotEmpty) {
         final map = jsonDecode(raw) as Map<String, dynamic>;
-        final waiter = WaiterModel.fromMap(map, map['waiterId']?.toString() ?? 'W001');
-        state = waiter;
+        return WaiterModel.fromMap(map, map['waiterId']?.toString() ?? 'W001');
       }
     } catch (e) {
       debugPrint('[WAITER_SESSION] Error loading saved waiter session: $e');
     }
+    return null;
   }
 
   Future<void> setWaiter(WaiterModel? waiter) async {
     state = waiter;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = ref.read(sharedPreferencesProvider);
       if (waiter != null) {
         await prefs.setString(_storageKey, jsonEncode(waiter.toMap()));
       } else {

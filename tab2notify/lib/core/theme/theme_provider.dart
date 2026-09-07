@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../services/shared_preferences_provider.dart';
 
 final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
 
@@ -9,26 +10,20 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 
   @override
   ThemeMode build() {
-    _loadTheme();
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final saved = prefs.getString(_key);
+    if (saved == 'light') {
+      return ThemeMode.light;
+    } else if (saved == 'dark') {
+      return ThemeMode.dark;
+    }
     return ThemeMode.system;
-  }
-
-  Future<void> _loadTheme() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString(_key);
-      if (saved == 'light') {
-        state = ThemeMode.light;
-      } else if (saved == 'dark') {
-        state = ThemeMode.dark;
-      }
-    } catch (_) {}
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
     state = mode;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = ref.read(sharedPreferencesProvider);
       if (mode == ThemeMode.light) {
         await prefs.setString(_key, 'light');
       } else if (mode == ThemeMode.dark) {
@@ -47,3 +42,4 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
     }
   }
 }
+

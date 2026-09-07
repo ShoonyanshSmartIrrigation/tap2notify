@@ -1028,44 +1028,62 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
 
                     // Primary Assign Button
                     Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          foregroundColor: Colors.white,
-                          elevation: 2,
-                          shadowColor: primaryColor.withValues(alpha: 0.4),
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFFFB923C),
+                              Color(0xFFEA580C),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFEA580C).withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _isLoading ? null : _handleAssign,
                             borderRadius: BorderRadius.circular(14),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              child: Center(
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.check_rounded, size: 18, color: Colors.white),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            _selectedTableIds.isEmpty
+                                                ? 'SELECT TABLES'
+                                                : 'ASSIGN ${_selectedTableIds.length} TABLE${_selectedTableIds.length > 1 ? 'S' : ''}',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13.5,
+                                              letterSpacing: 0.3,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
                           ),
                         ),
-                        onPressed: _isLoading ? null : _handleAssign,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.check_rounded, size: 18),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _selectedTableIds.isEmpty
-                                        ? 'SELECT TABLES'
-                                        : 'ASSIGN ${_selectedTableIds.length} TABLE${_selectedTableIds.length > 1 ? 'S' : ''}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13.5,
-                                      letterSpacing: 0.3,
-                                    ),
-                                  ),
-                                ],
-                              ),
                       ),
                     ),
                   ],

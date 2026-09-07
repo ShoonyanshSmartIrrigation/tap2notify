@@ -28,7 +28,9 @@ class FCMService {
       }
 
       // Set background messaging handler
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
 
       // Subscribe to topics for hotel managers
       await _fcm.subscribeToTopic('hotel_managers');
@@ -36,7 +38,9 @@ class FCMService {
 
       // Foreground message listener
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        debugPrint('Received foreground FCM message: ${message.notification?.title}');
+        debugPrint(
+          'Received foreground FCM message: ${message.notification?.title}',
+        );
       });
 
       // Token

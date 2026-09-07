@@ -37,10 +37,7 @@ class BleService {
   void Function(String tableId)? onDeviceLost;
 
   // Yield actively advertising tables to subscribers
-  Stream<List<TableModel>> get tablesStream async* {
-    yield currentTables;
-    yield* _tablesController.stream;
-  }
+  Stream<List<TableModel>> get tablesStream => _tablesController.stream;
 
   List<TableModel> get currentTables {
     final list = _tables.values.where((t) => isTableOnline(t.id)).toList();

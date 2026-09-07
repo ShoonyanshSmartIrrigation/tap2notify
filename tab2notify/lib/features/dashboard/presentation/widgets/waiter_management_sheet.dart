@@ -242,24 +242,52 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                   children: [
                     // Toggle Add New Waiter Form Button
                     if (!_isAdding)
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFFFB923C),
+                              Color(0xFFEA580C),
+                            ],
                           ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFEA580C).withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
-                        onPressed: () {
-                          // Auto generate ID e.g. W004
-                          _idController.text = 'W00${waitersList.length + 1}';
-                          setState(() => _isAdding = true);
-                        },
-                        icon: const Icon(Icons.person_add_rounded, size: 18),
-                        label: const Text(
-                          'REGISTER NEW WAITER',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              // Auto generate ID e.g. W004
+                              _idController.text = 'W00${waitersList.length + 1}';
+                              setState(() => _isAdding = true);
+                            },
+                            borderRadius: BorderRadius.circular(14),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 13),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.person_add_rounded, size: 18, color: Colors.white),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'REGISTER NEW WAITER',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13.5,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       )
                     else
@@ -365,33 +393,53 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                               ),
                             ),
                             const SizedBox(height: 14),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.colorScheme.primary,
-                                foregroundColor: Colors.white,
-                                minimumSize: const Size.fromHeight(44),
-                                shape: RoundedRectangleBorder(
+                            Container(
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFB923C),
+                                    Color(0xFFEA580C),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFEA580C).withValues(alpha: 0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _isLoading ? null : _handleCreateWaiter,
                                   borderRadius: BorderRadius.circular(12),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    child: Center(
+                                      child: _isLoading
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Text(
+                                              'SAVE WAITER',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13.5,
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                              onPressed: _isLoading
-                                  ? null
-                                  : _handleCreateWaiter,
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'SAVE WAITER',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
                             ),
                           ],
                         ),

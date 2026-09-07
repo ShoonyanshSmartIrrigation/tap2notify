@@ -78,8 +78,6 @@ class ServiceRequestRepository {
 
     controller = StreamController<List<TableModel>>(
       onListen: () {
-        _bleService.requestPermissionsAndStartScan();
-
         dbSub = _dbService.getTablesStream(
           managerPhone: managerPhone,
           managerUid: managerUid,
@@ -138,8 +136,6 @@ class ServiceRequestRepository {
 
     controller = StreamController<List<TableModel>>(
       onListen: () {
-        _bleService.requestPermissionsAndStartScan();
-
         dbSub = _dbService.getTablesForWaiterStream(
           waiterId,
           managerPhone: managerPhone,

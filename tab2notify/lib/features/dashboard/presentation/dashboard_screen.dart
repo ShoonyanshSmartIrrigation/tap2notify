@@ -363,6 +363,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final tablesAsync = ref.watch(tablesStreamProvider);
     final bleScanState = ref.watch(bleScanningStreamProvider).value ?? false;
     final adapterState =
@@ -397,14 +398,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOut,
               width: 40,
               height: 40,
               decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                    color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.25 : 0.15),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -412,13 +416,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Image.asset(
-                  'assets/images/app_logo.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Icon(
-                    Icons.notifications_active_rounded,
-                    color: theme.colorScheme.primary,
-                    size: 30,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  child: Image.asset(
+                    isDark
+                        ? 'assets/images/app_logo.png'
+                        : 'assets/images/app_logo_white.png',
+                    key: ValueKey(isDark),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Icon(
+                      Icons.notifications_active_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 30,
+                    ),
                   ),
                 ),
               ),

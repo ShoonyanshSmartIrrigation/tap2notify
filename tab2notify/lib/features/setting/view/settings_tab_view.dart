@@ -710,7 +710,9 @@ class SettingsTabView extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
 
-          Container(
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeInOut,
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1B26) : Colors.white,
@@ -725,8 +727,8 @@ class SettingsTabView extends ConsumerWidget {
               color: Colors.transparent,
               child: Column(
                 children: [
-                  SwitchListTile(
-                    secondary: Container(
+                  ListTile(
+                    leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: const Color(0xFF9333EA).withValues(alpha: 0.15),
@@ -751,9 +753,12 @@ class SettingsTabView extends ConsumerWidget {
                       isDark ? 'Dark theme enabled' : 'Light theme enabled',
                       style: const TextStyle(fontSize: 12),
                     ),
-                    value: isDark,
-                    onChanged: (_) =>
-                        ref.read(themeModeProvider.notifier).toggleTheme(),
+                    trailing: Switch(
+                      value: isDark,
+                      activeThumbColor: const Color(0xFF9333EA),
+                      onChanged: (_) =>
+                          ref.read(themeModeProvider.notifier).toggleTheme(),
+                    ),
                   ),
                 ],
               ),

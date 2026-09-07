@@ -349,27 +349,13 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
                             width: 80,
                             height: 80,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Color(0xFFFB923C),
-                                  Color(0xFFEA580C),
-                                ],
-                              ),
+                              color: theme.colorScheme.primary.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFFEA580C).withValues(alpha: 0.4),
-                                  blurRadius: 18,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
                             ),
-                            child: const Center(
+                            child: Center(
                               child: Icon(
                                 Icons.person_pin_rounded,
-                                color: Colors.white,
+                                color: theme.colorScheme.primary,
                                 size: 44,
                               ),
                             ),

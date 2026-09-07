@@ -76,6 +76,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     
     return Scaffold(
       body: Container(
@@ -94,10 +95,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1B26) : Colors.white,
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.35),
+                        color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.35 : 0.2),
                         blurRadius: 28,
                         spreadRadius: 2,
                         offset: const Offset(0, 8),
@@ -107,7 +109,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(30),
                     child: Image.asset(
-                      'assets/images/app_logo.png',
+                      isDark
+                          ? 'assets/images/app_logo.png'
+                          : 'assets/images/app_logo_white.png',
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => Container(
                         padding: const EdgeInsets.all(24),

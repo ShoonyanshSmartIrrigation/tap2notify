@@ -46,7 +46,24 @@ class Tab2NotifyApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
+      themeAnimationDuration: const Duration(milliseconds: 350),
+      themeAnimationCurve: Curves.easeInOut,
       routerConfig: AppRouter.router,
+      builder: (context, child) {
+        final Brightness effectiveBrightness = themeMode == ThemeMode.system
+            ? MediaQuery.platformBrightnessOf(context)
+            : (themeMode == ThemeMode.dark ? Brightness.dark : Brightness.light);
+        final ThemeData currentTheme = effectiveBrightness == Brightness.dark
+            ? AppTheme.darkTheme
+            : AppTheme.lightTheme;
+
+        return AnimatedTheme(
+          data: currentTheme,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }

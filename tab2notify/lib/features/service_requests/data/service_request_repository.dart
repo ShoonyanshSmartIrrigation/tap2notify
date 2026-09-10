@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/services/ble_service.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../../core/services/firebase_realtime_service.dart';
+import '../../../core/services/notification_audio_service.dart';
 import '../../waiter/domain/waiter_model.dart';
 import '../domain/table_model.dart';
 
@@ -125,7 +126,11 @@ class ServiceRequestRepository {
     }
 
     _lastNotifiedTime[tableId] = now;
-    debugPrint('[NOTIFICATION TRIGGER] Showing OS notification for Table $tableNumber ($tableId) to Waiter $currentWaiterId');
+    debugPrint('[NOTIFICATION TRIGGER] Showing OS notification & playing audio for Table $tableNumber ($tableId) to Waiter $currentWaiterId');
+    
+    // Play Incoming_Prompt.mp3 audio exclusively for THIS assigned waiter
+    NotificationAudioService().playIncomingRequestPrompt(tableId: tableId);
+
     FCMService().showNativeNotification(
       title: '🛎️ Table $tableNumber Calling!',
       body: 'Customer requested immediate assistance at Table $tableNumber 🔴',
@@ -365,6 +370,7 @@ class ServiceRequestRepository {
     required String waiterName,
     String? waiterId,
   }) async {
+    NotificationAudioService().stop();
     await _dbService.acceptTableRequest(
       tableId: tableId,
       waiterName: waiterName,
@@ -380,6 +386,7 @@ class ServiceRequestRepository {
   }
 
   Future<void> resetTableStatus(String tableId) async {
+    NotificationAudioService().stop();
     await _dbService.resetTableStatus(
       tableId,
       managerPhone: managerPhone,
@@ -388,6 +395,7 @@ class ServiceRequestRepository {
   }
 
   Future<void> resetAllTables() async {
+    NotificationAudioService().stop();
     await _dbService.resetAllTables(
       managerPhone: managerPhone,
     );

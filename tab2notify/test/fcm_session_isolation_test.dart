@@ -143,6 +143,18 @@ void main() {
         }
         return null;
       });
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('xyz.luan/audioplayers'),
+        (MethodCall call) async => 1,
+      );
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('xyz.luan/audioplayers.global'),
+        (MethodCall call) async => 1,
+      );
     });
 
     tearDown(() {
@@ -181,8 +193,9 @@ void main() {
       ]);
 
       await Future.delayed(const Duration(milliseconds: 50));
-      expect(nativeCalls.length, 1, reason: 'Waiter A must receive alert for Table 1');
-      expect(nativeCalls.first.arguments['tableNumber'], 1);
+      final notifCalls = nativeCalls.where((c) => c.method == 'showNotification').toList();
+      expect(notifCalls.length, 1, reason: 'Waiter A must receive alert for Table 1');
+      expect(notifCalls.first.arguments['tableNumber'], 1);
 
       // 2. Waiter A logs out
       repo.dispose();
@@ -362,9 +375,10 @@ void main() {
         ),
       ]);
       await Future.delayed(const Duration(milliseconds: 50));
-      expect(nativeCalls.length, 1,
+      final notifCalls = nativeCalls.where((c) => c.method == 'showNotification').toList();
+      expect(notifCalls.length, 1,
           reason: 'Phone MUST receive Waiter B alert when logged in as Waiter B');
-      expect(nativeCalls.first.arguments['tableNumber'], 3);
+      expect(notifCalls.first.arguments['tableNumber'], 3);
 
       repoB.dispose();
     });

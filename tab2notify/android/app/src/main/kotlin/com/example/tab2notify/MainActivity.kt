@@ -3,10 +3,12 @@ package com.example.tab2notify
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.RingtoneManager
+import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.core.app.NotificationCompat
@@ -18,6 +20,7 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "tab2notify/native_notifications"
     private var methodChannel: MethodChannel? = null
     private var pendingRequestId: String? = null
+    private var mediaPlayer: MediaPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,9 +52,53 @@ class MainActivity : FlutterActivity() {
                         result.success(pendingRequestId)
                         pendingRequestId = null
                     }
+                    "playAudioPrompt" -> {
+                        playNativeAudioPrompt()
+                        result.success(true)
+                    }
+                    "stopAudioPrompt" -> {
+                        stopNativeAudioPrompt()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        stopNativeAudioPrompt()
+        super.onDestroy()
+    }
+
+    private fun playNativeAudioPrompt() {
+        try {
+            stopNativeAudioPrompt()
+            mediaPlayer = MediaPlayer.create(this, R.raw.incoming_prompt)?.apply {
+                setOnCompletionListener { mp ->
+                    mp.release()
+                    if (mediaPlayer == mp) {
+                        mediaPlayer = null
+                    }
+                }
+                start()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun stopNativeAudioPrompt() {
+        try {
+            mediaPlayer?.let { mp ->
+                if (mp.isPlaying) {
+                    mp.stop()
+                }
+                mp.release()
+            }
+            mediaPlayer = null
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -92,7 +139,7 @@ class MainActivity : FlutterActivity() {
 
         val pendingIntent = PendingIntent.getActivity(this, notificationId, intent, flags)
 
-        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.incoming_prompt)
 
         val builder = NotificationCompat.Builder(this, "waiter_requests_channel")
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -100,7 +147,6 @@ class MainActivity : FlutterActivity() {
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setSound(soundUri)
             .setVibrate(longArrayOf(0, 500, 250, 500))
             .setAutoCancel(true)
@@ -117,7 +163,7 @@ class MainActivity : FlutterActivity() {
             val channelDescription = "High-priority alerts when customers at assigned tables request service"
             val importance = NotificationManager.IMPORTANCE_HIGH
 
-            val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.incoming_prompt)
             val audioAttributes = AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .setUsage(AudioAttributes.USAGE_NOTIFICATION)
@@ -128,7 +174,7 @@ class MainActivity : FlutterActivity() {
                 enableLights(true)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 500, 250, 500)
-                setSound(defaultSoundUri, audioAttributes)
+                setSound(soundUri, audioAttributes)
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
             }
 

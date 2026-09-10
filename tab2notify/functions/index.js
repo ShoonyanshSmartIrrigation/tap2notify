@@ -209,7 +209,7 @@ exports.onTableRequestTriggered = onValueWritten(
         notification: {
           channelId: "waiter_requests_channel",
           priority: "max",
-          sound: "default",
+          sound: "incoming_prompt",
           defaultVibrateTimings: true,
           visibility: "public",
         },
@@ -221,7 +221,7 @@ exports.onTableRequestTriggered = onValueWritten(
               title: `🛎️ Table ${tableNumber} Calling!`,
               body: `Customer requested immediate assistance at Table ${tableNumber} 🔴`,
             },
-            sound: "default",
+            sound: "Incoming_Prompt.mp3",
             badge: 1,
             critical: true,
           },
@@ -292,7 +292,7 @@ exports.onNotificationQueueCreated = onValueCreated(
           notification: {
             channelId: targetRole === "waiter" ? "waiter_requests_channel" : "default",
             priority: "max",
-            sound: "default",
+            sound: targetRole === "waiter" ? "incoming_prompt" : "default",
           },
         },
       };

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../firebase_options.dart';
 import '../routes/app_router.dart';
 import 'firebase_realtime_service.dart';
+import 'notification_audio_service.dart';
 
 /// Top-level background message handler for FCM.
 /// Executed by the Android/iOS OS in a separate background isolate when a push arrives
@@ -331,6 +332,11 @@ class FCMService {
     final data = message.data;
     final requestId = data['requestId']?.toString() ?? data['tableId']?.toString() ?? '';
     final waiterId = data['waiterId']?.toString();
+
+    // If active user is an authorized WAITER receiving an incoming table request, play audio prompt
+    if (_currentUserRole == 'waiter') {
+      NotificationAudioService().playIncomingRequestPrompt(tableId: requestId);
+    }
 
     final context = AppRouter.navigatorKey.currentContext;
     if (context == null || !context.mounted) return;

@@ -159,15 +159,13 @@ class MainActivity : FlutterActivity() {
             R.raw.incoming_prompt
         }
 
-        val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + soundRes)
-
         val builder = NotificationCompat.Builder(this, targetChannelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setSound(soundUri)
+            .setSilent(true)
             .setVibrate(longArrayOf(0, 500, 250, 500))
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

@@ -147,9 +147,10 @@ class ServiceRequestRepository {
     String waiterName = '',
   }) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final last = _lastNotifiedTime[tableId] ?? 0;
-    // Debounce duplicate alerts within 6 seconds
-    if (now - last < 6000) return;
+    final normKey = tableNumber.toString();
+    final last = _lastNotifiedTime[normKey] ?? _lastNotifiedTime[tableId] ?? 0;
+    // Debounce duplicate alerts within 8 seconds
+    if (now - last < 8000) return;
 
     // 1. If user is a MANAGER: Table service requests are intended for Waiters, NOT the Manager.
     // Suppress waiter table alerts on the manager's device.
@@ -169,6 +170,7 @@ class ServiceRequestRepository {
     }
 
     _lastNotifiedTime[tableId] = now;
+    _lastNotifiedTime[normKey] = now;
     debugPrint('[NOTIFICATION TRIGGER] Showing OS notification & playing audio for Table $tableNumber ($tableId) to Waiter $currentWaiterId');
     
     // Play Incoming_Prompt.mp3 audio exclusively for THIS assigned waiter

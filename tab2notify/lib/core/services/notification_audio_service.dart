@@ -15,20 +15,27 @@ class NotificationAudioService {
   int _lastManagerEscalationTime = 0;
   String? _lastManagerEscalationTableId;
 
+  String _normalizeTableKey(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    final numeric = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    return numeric.isNotEmpty ? numeric : raw.trim().toLowerCase();
+  }
+
   /// Plays the incoming request prompt audio asset (Incoming_Prompt.mp3)
-  /// Debounces rapid successive calls for the same table within 5 seconds.
+  /// Debounces rapid successive calls for the same table within 8 seconds.
   Future<void> playIncomingRequestPrompt({String? tableId}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (tableId != null &&
-        tableId.isNotEmpty &&
-        tableId == _lastPlayedTableId &&
-        (now - _lastPlayedTime < 5000)) {
-      debugPrint('[AUDIO] Debounced duplicate prompt audio for $tableId');
+    final normKey = _normalizeTableKey(tableId);
+
+    if (normKey.isNotEmpty &&
+        normKey == _lastPlayedTableId &&
+        (now - _lastPlayedTime < 8000)) {
+      debugPrint('[AUDIO] Debounced duplicate prompt audio for $tableId (key: $normKey)');
       return;
     }
 
     _lastPlayedTime = now;
-    _lastPlayedTableId = tableId;
+    _lastPlayedTableId = normKey.isNotEmpty ? normKey : tableId;
 
     try {
       debugPrint('[AUDIO] Playing native incoming request prompt: R.raw.incoming_prompt (Table: $tableId)');
@@ -39,19 +46,20 @@ class NotificationAudioService {
   }
 
   /// Plays the manager escalation prompt audio asset (Please_Hold.mp3)
-  /// Debounces rapid successive calls for the same table within 5 seconds.
+  /// Debounces rapid successive calls for the same table within 8 seconds.
   Future<void> playManagerEscalationPrompt({String? tableId}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (tableId != null &&
-        tableId.isNotEmpty &&
-        tableId == _lastManagerEscalationTableId &&
-        (now - _lastManagerEscalationTime < 5000)) {
-      debugPrint('[AUDIO] Debounced duplicate manager escalation audio for $tableId');
+    final normKey = _normalizeTableKey(tableId);
+
+    if (normKey.isNotEmpty &&
+        normKey == _lastManagerEscalationTableId &&
+        (now - _lastManagerEscalationTime < 8000)) {
+      debugPrint('[AUDIO] Debounced duplicate manager escalation audio for $tableId (key: $normKey)');
       return;
     }
 
     _lastManagerEscalationTime = now;
-    _lastManagerEscalationTableId = tableId;
+    _lastManagerEscalationTableId = normKey.isNotEmpty ? normKey : tableId;
 
     try {
       debugPrint('[AUDIO] Playing native manager escalation prompt: R.raw.please_hold (Table: $tableId)');

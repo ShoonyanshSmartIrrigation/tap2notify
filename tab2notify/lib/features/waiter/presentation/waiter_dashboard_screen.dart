@@ -3,13 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/fcm_service.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/widgets/table_card.dart';
 import '../../service_requests/domain/table_model.dart';
 import '../../service_requests/presentation/service_request_providers.dart';
 
 class WaiterDashboardScreen extends ConsumerStatefulWidget {
-  const WaiterDashboardScreen({super.key});
+  final String? initialRequestId;
+
+  const WaiterDashboardScreen({super.key, this.initialRequestId});
 
   @override
   ConsumerState<WaiterDashboardScreen> createState() =>
@@ -18,12 +21,56 @@ class WaiterDashboardScreen extends ConsumerStatefulWidget {
 
 class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
   String _selectedFilter = 'all'; // 'all', 'pending', 'accepted', 'idle'
+  String? _handledRequestId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(bleServiceProvider).requestPermissionsAndStartScan();
+      _checkInitialRequest();
+      final currentWaiter = ref.read(currentLoggedWaiterProvider);
+      if (currentWaiter != null && currentWaiter.managerPhone.isNotEmpty) {
+        FCMService().syncWaiterToken(currentWaiter.managerPhone, currentWaiter.waiterId);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant WaiterDashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialRequestId != null &&
+        widget.initialRequestId != oldWidget.initialRequestId) {
+      _checkInitialRequest();
+    }
+  }
+
+  void _checkInitialRequest() {
+    final reqId = widget.initialRequestId;
+    if (reqId == null || reqId.isEmpty || reqId == _handledRequestId) return;
+    _handledRequestId = reqId;
+
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      final currentWaiter = ref.read(currentLoggedWaiterProvider);
+      if (currentWaiter == null) return;
+
+      final tablesAsync =
+          ref.read(waiterTablesStreamProvider(currentWaiter.waiterId));
+      final tables = tablesAsync.value ?? [];
+
+      final match = tables.where((t) =>
+          t.id == reqId ||
+          t.tableNumber.toString() == reqId.replaceAll(RegExp(r'[^0-9]'), ''));
+      if (match.isNotEmpty) {
+        final targetTable = match.first;
+        if (targetTable.isPending) {
+          _showAcceptDialog(
+              targetTable, currentWaiter.name, currentWaiter.waiterId);
+        } else if (targetTable.isAccepted) {
+          _showCompleteDialog(targetTable);
+        }
+      }
     });
   }
 
@@ -201,6 +248,11 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
   }
 
   void _handleSignOut() async {
+    try {
+      await FCMService().unregisterCurrentSession();
+    } catch (e) {
+      debugPrint('[WAITER SIGN OUT] Error unregistering FCM token: $e');
+    }
     await ref.read(currentLoggedWaiterProvider.notifier).setWaiter(null);
     if (mounted) {
       context.go('/login');

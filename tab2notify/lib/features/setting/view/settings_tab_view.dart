@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/fcm_service.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../authentication/presentation/auth_providers.dart';
 
@@ -378,6 +379,12 @@ class SettingsTabView extends ConsumerWidget {
 
     if (confirm == true) {
       try {
+        await FCMService().unregisterCurrentSession();
+      } catch (e) {
+        debugPrint('[MANAGER SIGN OUT] Error unregistering FCM token: $e');
+      }
+
+      try {
         await ref.read(authRepositoryProvider).signOut();
         ref.invalidate(currentUserProfileProvider);
       } catch (_) {}
@@ -518,7 +525,9 @@ class SettingsTabView extends ConsumerWidget {
                                   data: (profile) => Text(
                                     (profile?.email.isNotEmpty == true)
                                         ? profile!.email
-                                        : (user?.email ?? 'manager@hotel.com'),
+                                        : (user?.email?.isNotEmpty == true
+                                            ? user!.email!
+                                            : 'No email registered'),
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: isDark
@@ -529,7 +538,7 @@ class SettingsTabView extends ConsumerWidget {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   loading: () => Text(
-                                    user?.email ?? 'manager@hotel.com',
+                                    user?.email ?? 'Loading...',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: isDark
@@ -538,7 +547,7 @@ class SettingsTabView extends ConsumerWidget {
                                     ),
                                   ),
                                   error: (error, stack) => Text(
-                                    user?.email ?? 'manager@hotel.com',
+                                    user?.email ?? 'Manager Account',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: isDark
@@ -555,13 +564,16 @@ class SettingsTabView extends ConsumerWidget {
                             data: (profile) {
                               final phone = (profile?.phone.isNotEmpty == true)
                                   ? profile!.phone
-                                  : (user?.phoneNumber ?? '+91 98765 43210');
+                                  : (user?.phoneNumber?.isNotEmpty == true
+                                      ? user!.phoneNumber!
+                                      : '');
+                              if (phone.isEmpty) return const SizedBox.shrink();
                               return Row(
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.phone_android_rounded,
                                     size: 13,
-                                    color: const Color(0xFFF97316),
+                                    color: Color(0xFFF97316),
                                   ),
                                   const SizedBox(width: 4),
                                   Text(

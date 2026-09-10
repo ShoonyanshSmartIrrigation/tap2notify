@@ -15,6 +15,37 @@ import '../../features/waiter/presentation/waiter_dashboard_screen.dart';
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 class AppRouter {
+  static GlobalKey<NavigatorState> get navigatorKey => _rootNavigatorKey;
+
+  static void navigateToRequest(String requestId, {String? waiterId}) {
+    final context = _rootNavigatorKey.currentContext;
+    if (context == null) return;
+
+    try {
+      SharedPreferences.getInstance().then((prefs) {
+        final raw = prefs.getString('active_waiter_session');
+        if (raw != null && raw.isNotEmpty) {
+          router.go('/waiter-dashboard?requestId=$requestId');
+        } else {
+          router.go('/login');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Please log in${waiterId != null ? " as Waiter $waiterId" : ""} to view Table request ($requestId).',
+                ),
+                backgroundColor: const Color(0xFFE53935),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+        }
+      });
+    } catch (_) {
+      router.go('/waiter-dashboard?requestId=$requestId');
+    }
+  }
+
   static final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
@@ -80,7 +111,11 @@ class AppRouter {
       ),
       GoRoute(
         path: '/waiter-dashboard',
-        builder: (context, state) => const WaiterDashboardScreen(),
+        builder: (context, state) {
+          final reqId = state.uri.queryParameters['requestId'] ??
+              (state.extra is String ? state.extra as String : null);
+          return WaiterDashboardScreen(initialRequestId: reqId);
+        },
       ),
       GoRoute(
         path: '/manager-login',

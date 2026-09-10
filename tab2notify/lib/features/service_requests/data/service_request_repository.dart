@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../../core/services/ble_service.dart';
+import '../../../core/services/fcm_service.dart';
 import '../../../core/services/firebase_realtime_service.dart';
 import '../../waiter/domain/waiter_model.dart';
 import '../domain/table_model.dart';
@@ -11,6 +12,10 @@ class ServiceRequestRepository {
   final String managerPhone;
   final String managerUid;
   final String? managerEmail;
+  final String currentWaiterId;
+
+  final Map<String, int> _lastNotifiedTime = {};
+  StreamSubscription<List<TableModel>>? _cloudRequestSub;
 
   ServiceRequestRepository(
     this._bleService,
@@ -18,9 +23,21 @@ class ServiceRequestRepository {
     this.managerPhone = '',
     this.managerUid = '',
     this.managerEmail,
+    this.currentWaiterId = '',
   }) {
-    // Forward BLE physical device discoveries to Firebase Realtime Database asynchronously for this manager's phone
+    // Forward BLE physical device discoveries to Firebase Realtime Database asynchronously
     _bleService.onDeviceDiscovered = (TableModel bleTable) {
+      debugPrint('[BLE DISCOVERED HOOK] Table ${bleTable.tableNumber} (${bleTable.id}) status=${bleTable.status} flag=${bleTable.flag} managerPhone=$managerPhone currentWaiterId=$currentWaiterId');
+      // Instant Native Notification Alert for urgent service requests
+      if (bleTable.flag == 0) {
+        _triggerRequestNotification(
+          tableId: bleTable.id,
+          tableNumber: bleTable.tableNumber,
+          assignedWaiterId: bleTable.assignedWaiterId,
+          waiterName: bleTable.waiterName,
+        );
+      }
+
       if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
         _dbService.syncBleDeviceStatus(
           tableId: bleTable.id,
@@ -48,6 +65,93 @@ class ServiceRequestRepository {
         });
       }
     };
+
+    // Listen to RTDB tables to alert if status is set to pending from cloud/web
+    if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+      _startCloudRequestListener();
+    }
+  }
+
+  void _startCloudRequestListener() {
+    _cloudRequestSub?.cancel();
+    _cloudRequestSub = _dbService
+        .getTablesStream(
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+          managerEmail: managerEmail,
+        )
+        .listen((tables) {
+      for (final table in tables) {
+        if (table.flag == 0 || table.status == 'pending') {
+          _triggerRequestNotification(
+            tableId: table.id,
+            tableNumber: table.tableNumber,
+            assignedWaiterId: table.assignedWaiterId,
+            waiterName: table.waiterName,
+          );
+        }
+      }
+    }, onError: (e) {
+      debugPrint('[CLOUD NOTIF LISTENER] Error: $e');
+    });
+  }
+
+  void _triggerRequestNotification({
+    required String tableId,
+    required int tableNumber,
+    String assignedWaiterId = '',
+    String waiterName = '',
+  }) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _lastNotifiedTime[tableId] ?? 0;
+    // Debounce duplicate alerts within 6 seconds
+    if (now - last < 6000) return;
+
+    // 1. If user is a MANAGER: Table service requests are intended for Waiters, NOT the Manager.
+    // Suppress waiter table alerts on the manager's device.
+    if (currentWaiterId.isEmpty) {
+      debugPrint('[NOTIF SCOPE] Table $tableNumber service request suppressed for Manager (waiter-only alert).');
+      return;
+    }
+
+    // 2. If user is a WAITER: Strictly verify the table is assigned to THIS waiter.
+    final isAssigned = (assignedWaiterId.isNotEmpty && assignedWaiterId == currentWaiterId) ||
+        waiterName.contains('($currentWaiterId)') ||
+        (waiterName.isNotEmpty && waiterName == currentWaiterId);
+
+    if (!isAssigned) {
+      debugPrint('[NOTIF SCOPE] Table $tableNumber not assigned to Waiter $currentWaiterId. Alert suppressed.');
+      return;
+    }
+
+    _lastNotifiedTime[tableId] = now;
+    debugPrint('[NOTIFICATION TRIGGER] Showing OS notification for Table $tableNumber ($tableId) to Waiter $currentWaiterId');
+    FCMService().showNativeNotification(
+      title: '🛎️ Table $tableNumber Calling!',
+      body: 'Customer requested immediate assistance at Table $tableNumber 🔴',
+      requestId: tableId,
+      tableNumber: tableNumber,
+    );
+  }
+
+  /// Triggers a manager-specific notification (e.g. system alerts, staff call, supervisor escalation)
+  void triggerManagerAlert({
+    required String title,
+    required String body,
+    required String requestId,
+  }) {
+    // Waiters must NEVER receive manager alerts
+    if (currentWaiterId.isNotEmpty) {
+      debugPrint('[NOTIF SCOPE] Manager alert suppressed on Waiter device ($currentWaiterId)');
+      return;
+    }
+
+    debugPrint('[MANAGER ALERT TRIGGER] Showing manager alert: $title');
+    FCMService().showNativeNotification(
+      title: title,
+      body: body,
+      requestId: requestId,
+    );
   }
 
   // Stream all tables for the manager with live merged BLE online status
@@ -59,9 +163,9 @@ class ServiceRequestRepository {
 
     List<TableModel> computeMerged() {
       if (lastDbTables.isEmpty) {
-        return const [];
+        return _bleService.currentTables;
       }
-      return lastDbTables.map((t) {
+      final merged = lastDbTables.map((t) {
         final isBleOnline = _bleService.isTableOnline(t.id);
         final liveBleTable = _bleService.getLiveBleTable(t.id);
         if (liveBleTable != null) {
@@ -74,6 +178,14 @@ class ServiceRequestRepository {
         }
         return t.copyWith(isDeviceOnline: isBleOnline);
       }).toList();
+
+      for (final bleTable in _bleService.currentTables) {
+        if (!merged.any((m) => m.id == bleTable.id || m.tableNumber == bleTable.tableNumber)) {
+          merged.add(bleTable);
+        }
+      }
+      merged.sort((a, b) => a.tableNumber.compareTo(b.tableNumber));
+      return merged;
     }
 
     controller = StreamController<List<TableModel>>(
@@ -85,20 +197,26 @@ class ServiceRequestRepository {
         ).listen(
           (dbList) {
             lastDbTables = dbList;
-            if (!controller.isClosed) {
-              controller.add(computeMerged());
-            }
+            scheduleMicrotask(() {
+              if (!controller.isClosed) {
+                controller.add(computeMerged());
+              }
+            });
           },
           onError: (e) {
-            if (!controller.isClosed) controller.addError(e);
+            scheduleMicrotask(() {
+              if (!controller.isClosed) controller.addError(e);
+            });
           },
         );
 
         bleSub = _bleService.tablesStream.listen(
           (_) {
-            if (!controller.isClosed) {
-              controller.add(computeMerged());
-            }
+            scheduleMicrotask(() {
+              if (!controller.isClosed) {
+                controller.add(computeMerged());
+              }
+            });
           },
         );
       },
@@ -119,6 +237,13 @@ class ServiceRequestRepository {
     List<TableModel> lastDbTables = [];
 
     List<TableModel> computeMerged() {
+      if (lastDbTables.isEmpty) {
+        return _bleService.currentTables.where((t) {
+          return (t.assignedWaiterId.isNotEmpty && t.assignedWaiterId == waiterId) ||
+              t.waiterName.contains('($waiterId)') ||
+              (t.waiterName.isNotEmpty && t.waiterName == waiterId);
+        }).toList();
+      }
       return lastDbTables.map((t) {
         final isBleOnline = _bleService.isTableOnline(t.id);
         final liveBleTable = _bleService.getLiveBleTable(t.id);
@@ -144,20 +269,26 @@ class ServiceRequestRepository {
         ).listen(
           (dbList) {
             lastDbTables = dbList;
-            if (!controller.isClosed) {
-              controller.add(computeMerged());
-            }
+            scheduleMicrotask(() {
+              if (!controller.isClosed) {
+                controller.add(computeMerged());
+              }
+            });
           },
           onError: (e) {
-            if (!controller.isClosed) controller.addError(e);
+            scheduleMicrotask(() {
+              if (!controller.isClosed) controller.addError(e);
+            });
           },
         );
 
         bleSub = _bleService.tablesStream.listen(
           (_) {
-            if (!controller.isClosed) {
-              controller.add(computeMerged());
-            }
+            scheduleMicrotask(() {
+              if (!controller.isClosed) {
+                controller.add(computeMerged());
+              }
+            });
           },
         );
       },
@@ -256,6 +387,13 @@ class ServiceRequestRepository {
     await _bleService.resetTableStatus(tableId);
   }
 
+  Future<void> resetAllTables() async {
+    await _dbService.resetAllTables(
+      managerPhone: managerPhone,
+    );
+    await _bleService.resetAllTables();
+  }
+
   Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {
     await _dbService.triggerTableRequest(
       tableId,
@@ -265,5 +403,9 @@ class ServiceRequestRepository {
       managerEmail: managerEmail,
     );
     await _bleService.triggerTableRequest(tableId, tableNumber: tableNumber);
+  }
+
+  void dispose() {
+    _cloudRequestSub?.cancel();
   }
 }

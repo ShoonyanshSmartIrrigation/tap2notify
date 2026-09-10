@@ -14,7 +14,11 @@ class FirebaseRealtimeService {
 
   late final FirebaseDatabase _db;
 
-  FirebaseRealtimeService() {
+  FirebaseRealtimeService({FirebaseDatabase? db}) {
+    if (db != null) {
+      _db = db;
+      return;
+    }
     try {
       _db = FirebaseDatabase.instanceFor(
         app: Firebase.app(),
@@ -22,7 +26,9 @@ class FirebaseRealtimeService {
       );
     } catch (e) {
       debugPrint('FirebaseRealtimeService instanceFor fallback: $e');
-      _db = FirebaseDatabase.instance;
+      try {
+        _db = FirebaseDatabase.instance;
+      } catch (_) {}
     }
   }
 
@@ -123,11 +129,6 @@ class FirebaseRealtimeService {
     return ref.onValue.map((event) {
       final snapshot = event.snapshot;
       if (!snapshot.exists || snapshot.value == null) {
-        seedInitialWaitersIfEmpty(
-          managerPhone: resolvedPhone,
-          managerUid: managerUid,
-          managerEmail: managerEmail,
-        );
         return <WaiterModel>[];
       }
 
@@ -140,14 +141,6 @@ class FirebaseRealtimeService {
             waiters.add(WaiterModel.fromMap(value, key.toString()));
           }
         });
-      }
-
-      if (waiters.isEmpty) {
-        seedInitialWaitersIfEmpty(
-          managerPhone: resolvedPhone,
-          managerUid: managerUid,
-          managerEmail: managerEmail,
-        );
       }
 
       waiters.sort((a, b) => a.waiterId.compareTo(b.waiterId));
@@ -227,65 +220,13 @@ class FirebaseRealtimeService {
     }
   }
 
+  // No-op in production: Waiters are registered dynamically by managers
   Future<void> seedInitialWaitersIfEmpty({
     String? managerPhone,
     String? managerUid,
     String? managerEmail,
   }) async {
-    final resolvedPhone = _resolvePhone(managerPhone);
-    final resolvedUid = managerUid ?? _currentAuthUid;
-    final resolvedEmail = managerEmail ?? _currentAuthEmail;
-    final ref = _waitersRef(resolvedPhone);
-
-    final snapshot = await ref.get();
-    if (!snapshot.exists || snapshot.value == null) {
-      final int now = DateTime.now().millisecondsSinceEpoch;
-      final Map<String, dynamic> initialWaiters = {
-        'W001': {
-          'waiterId': 'W001',
-          'name': 'Rahul Sharma',
-          'phone': '+91 98765 00001',
-          'passcode': '1234',
-          'status': 'active',
-          'assignedTableIds': ['table_1', 'table_2'],
-          'managerPhone': resolvedPhone,
-          'manager_phone': resolvedPhone,
-          'managerUid': resolvedUid,
-          'managerEmail': resolvedEmail,
-          'createdAt': now,
-          'updatedAt': now,
-        },
-        'W002': {
-          'waiterId': 'W002',
-          'name': 'Priya Singh',
-          'phone': '+91 98765 00002',
-          'passcode': '1234',
-          'status': 'active',
-          'assignedTableIds': ['table_3', 'table_4'],
-          'managerPhone': resolvedPhone,
-          'manager_phone': resolvedPhone,
-          'managerUid': resolvedUid,
-          'managerEmail': resolvedEmail,
-          'createdAt': now,
-          'updatedAt': now,
-        },
-        'W003': {
-          'waiterId': 'W003',
-          'name': 'Amit Patel',
-          'phone': '+91 98765 00003',
-          'passcode': '1234',
-          'status': 'active',
-          'assignedTableIds': ['table_5'],
-          'managerPhone': resolvedPhone,
-          'manager_phone': resolvedPhone,
-          'managerUid': resolvedUid,
-          'managerEmail': resolvedEmail,
-          'createdAt': now,
-          'updatedAt': now,
-        },
-      };
-      await ref.set(initialWaiters);
-    }
+    // Left intentionally empty for production cleanliness
   }
 
   // -------------------------------------------------------------
@@ -462,11 +403,6 @@ class FirebaseRealtimeService {
     return ref.onValue.map((event) {
       final snapshot = event.snapshot;
       if (!snapshot.exists || snapshot.value == null) {
-        seedInitialTablesIfEmpty(
-          managerPhone: resolvedPhone,
-          managerUid: managerUid,
-          managerEmail: managerEmail,
-        );
         return <TableModel>[];
       }
 
@@ -504,14 +440,6 @@ class FirebaseRealtimeService {
         }
       }
 
-      if (tables.isEmpty) {
-        seedInitialTablesIfEmpty(
-          managerPhone: resolvedPhone,
-          managerUid: managerUid,
-          managerEmail: managerEmail,
-        );
-      }
-
       tables.sort((a, b) => a.tableNumber.compareTo(b.tableNumber));
       return tables;
     });
@@ -530,55 +458,22 @@ class FirebaseRealtimeService {
       managerEmail: managerEmail,
     ).map((allTables) {
       return allTables
-          .where((t) => t.assignedWaiterId == waiterId || t.waiterName == waiterId)
+          .where((t) =>
+              t.assignedWaiterId == waiterId ||
+              t.waiterName == waiterId ||
+              t.waiterName.contains('($waiterId)') ||
+              t.waiterName.contains(waiterId))
           .toList();
     });
   }
 
-  // Seed default 5 tables if none exist for this manager
+  // No-op in production: Tables are configured dynamically by manager or BLE discovery
   Future<void> seedInitialTablesIfEmpty({
     String? managerPhone,
     String? managerUid,
     String? managerEmail,
   }) async {
-    final resolvedPhone = _resolvePhone(managerPhone);
-    final resolvedUid = managerUid ?? _currentAuthUid;
-    final resolvedEmail = managerEmail ?? _currentAuthEmail;
-    final ref = _tablesRef(resolvedPhone);
-
-    final snapshot = await ref.get();
-    if (!snapshot.exists || snapshot.value == null) {
-      final int now = DateTime.now().millisecondsSinceEpoch;
-      final Map<String, dynamic> initialTables = {};
-      final initialWaiters = [
-        'Rahul Sharma (W001)',
-        'Rahul Sharma (W001)',
-        'Priya Singh (W002)',
-        'Priya Singh (W002)',
-        'Amit Patel (W003)'
-      ];
-      final initialWaiterIds = ['W001', 'W001', 'W002', 'W002', 'W003'];
-
-      for (int i = 1; i <= 5; i++) {
-        final tableId = 'table_$i';
-        initialTables[tableId] = {
-          'id': tableId,
-          'table_number': i,
-          'device_id': 'device_$i',
-          'status': 'idle',
-          'flag': -1,
-          'waiter_name': initialWaiters[i - 1],
-          'assigned_waiter_id': initialWaiterIds[i - 1],
-          'assigned_waiter_name': initialWaiters[i - 1],
-          'manager_phone': resolvedPhone,
-          'manager_uid': resolvedUid,
-          'manager_email': resolvedEmail,
-          'created_at': now,
-          'updated_at': now,
-        };
-      }
-      await ref.set(initialTables);
-    }
+    // Left intentionally empty for production cleanliness
   }
 
   // -------------------------------------------------------------
@@ -594,6 +489,9 @@ class FirebaseRealtimeService {
     String? managerUid,
   }) async {
     final resolvedPhone = _resolvePhone(managerPhone);
+    final snap = await _tablesRef(resolvedPhone).child(tableId).get();
+    if (!snap.exists || snap.value is! Map) return;
+
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> tableUpdates = {
       'flag': 1,
@@ -626,6 +524,9 @@ class FirebaseRealtimeService {
     String? managerPhone,
   }) async {
     final resolvedPhone = _resolvePhone(managerPhone);
+    final snap = await _tablesRef(resolvedPhone).child(tableId).get();
+    if (!snap.exists || snap.value is! Map) return;
+
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {
       'flag': -1,
@@ -637,6 +538,26 @@ class FirebaseRealtimeService {
       'status': 'idle',
       'updatedAt': now,
     });
+  }
+
+  // Reset ALL tables for this manager back to Idle state
+  Future<void> resetAllTables({
+    String? managerPhone,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final snap = await _tablesRef(resolvedPhone).get();
+    if (!snap.exists || snap.value is! Map) return;
+    final map = snap.value as Map;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, Object?> updates = {};
+    for (final entry in map.entries) {
+      final key = entry.key.toString();
+      updates['$key/flag'] = -1;
+      updates['$key/status'] = 'idle';
+      updates['$key/updated_at'] = now;
+    }
+    await _tablesRef(resolvedPhone).update(updates);
+    await _requestsRef(resolvedPhone).remove().catchError((_) {});
   }
 
   // Trigger a Table Request (Customer / ESP32 Pressed Button, flag = 0)
@@ -655,25 +576,24 @@ class FirebaseRealtimeService {
     
     // Get existing table assignment
     final snapshot = await _tablesRef(resolvedPhone).child(tableId).get();
-    String wName = '';
-    String wId = '';
-    if (snapshot.exists && snapshot.value is Map) {
-      final map = snapshot.value as Map;
-      wName = map['assigned_waiter_name']?.toString() ?? map['waiter_name']?.toString() ?? '';
-      wId = map['assigned_waiter_id']?.toString() ?? '';
+    if (!snapshot.exists || snapshot.value is! Map) {
+      return;
     }
+    final map = snapshot.value as Map;
+    final String wName = map['assigned_waiter_name']?.toString() ?? map['waiter_name']?.toString() ?? '';
+    final String wId = map['assigned_waiter_id']?.toString() ?? '';
 
     final Map<String, dynamic> updates = {
       'id': tableId,
       'table_number': tNum,
-      'device_id': 'device_$tNum',
+      'device_id': map['device_id'] ?? 'device_$tNum',
       'flag': 0,
       'status': 'pending',
       'manager_phone': resolvedPhone,
       'manager_uid': resolvedUid,
       'manager_email': resolvedEmail,
       'updated_at': now,
-      'created_at': now,
+      'created_at': map['created_at'] ?? now,
     };
     await _tablesRef(resolvedPhone).child(tableId).update(updates);
     await _requestsRef(resolvedPhone).child(tableId).set({
@@ -787,20 +707,30 @@ class FirebaseRealtimeService {
     final resolvedPhone = _resolvePhone(managerPhone);
     final resolvedUid = managerUid ?? _currentAuthUid;
     final resolvedEmail = managerEmail ?? _currentAuthEmail;
+    
+    // CRITICAL: ONLY sync status if this table was configured by the manager in RTDB!
+    // Never auto-create phantom tables in Firebase Realtime Database.
     final tableSnap = await _tablesRef(resolvedPhone).child(tableId).get();
-    if (!tableSnap.exists) {
-      // Table is not part of this manager's configured tables; ignore to prevent phantom tables
+    if (!tableSnap.exists || tableSnap.value is! Map) {
       return;
     }
+    final existingData = tableSnap.value as Map;
 
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {
+      'id': tableId,
+      'table_number': tableNumber,
+      'device_id': existingData['device_id'] ?? 'device_$tableNumber',
       'device_online': isOnline,
       'status': status,
       'flag': flag,
+      'waiter_name': existingData['waiter_name'] ?? existingData['assigned_waiter_name'] ?? '',
+      'assigned_waiter_id': existingData['assigned_waiter_id'] ?? '',
+      'assigned_waiter_name': existingData['assigned_waiter_name'] ?? existingData['waiter_name'] ?? '',
       'manager_phone': resolvedPhone,
       'manager_uid': resolvedUid,
       'manager_email': resolvedEmail,
+      'created_at': existingData['created_at'] ?? now,
       'updated_at': now,
     };
     await _tablesRef(resolvedPhone).child(tableId).update(updates);
@@ -810,6 +740,8 @@ class FirebaseRealtimeService {
         'requestId': tableId,
         'roomNumber': '101',
         'tableNumber': 'T$tableNumber',
+        'assignedWaiterId': existingData['assigned_waiter_id'] ?? '',
+        'assignedWaiterName': existingData['assigned_waiter_name'] ?? existingData['waiter_name'] ?? '',
         'requestType': 'assistance',
         'status': 'pending',
         'priority': 'urgent',
@@ -820,6 +752,12 @@ class FirebaseRealtimeService {
         'createdAt': now,
         'updatedAt': now,
       });
+    } else if (flag == -1) {
+      // Ensure pending requests are completed / marked idle in /serviceRequests
+      await _requestsRef(resolvedPhone).child(tableId).update({
+        'status': 'idle',
+        'updatedAt': now,
+      }).catchError((_) {});
     }
   }
 
@@ -852,6 +790,257 @@ class FirebaseRealtimeService {
 
   Future<void> updateDeviceHeartbeat(String deviceId, Map<String, dynamic> data) async {
     await _devicesRef.child(deviceId).update(data);
+  }
+
+  // Device Tokens Global Registry: /device_tokens/$tokenKey
+  DatabaseReference get _deviceTokensRef => _db.ref('device_tokens');
+
+  // -------------------------------------------------------------
+  // FCM TOKEN MANAGEMENT METHODS (Role-Aware & Device-Isolated)
+  // -------------------------------------------------------------
+
+  static String sanitizeTokenKey(String token) {
+    final clean = token.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    if (clean.length > 40) {
+      return clean.substring(clean.length - 40);
+    }
+    return clean.isNotEmpty ? clean : 'tok_${token.hashCode.abs()}';
+  }
+
+  /// Atomically associates a device token with a specific user and role.
+  /// If the device token was previously assigned to ANY other account (e.g. previous waiter or manager),
+  /// that stale association is automatically revoked and cleaned up across RTDB.
+  Future<void> registerDeviceFcmToken({
+    required String token,
+    required String userId,
+    required String role, // 'waiter' or 'manager'
+    required String managerPhone,
+    String platform = 'android',
+  }) async {
+    if (token.trim().isEmpty || userId.trim().isEmpty) return;
+
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final tokenKey = sanitizeTokenKey(token);
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    try {
+      // 1. Check existing device registration to handle device sharing / account switching
+      final existingSnap = await _deviceTokensRef.child(tokenKey).get();
+      if (existingSnap.exists && existingSnap.value is Map) {
+        final prevData = existingSnap.value as Map;
+        final prevUserId = prevData['userId']?.toString() ?? '';
+        final prevRole = prevData['role']?.toString() ?? '';
+        final prevManagerPhone = prevData['managerPhone']?.toString() ?? '';
+
+        // If the device token previously belonged to a different user or role, disassociate it immediately
+        if (prevUserId.isNotEmpty && (prevUserId != userId || prevRole != role || prevManagerPhone != resolvedPhone)) {
+          debugPrint('[FCM DISASSOCIATION] Purging token from previous account: User $prevUserId ($prevRole) under Manager $prevManagerPhone');
+          if (prevRole == 'waiter') {
+            await _waitersRef(prevManagerPhone).child('$prevUserId/fcmTokens/$tokenKey').remove();
+            final legacySnap = await _waitersRef(prevManagerPhone).child('$prevUserId/fcmToken').get();
+            if (legacySnap.exists && legacySnap.value == token.trim()) {
+              await _waitersRef(prevManagerPhone).child('$prevUserId/fcmToken').remove();
+            }
+          } else if (prevRole == 'manager') {
+            await _usersRef.child('$prevUserId/fcmTokens/$tokenKey').remove();
+          }
+        }
+      }
+
+      // 2. Write to Centralized Device Registry (/device_tokens/$tokenKey)
+      final deviceEntry = {
+        'token': token.trim(),
+        'tokenKey': tokenKey,
+        'userId': userId,
+        'role': role,
+        'managerPhone': resolvedPhone,
+        'platform': platform,
+        'active': true,
+        'updatedAt': now,
+        'createdAt': (existingSnap.exists && existingSnap.value is Map)
+            ? (existingSnap.value as Map)['createdAt'] ?? now
+            : now,
+      };
+      await _deviceTokensRef.child(tokenKey).set(deviceEntry);
+
+      // 3. Update User/Role scoped token node
+      if (role == 'waiter') {
+        final Map<String, dynamic> tokenData = {
+          'token': token.trim(),
+          'platform': platform,
+          'active': true,
+          'role': 'waiter',
+          'updatedAt': now,
+        };
+        final Map<String, dynamic> updates = {
+          'fcmTokens/$tokenKey': tokenData,
+          'fcmToken': token.trim(),
+          'updatedAt': now,
+        };
+        await _waitersRef(resolvedPhone).child(userId).update(updates);
+        debugPrint('[FCM RTDB] Successfully registered token for Waiter $userId under Manager $resolvedPhone');
+      } else if (role == 'manager') {
+        final Map<String, dynamic> tokenData = {
+          'token': token.trim(),
+          'platform': platform,
+          'active': true,
+          'role': 'manager',
+          'updatedAt': now,
+        };
+        await _usersRef.child(userId).child('fcmTokens/$tokenKey').set(tokenData);
+        debugPrint('[FCM RTDB] Successfully registered token for Manager $userId');
+      }
+    } catch (e) {
+      debugPrint('[FCM RTDB ERROR] Failed to register device FCM token: $e');
+    }
+  }
+
+  /// Deactivates a device token upon logout.
+  /// Marks the device entry inactive and purges the token from the user node so no
+  /// further notifications can be sent to this device for that account.
+  Future<void> deactivateDeviceFcmToken({
+    required String token,
+    required String userId,
+    required String role,
+    required String managerPhone,
+  }) async {
+    if (token.trim().isEmpty) return;
+
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final tokenKey = sanitizeTokenKey(token);
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    try {
+      // 1. Mark inactive in central registry
+      await _deviceTokensRef.child(tokenKey).update({
+        'active': false,
+        'loggedOutAt': now,
+        'updatedAt': now,
+      });
+
+      // 2. Remove from user/role node
+      if (role == 'waiter') {
+        if (userId.isNotEmpty) {
+          await _waitersRef(resolvedPhone).child('$userId/fcmTokens/$tokenKey').remove();
+          final snap = await _waitersRef(resolvedPhone).child('$userId/fcmToken').get();
+          if (snap.exists && snap.value == token.trim()) {
+            await _waitersRef(resolvedPhone).child('$userId/fcmToken').remove();
+          }
+        }
+        debugPrint('[FCM RTDB] Deactivated token for Waiter $userId under Manager $resolvedPhone');
+      } else if (role == 'manager') {
+        if (userId.isNotEmpty) {
+          await _usersRef.child(userId).child('fcmTokens/$tokenKey').remove();
+        }
+        debugPrint('[FCM RTDB] Deactivated token for Manager $userId');
+      }
+    } catch (e) {
+      debugPrint('[FCM RTDB ERROR] Failed to deactivate device token: $e');
+    }
+  }
+
+  /// Handles token rotation when onTokenRefresh fires.
+  /// Removes the old token record and registers the fresh token with the current session.
+  Future<void> rotateDeviceFcmToken({
+    required String oldToken,
+    required String newToken,
+    required String userId,
+    required String role,
+    required String managerPhone,
+    String platform = 'android',
+  }) async {
+    if (oldToken.trim().isNotEmpty && oldToken.trim() != newToken.trim()) {
+      await deactivateDeviceFcmToken(
+        token: oldToken,
+        userId: userId,
+        role: role,
+        managerPhone: managerPhone,
+      );
+    }
+    await registerDeviceFcmToken(
+      token: newToken,
+      userId: userId,
+      role: role,
+      managerPhone: managerPhone,
+      platform: platform,
+    );
+  }
+
+  /// Backward-compatible wrapper for Waiter FCM token registration
+  Future<void> saveWaiterFcmToken({
+    required String managerPhone,
+    required String waiterId,
+    required String token,
+    String platform = 'android',
+  }) async {
+    await registerDeviceFcmToken(
+      token: token,
+      userId: waiterId,
+      role: 'waiter',
+      managerPhone: managerPhone,
+      platform: platform,
+    );
+  }
+
+  /// Backward-compatible wrapper for Waiter FCM token removal
+  Future<void> removeWaiterFcmToken({
+    required String managerPhone,
+    required String waiterId,
+    required String token,
+  }) async {
+    await deactivateDeviceFcmToken(
+      token: token,
+      userId: waiterId,
+      role: 'waiter',
+      managerPhone: managerPhone,
+    );
+  }
+
+  /// Query active and verified tokens for a specific waiter
+  Future<List<String>> getWaiterFcmTokens({
+    required String managerPhone,
+    required String waiterId,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final List<String> tokens = [];
+
+    try {
+      final snap = await _waitersRef(resolvedPhone).child(waiterId).get();
+      if (snap.exists && snap.value is Map) {
+        final data = snap.value as Map;
+        if (data['fcmTokens'] is Map) {
+          final map = data['fcmTokens'] as Map;
+          map.forEach((k, v) {
+            if (v is Map && v['token'] != null && v['active'] == true) {
+              tokens.add(v['token'].toString());
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[FCM RTDB ERROR] Failed to get tokens for Waiter $waiterId: $e');
+    }
+
+    return tokens;
+  }
+
+  /// Query active and verified tokens for a manager
+  Future<List<String>> getManagerFcmTokens(String managerUid) async {
+    final List<String> tokens = [];
+    try {
+      final snap = await _usersRef.child('$managerUid/fcmTokens').get();
+      if (snap.exists && snap.value is Map) {
+        final map = snap.value as Map;
+        map.forEach((k, v) {
+          if (v is Map && v['token'] != null && v['active'] == true && v['role'] == 'manager') {
+            tokens.add(v['token'].toString());
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[FCM RTDB ERROR] Failed to get tokens for Manager $managerUid: $e');
+    }
+    return tokens;
   }
 }
 

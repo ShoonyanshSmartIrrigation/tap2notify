@@ -46,24 +46,36 @@ class BleService {
   }
 
   bool isTableOnline(String tableId) {
-    final lastSeen = _lastSeenTimes[tableId];
-    if (lastSeen == null) return false;
-    return DateTime.now().difference(lastSeen).inSeconds <= 20;
+    if (_lastSeenTimes.containsKey(tableId)) {
+      return DateTime.now().difference(_lastSeenTimes[tableId]!).inSeconds <= 20;
+    }
+    final tNum = int.tryParse(tableId.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (tNum != null && _lastSeenTimes.containsKey('table_$tNum')) {
+      return DateTime.now().difference(_lastSeenTimes['table_$tNum']!).inSeconds <= 20;
+    }
+    return false;
   }
 
   TableModel? getLiveBleTable(String tableId) {
-    return _tables[tableId];
+    if (_tables.containsKey(tableId)) return _tables[tableId];
+    final tNum = int.tryParse(tableId.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (tNum != null) {
+      return _tables['table_$tNum'] ??
+          _tables.values.cast<TableModel?>().firstWhere(
+                (t) => t?.tableNumber == tNum,
+                orElse: () => null,
+              );
+    }
+    return null;
   }
 
-  Stream<bool> get isScanningStream => _isScanningController.stream;
-  Stream<BluetoothAdapterState> get adapterStateStream =>
-      _adapterStateController.stream;
+  Stream<bool> get isScanningStream => FlutterBluePlus.isScanning;
+  Stream<BluetoothAdapterState> get adapterStateStream => FlutterBluePlus.adapterState;
+  bool get isScanning => FlutterBluePlus.isScanningNow;
 
   Timer? _staleCheckTimer;
   StreamSubscription? _scanSubscription;
   StreamSubscription? _adapterStateSubscription;
-  bool _isScanning = false;
-  bool get isScanning => _isScanning;
 
   void _emitTables() {
     _tablesController.add(currentTables);
@@ -88,16 +100,15 @@ class BleService {
         await [Permission.bluetooth].request();
       }
 
-      // Periodically remove stale/offline devices (every 3 seconds)
+      // Periodically check for stale/offline devices (every 3 seconds)
       _staleCheckTimer ??= Timer.periodic(const Duration(seconds: 3), (_) {
         _checkStaleDevices();
       });
 
-      // Listen to adapter state changes
+      // Listen to adapter state changes and auto start scan when turned on
       _adapterStateSubscription ??= FlutterBluePlus.adapterState.listen((state) {
-        _adapterStateController.add(state);
         debugPrint('[BLE] Bluetooth Adapter State: $state');
-        if (state == BluetoothAdapterState.on) {
+        if (state == BluetoothAdapterState.on && !FlutterBluePlus.isScanningNow) {
           startScan();
         }
       });
@@ -124,9 +135,6 @@ class BleService {
         await FlutterBluePlus.stopScan();
       }
 
-      _isScanning = true;
-      _isScanningController.add(true);
-
       _scanSubscription?.cancel();
       // Single unbuffered low-latency stream listener (Zero frame drops)
       _scanSubscription = FlutterBluePlus.onScanResults.listen(
@@ -140,20 +148,20 @@ class BleService {
         },
       );
 
-      // Low Latency continuous scan with fine location
+      // Low Latency continuous scan with continuous updates
       await FlutterBluePlus.startScan(
-        timeout: const Duration(minutes: 30),
+        timeout: const Duration(days: 365),
         androidScanMode: AndroidScanMode.lowLatency,
-        androidUsesFineLocation: true,
+        androidUsesFineLocation: false,
         continuousUpdates: true,
       );
     } catch (e) {
       debugPrint('[BLE] startScan error: $e');
-    } finally {
-      _isScanning = false;
-      _isScanningController.add(false);
     }
   }
+
+  @visibleForTesting
+  void processScanResultForTesting(ScanResult result) => _processScanResult(result);
 
   void _processScanResult(ScanResult result) {
     final advName = result.advertisementData.advName;
@@ -165,37 +173,42 @@ class BleService {
         ? advName
         : (deviceAdvName.isNotEmpty ? deviceAdvName : platformName);
 
+    final String upperName = name.toUpperCase();
     final bool hasServiceUuid = result.advertisementData.serviceUuids
         .any((u) => u.toString().toLowerCase().contains(serviceUuid.toLowerCase()));
 
-    final mfgData = result.advertisementData.manufacturerData;
-    final bool hasCustomMfgData = mfgData.containsKey(0xFFFF);
-
     // Match criteria strictly for genuine Tab2Notify ESP32 devices
-    final bool isMatchingDevice = name.startsWith('T2N_') ||
-        name.startsWith('Table_') ||
-        name.startsWith('Table-') ||
-        name.contains('Tap2Notify') ||
-        hasServiceUuid ||
-        hasCustomMfgData;
+    final bool isMatchingDevice = upperName.startsWith('T2N') ||
+        upperName.startsWith('TABLE') ||
+        upperName.contains('TAP2NOTIFY') ||
+        hasServiceUuid;
 
     if (!isMatchingDevice) return;
+
+    final mfgData = result.advertisementData.manufacturerData;
 
     int? extractedTableNumber;
     int? detectedFlag;
     String? detectedStatus;
     String? detectedWaiter;
 
-    // 1. Process Manufacturer Data strictly for our 0xFFFF custom company identifier
-    if (mfgData.containsKey(0xFFFF)) {
-      final List<int> valBytes = mfgData[0xFFFF] ?? [];
-      if (valBytes.isNotEmpty) {
-        try {
-          final String valStr = String.fromCharCodes(valBytes).trim();
+    // 1. Process Manufacturer Data across all company identifiers
+    // (In ESP32 Arduino, setManufacturerData(str) places the first 2 ASCII chars into the 16-bit key)
+    if (mfgData.isNotEmpty) {
+      for (final entry in mfgData.entries) {
+        final key = entry.key;
+        final valBytes = entry.value;
 
-          // Strategy 1: ASCII Separated Payload (e.g. "1:0" or "1:0:12")
-          if (valStr.contains(':')) {
-            final parts = valStr.split(':');
+        // Reconstruct both:
+        // A) Combined string: Key (2 bytes little-endian) + value bytes
+        final keyChars = String.fromCharCodes([key & 0xFF, (key >> 8) & 0xFF]);
+        final rawValStr = String.fromCharCodes(valBytes).trim();
+        final combinedStr = '$keyChars$rawValStr'.trim();
+
+        for (final candidate in [combinedStr, rawValStr]) {
+          // Strategy 1: Delimited Payload (e.g. "2:0:1", "2,0,1", "2;0;1", "2:0", "2 -1 3")
+          if (candidate.contains(':') || candidate.contains(',') || candidate.contains(';') || candidate.contains('-')) {
+            final parts = candidate.split(RegExp(r'[:,;\s]')).where((s) => s.isNotEmpty).toList();
             if (parts.length >= 2) {
               final tNum = int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), ''));
               final f = int.tryParse(parts[1].trim());
@@ -205,57 +218,75 @@ class BleService {
                 if (f == 0) detectedStatus = 'pending';
                 if (f == 1) detectedStatus = 'accepted';
                 if (f == -1) detectedStatus = 'idle';
+                break;
               }
             }
           }
 
-          // Strategy 2: Binary Protocol [TableNum, Flag, Sequence]
-          if (detectedFlag == null && valBytes.length >= 2) {
-            final tNum = valBytes[0];
-            final rawFlag = valBytes[1];
-            if (tNum > 0 && tNum <= 100) {
-              extractedTableNumber = tNum;
-              if (rawFlag == 0) {
-                detectedFlag = 0;
-                detectedStatus = 'pending';
-              } else if (rawFlag == 1) {
-                detectedFlag = 1;
-                detectedStatus = 'accepted';
-              } else if (rawFlag == 0xFF || rawFlag == 255 || rawFlag == -1) {
-                detectedFlag = -1;
-                detectedStatus = 'idle';
+          // Strategy 2: JSON Payload
+          if (detectedFlag == null && candidate.contains('{')) {
+            try {
+              final json = jsonDecode(candidate);
+              if (json['t'] != null) {
+                final parsed = int.tryParse(json['t'].toString());
+                if (parsed != null && parsed > 0 && parsed <= 100) {
+                  extractedTableNumber = parsed;
+                }
               }
-            }
+              if (json['f'] != null) {
+                final f = int.tryParse(json['f'].toString());
+                if (f != null) {
+                  detectedFlag = f;
+                  if (f == 0) detectedStatus = 'pending';
+                  if (f == 1) detectedStatus = 'accepted';
+                  if (f == -1) detectedStatus = 'idle';
+                  break;
+                }
+              }
+            } catch (_) {}
           }
+        }
 
-          // Strategy 3: JSON Payload
-          if (detectedFlag == null && valStr.contains('{')) {
-            final json = jsonDecode(valStr);
-            if (json['t'] != null) {
-              final parsed = int.tryParse(json['t'].toString());
-              if (parsed != null && parsed > 0 && parsed <= 100) {
-                extractedTableNumber = parsed;
-              }
-            }
-            if (json['f'] != null) {
-              final f = int.tryParse(json['f'].toString());
-              if (f != null) {
-                detectedFlag = f;
-                if (f == 0) detectedStatus = 'pending';
-                if (f == 1) detectedStatus = 'accepted';
-                if (f == -1) detectedStatus = 'idle';
+        if (detectedFlag != null) break;
+
+        // Strategy 3: Binary Protocol [TableNum, Flag, Sequence]
+        // Guard: Only execute if payload was NOT an ASCII string
+        if (detectedFlag == null && !rawValStr.contains(':') && !rawValStr.contains(',')) {
+          final combinedBytes = [key & 0xFF, (key >> 8) & 0xFF, ...valBytes];
+          for (final bytes in [combinedBytes, valBytes]) {
+            if (bytes.length >= 2) {
+              final tNum = bytes[0];
+              final rawFlag = bytes[1];
+              if (tNum > 0 && tNum <= 100) {
+                extractedTableNumber = tNum;
+                if (rawFlag == 0) {
+                  detectedFlag = 0;
+                  detectedStatus = 'pending';
+                  break;
+                } else if (rawFlag == 1) {
+                  detectedFlag = 1;
+                  detectedStatus = 'accepted';
+                  break;
+                } else if (rawFlag == 0xFF || rawFlag == 255 || rawFlag == -1) {
+                  detectedFlag = -1;
+                  detectedStatus = 'idle';
+                  break;
+                }
               }
             }
           }
-        } catch (_) {}
+        }
+
+        if (detectedFlag != null) break;
       }
     }
 
     // 2. Extract Table Number strictly from Tab2Notify Device Names
     if (extractedTableNumber == null && name.isNotEmpty) {
-      final match = RegExp(r'T2N_(?:Table_|T)?(\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'Table[_-](\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'Tap2Notify[_-](\d+)', caseSensitive: false).firstMatch(name);
+      final match = RegExp(r'T2N[_-]?(?:Table[_-]?|T)?(\d+)', caseSensitive: false).firstMatch(name) ??
+                    RegExp(r'Table[_-]?(\d+)', caseSensitive: false).firstMatch(name) ??
+                    RegExp(r'Tap2Notify[_-]?(\d+)', caseSensitive: false).firstMatch(name) ??
+                    RegExp(r'(?:REQ|ACC|IDLE)[_-]?(?:T)?(\d+)', caseSensitive: false).firstMatch(name);
       if (match != null) {
         final parsed = int.tryParse(match.group(1) ?? '');
         if (parsed != null && parsed > 0 && parsed <= 100) {
@@ -269,17 +300,36 @@ class BleService {
       return;
     }
 
-    // 3. Fallback to Device Name status (e.g. T2N_T1_REQ, T2N_T1_ACC, T2N_T1_IDLE)
-    if (detectedFlag == null && name.isNotEmpty) {
-      if (name.contains('_REQ') || name.contains('PENDING')) {
-        detectedFlag = 0;
-        detectedStatus = 'pending';
-      } else if (name.contains('_ACC') || name.contains('ACCEPTED') || name.contains('_OK')) {
-        detectedFlag = 1;
-        detectedStatus = 'accepted';
-      } else if (name.contains('_IDLE')) {
-        detectedFlag = -1;
-        detectedStatus = 'idle';
+    // 3. Fallback to LIVE Advertisement Name status (e.g. T2N_T1_REQ, T2N_T1_ACC, T2N_T1_IDLE)
+    // Inspect live advertised packet name (advName or deviceAdvName)
+    if (detectedFlag == null) {
+      final liveName = advName.isNotEmpty ? advName : deviceAdvName;
+      if (liveName.isNotEmpty) {
+        final upper = liveName.toUpperCase();
+        if (upper.contains('REQ') ||
+            upper.contains('PEND') ||
+            upper.contains('CALL') ||
+            upper.contains('HELP') ||
+            upper.contains('RED') ||
+            upper.contains('ALERT')) {
+          detectedFlag = 0;
+          detectedStatus = 'pending';
+        } else if (upper.contains('ACC') ||
+            upper.contains('GREEN') ||
+            upper.contains('SERVE') ||
+            upper.contains('CONFIRM') ||
+            upper.contains('OK')) {
+          detectedFlag = 1;
+          detectedStatus = 'accepted';
+        } else if (upper.contains('IDLE') ||
+            upper.contains('STANDBY') ||
+            upper.contains('READY') ||
+            upper.contains('CLEAR') ||
+            upper.contains('OFF') ||
+            upper.contains('DONE')) {
+          detectedFlag = -1;
+          detectedStatus = 'idle';
+        }
       }
     }
 
@@ -290,7 +340,25 @@ class BleService {
     _lastSeenTimes[tableId] = DateTime.now();
 
     final existing = _tables[tableId];
-    final finalFlag = detectedFlag ?? (existing?.flag ?? -1);
+
+    // If this packet contained no status payload (e.g. Scan Response packet):
+    // Preserve existing table state without altering flag or defaulting to accepted.
+    if (detectedFlag == null) {
+      if (existing != null) {
+        // Device is transmitting; ensure online presence without altering status
+        if (!existing.isDeviceOnline) {
+          final onlineTable = existing.copyWith(isDeviceOnline: true);
+          _tables[tableId] = onlineTable;
+          _emitTables();
+        }
+        return;
+      }
+      // Newly discovered table with unknown status defaults strictly to IDLE (-1)
+      detectedFlag = -1;
+      detectedStatus = 'idle';
+    }
+
+    final finalFlag = detectedFlag;
     final finalStatus = detectedStatus ??
         (finalFlag == 0 ? 'pending' : (finalFlag == 1 ? 'accepted' : 'idle'));
     final finalWaiter = detectedWaiter ?? (existing?.waiterName ?? '');
@@ -385,6 +453,23 @@ class BleService {
       _emitTables();
       onDeviceDiscovered?.call(updated);
     }
+  }
+
+  // Reset all tracked tables back to IDLE
+  Future<void> resetAllTables() async {
+    final updatedMap = <String, TableModel>{};
+    _tables.forEach((key, table) {
+      final updated = table.copyWith(
+        flag: -1,
+        status: 'idle',
+        waiterName: '',
+      );
+      updatedMap[key] = updated;
+      onDeviceDiscovered?.call(updated);
+    });
+    _tables.clear();
+    _tables.addAll(updatedMap);
+    _emitTables();
   }
 
   Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {

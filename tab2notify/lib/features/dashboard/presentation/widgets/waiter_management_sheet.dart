@@ -28,7 +28,7 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
   final _nameController = TextEditingController();
   final _idController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _pinController = TextEditingController(text: '1234');
+  final _pinController = TextEditingController();
   bool _isAdding = false;
   bool _isLoading = false;
 
@@ -57,6 +57,16 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
       return;
     }
 
+    if (pin.isEmpty || pin.length < 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a 4-digit login PIN.'),
+          backgroundColor: Color(0xFFE53935),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final repo = ref.read(serviceRequestRepositoryProvider);
@@ -64,7 +74,7 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
         waiterId: id,
         name: name,
         phone: phone,
-        passcode: pin.isNotEmpty ? pin : '1234',
+        passcode: pin,
         status: 'active',
         managerPhone: repo.managerPhone,
         managerUid: repo.managerUid,
@@ -77,7 +87,7 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
       _nameController.clear();
       _idController.clear();
       _phoneController.clear();
-      _pinController.text = '1234';
+      _pinController.clear();
 
       setState(() => _isAdding = false);
 
@@ -364,8 +374,8 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                                     controller: _pinController,
                                     keyboardType: TextInputType.number,
                                     decoration: InputDecoration(
-                                      labelText: 'Login PIN',
-                                      hintText: '1234',
+                                      labelText: 'Login PIN (4 digits)',
+                                      hintText: 'e.g. 5821',
                                       isDense: true,
                                       prefixIcon: const Icon(
                                         Icons.pin_outlined,
@@ -384,7 +394,7 @@ class _WaiterManagementSheetState extends ConsumerState<WaiterManagementSheet> {
                               keyboardType: TextInputType.phone,
                               decoration: InputDecoration(
                                 labelText: 'Phone Number (Optional)',
-                                hintText: '+91 98765 43210',
+                                hintText: '10-digit mobile number',
                                 isDense: true,
                                 prefixIcon: const Icon(Icons.phone_outlined),
                                 border: OutlineInputBorder(

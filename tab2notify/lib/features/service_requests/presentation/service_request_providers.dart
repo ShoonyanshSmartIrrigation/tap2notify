@@ -12,9 +12,7 @@ import '../domain/service_request_model.dart';
 import '../domain/table_model.dart';
 
 final bleServiceProvider = Provider<BleService>((ref) {
-  final service = BleService();
-  ref.onDispose(() => service.dispose());
-  return service;
+  return BleService();
 });
 
 final serviceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref) {
@@ -22,35 +20,40 @@ final serviceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
   final currentWaiter = ref.watch(currentLoggedWaiterProvider);
 
+  ServiceRequestRepository repo;
   // If a waiter floor session is active, construct repository directly from waiter credentials
   if (currentWaiter != null && currentWaiter.managerPhone.isNotEmpty) {
-    return ServiceRequestRepository(
+    repo = ServiceRequestRepository(
       bleService,
       dbService,
       managerPhone: currentWaiter.managerPhone,
       managerUid: currentWaiter.managerUid,
       managerEmail: currentWaiter.managerEmail,
+      currentWaiterId: currentWaiter.waiterId,
+    );
+  } else {
+    // Otherwise, construct from authenticated manager's profile
+    final authUser = ref.watch(authStateProvider).value;
+    final profileAsync = ref.watch(currentUserProfileProvider);
+
+    final managerPhone = (profileAsync.value?.phone.isNotEmpty ?? false)
+        ? profileAsync.value!.phone
+        : (authUser?.phoneNumber ?? authUser?.uid ?? '');
+
+    final managerUid = authUser?.uid ?? '';
+    final managerEmail = profileAsync.value?.email ?? authUser?.email;
+
+    repo = ServiceRequestRepository(
+      bleService,
+      dbService,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+      managerEmail: managerEmail,
     );
   }
 
-  // Otherwise, construct from authenticated manager's profile
-  final authUser = ref.watch(authStateProvider).value;
-  final profileAsync = ref.watch(currentUserProfileProvider);
-
-  final managerPhone = (profileAsync.value?.phone.isNotEmpty ?? false)
-      ? profileAsync.value!.phone
-      : (authUser?.phoneNumber ?? authUser?.uid ?? '');
-
-  final managerUid = authUser?.uid ?? '';
-  final managerEmail = profileAsync.value?.email ?? authUser?.email;
-
-  return ServiceRequestRepository(
-    bleService,
-    dbService,
-    managerPhone: managerPhone,
-    managerUid: managerUid,
-    managerEmail: managerEmail,
-  );
+  ref.onDispose(() => repo.dispose());
+  return repo;
 });
 
 // Real-time Stream of all Dynamic Hotel Tables (from Firebase Realtime Database)
@@ -88,7 +91,8 @@ class CurrentLoggedWaiterNotifier extends Notifier<WaiterModel?> {
       final raw = prefs.getString(_storageKey);
       if (raw != null && raw.isNotEmpty) {
         final map = jsonDecode(raw) as Map<String, dynamic>;
-        return WaiterModel.fromMap(map, map['waiterId']?.toString() ?? 'W001');
+        final wId = map['waiterId']?.toString() ?? map['id']?.toString() ?? '';
+        return WaiterModel.fromMap(map, wId);
       }
     } catch (e) {
       debugPrint('[WAITER_SESSION] Error loading saved waiter session: $e');

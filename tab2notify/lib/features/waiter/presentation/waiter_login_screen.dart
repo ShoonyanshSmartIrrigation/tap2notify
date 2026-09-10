@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../core/services/fcm_service.dart';
 import '../../../../core/services/firebase_realtime_service.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_text_field.dart';
@@ -281,6 +282,10 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
         );
         _failedAttempts = 0;
         await ref.read(currentLoggedWaiterProvider.notifier).setWaiter(waiter);
+
+        // Register device FCM token for this waiter with session isolation
+        await FCMService().syncWaiterSession(waiter.managerPhone, waiter.waiterId);
+
         if (mounted) {
           context.go('/waiter-dashboard');
         }

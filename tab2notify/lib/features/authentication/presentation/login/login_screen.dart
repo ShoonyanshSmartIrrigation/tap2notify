@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/errors/firebase_exception_mapper.dart';
+import '../../../../core/services/fcm_service.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../auth_providers.dart';
@@ -42,6 +43,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           }
           return;
         }
+
+        // Register manager device FCM token with session isolation
+        final managerPhone = userProfile.phone.isNotEmpty ? userProfile.phone : userProfile.uid;
+        await FCMService().syncManagerSession(managerPhone, userProfile.uid);
 
         if (mounted) {
           context.go('/dashboard');

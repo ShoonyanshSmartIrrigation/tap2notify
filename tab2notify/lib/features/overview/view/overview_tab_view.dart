@@ -21,14 +21,14 @@ class OverviewTabView extends StatelessWidget {
     final acceptedList = tables.where((t) => t.isAccepted).toList();
     final idleList = tables.where((t) => !t.isPending && !t.isAccepted).toList();
 
-    final totalCount = tables.isNotEmpty ? tables.length : 6;
+    final totalCount = tables.length;
     final pendingCount = pendingList.length;
     final acceptedCount = acceptedList.length;
-    final idleCount = tables.isNotEmpty ? idleList.length : 6;
+    final idleCount = idleList.length;
 
     final pendingPercent = totalCount > 0 ? (pendingCount / totalCount) * 100 : 0.0;
     final acceptedPercent = totalCount > 0 ? (acceptedCount / totalCount) * 100 : 0.0;
-    final idlePercent = totalCount > 0 ? (idleCount / totalCount) * 100 : 100.0;
+    final idlePercent = totalCount > 0 ? (idleCount / totalCount) * 100 : 0.0;
 
     final List<DonutSliceData> chartSlices = [
       if (pendingCount > 0)
@@ -45,11 +45,11 @@ class OverviewTabView extends StatelessWidget {
           displayValue: '$acceptedCount',
           color: const Color(0xFF2E7D32),
         ),
-      if (idleCount > 0 || (pendingCount == 0 && acceptedCount == 0))
+      if (idleCount > 0)
         DonutSliceData(
           label: 'Idle',
-          value: (idleCount > 0 ? idleCount : 6).toDouble(),
-          displayValue: '${idleCount > 0 ? idleCount : 6}',
+          value: idleCount.toDouble(),
+          displayValue: '$idleCount',
           color: const Color(0xFFFF9800),
         ),
     ];
@@ -516,12 +516,22 @@ class DonutChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final double total = slices.fold(0.0, (sum, s) => sum + s.value);
-    if (total == 0) return;
-
     final center = Offset(size.width / 2, size.height / 2);
     final strokeWidth = size.width * 0.20;
     final radius = (size.width - strokeWidth) / 2;
     final rect = Rect.fromCircle(center: center, radius: radius);
+
+    if (total == 0) {
+      final placeholderPaint = Paint()
+        ..color = isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.06)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.butt;
+      canvas.drawCircle(center, radius, placeholderPaint);
+      return;
+    }
 
     double startAngle = -math.pi / 2; // Start from top
     const double gapAngle = 0.03; // Sleek slice gap

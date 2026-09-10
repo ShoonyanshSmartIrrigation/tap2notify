@@ -30,6 +30,15 @@
     "devices": {
       ".read": "auth != null",
       ".write": "auth != null"
+    },
+    "device_tokens": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["userId", "role", "active", "managerPhone"]
+    },
+    "notifications_queue": {
+      ".read": "auth != null",
+      ".write": "auth != null"
     }
   }
 }

@@ -46,6 +46,7 @@ dependencies:
   http: ^1.6.0
   flutter_blue_plus: ^1.35.4
   permission_handler: ^11.4.0
+  audioplayers: ^6.7.1
 
 dev_dependencies:
   flutter_test:

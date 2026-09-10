@@ -594,6 +594,7 @@ class FirebaseRealtimeService {
       'manager_email': resolvedEmail,
       'updated_at': now,
       'created_at': map['created_at'] ?? now,
+      'request_sent_at': now,
     };
     await _tablesRef(resolvedPhone).child(tableId).update(updates);
     await _requestsRef(resolvedPhone).child(tableId).set({
@@ -611,6 +612,8 @@ class FirebaseRealtimeService {
       'managerEmail': resolvedEmail,
       'createdAt': now,
       'updatedAt': now,
+      'requestSentAt': now,
+      'request_sent_at': now,
     });
   }
 
@@ -733,8 +736,13 @@ class FirebaseRealtimeService {
       'created_at': existingData['created_at'] ?? now,
       'updated_at': now,
     };
+    if (flag == 0) {
+      final existingSentAt = existingData['request_sent_at'] ?? existingData['requestSentAt'];
+      updates['request_sent_at'] = (existingData['flag'] == 0 && existingSentAt != null) ? existingSentAt : now;
+    }
     await _tablesRef(resolvedPhone).child(tableId).update(updates);
     if (flag == 0) {
+      final int sentAt = updates['request_sent_at'] as int? ?? now;
       // Ensure urgent request exists in /serviceRequests/$managerPhone
       await _requestsRef(resolvedPhone).child(tableId).set({
         'requestId': tableId,
@@ -751,6 +759,8 @@ class FirebaseRealtimeService {
         'managerEmail': resolvedEmail,
         'createdAt': now,
         'updatedAt': now,
+        'requestSentAt': sentAt,
+        'request_sent_at': sentAt,
       });
     } else if (flag == -1) {
       // Ensure pending requests are completed / marked idle in /serviceRequests

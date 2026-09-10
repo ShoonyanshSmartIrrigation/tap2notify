@@ -237,56 +237,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  void _confirmResetAllTables() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: const [
-            Icon(Icons.restart_alt_rounded, color: Colors.orange),
-            SizedBox(width: 10),
-            Text('Reset All Tables'),
-          ],
-        ),
-        content: const Text(
-          'Are you sure you want to mark ALL hotel tables as IDLE and clear all pending/accepted service requests?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              Navigator.pop(ctx);
-              final repo = ref.read(serviceRequestRepositoryProvider);
-              await repo.resetAllTables();
-              if (mounted) {
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('✓ All tables successfully reset to IDLE.'),
-                    backgroundColor: Color(0xFF2E7D32),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-            child: const Text('RESET ALL', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showBleInfoModal(
     List<TableModel> tables,
     bool isScanning,
@@ -587,7 +537,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             adapterState: adapterState,
             onBleInfoTap: () =>
                 _showBleInfoModal(tablesList, bleScanState, adapterState),
-            onResetAllTables: _confirmResetAllTables,
           ),
 
           // Tab 1: Overview Analytics

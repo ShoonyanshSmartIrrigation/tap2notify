@@ -20,7 +20,6 @@ class TablesTabView extends StatelessWidget {
   final VoidCallback onConfigureTables;
   final VoidCallback onManageWaiters;
   final VoidCallback onAssignWaiters;
-  final VoidCallback? onResetAllTables;
 
   const TablesTabView({
     super.key,
@@ -38,7 +37,6 @@ class TablesTabView extends StatelessWidget {
     required this.onConfigureTables,
     required this.onManageWaiters,
     required this.onAssignWaiters,
-    this.onResetAllTables,
   });
 
   @override
@@ -188,45 +186,6 @@ class TablesTabView extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (onResetAllTables != null) ...[
-                        Container(width: 1, height: 32, color: Colors.grey.withValues(alpha: 0.2)),
-
-                        // Reset All Tables to Idle
-                        Expanded(
-                          child: InkWell(
-                            onTap: onResetAllTables,
-                            borderRadius: BorderRadius.circular(12),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.withValues(alpha: 0.15),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.restart_alt_rounded,
-                                      color: Colors.orange,
-                                      size: 18,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'Reset All',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),

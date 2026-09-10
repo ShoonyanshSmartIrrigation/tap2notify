@@ -13,6 +13,7 @@ class ServiceRequestModel {
   final int? updatedAt;
   final String? acceptedBy;
   final int? acceptedAt;
+  final int? requestSentAt;
 
   const ServiceRequestModel({
     required this.requestId,
@@ -29,6 +30,7 @@ class ServiceRequestModel {
     this.updatedAt,
     this.acceptedBy,
     this.acceptedAt,
+    this.requestSentAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -48,6 +50,8 @@ class ServiceRequestModel {
       'updatedAt': updatedAt,
       'acceptedBy': acceptedBy,
       'acceptedAt': acceptedAt,
+      'requestSentAt': requestSentAt,
+      'request_sent_at': requestSentAt,
     };
   }
 
@@ -67,6 +71,7 @@ class ServiceRequestModel {
       updatedAt: (map['updatedAt'] as num?)?.toInt(),
       acceptedBy: map['acceptedBy'] as String?,
       acceptedAt: (map['acceptedAt'] as num?)?.toInt(),
+      requestSentAt: (map['requestSentAt'] as num?)?.toInt() ?? (map['request_sent_at'] as num?)?.toInt(),
     );
   }
 
@@ -75,6 +80,7 @@ class ServiceRequestModel {
     int? updatedAt,
     String? acceptedBy,
     int? acceptedAt,
+    int? requestSentAt,
     String? managerPhone,
     String? managerUid,
     String? managerEmail,
@@ -94,6 +100,7 @@ class ServiceRequestModel {
       updatedAt: updatedAt ?? this.updatedAt,
       acceptedBy: acceptedBy ?? this.acceptedBy,
       acceptedAt: acceptedAt ?? this.acceptedAt,
+      requestSentAt: requestSentAt ?? this.requestSentAt,
     );
   }
 }

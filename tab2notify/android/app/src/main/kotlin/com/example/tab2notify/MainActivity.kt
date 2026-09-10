@@ -39,7 +39,9 @@ class MainActivity : FlutterActivity() {
                         val requestId = call.argument<String>("requestId") ?: ""
                         val tableNumber = call.argument<Int>("tableNumber") ?: 1
                         val notificationId = call.argument<Int>("notificationId") ?: tableNumber
-                        showNativeNotification(title, body, requestId, tableNumber, notificationId)
+                        val channelId = call.argument<String>("channelId") ?: "waiter_requests_channel"
+                        val sound = call.argument<String>("sound") ?: ""
+                        showNativeNotification(title, body, requestId, tableNumber, notificationId, channelId, sound)
                         result.success(true)
                     }
                     "clearNotification" -> {
@@ -53,7 +55,11 @@ class MainActivity : FlutterActivity() {
                         pendingRequestId = null
                     }
                     "playAudioPrompt" -> {
-                        playNativeAudioPrompt()
+                        playNativeAudioPrompt(R.raw.incoming_prompt)
+                        result.success(true)
+                    }
+                    "playManagerAudioPrompt" -> {
+                        playNativeAudioPrompt(R.raw.please_hold)
                         result.success(true)
                     }
                     "stopAudioPrompt" -> {
@@ -71,10 +77,10 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
-    private fun playNativeAudioPrompt() {
+    private fun playNativeAudioPrompt(rawResourceId: Int = R.raw.incoming_prompt) {
         try {
             stopNativeAudioPrompt()
-            mediaPlayer = MediaPlayer.create(this, R.raw.incoming_prompt)?.apply {
+            mediaPlayer = MediaPlayer.create(this, rawResourceId)?.apply {
                 setOnCompletionListener { mp ->
                     mp.release()
                     if (mediaPlayer == mp) {
@@ -121,7 +127,9 @@ class MainActivity : FlutterActivity() {
         body: String,
         requestId: String,
         tableNumber: Int,
-        notificationId: Int
+        notificationId: Int,
+        channelId: String = "waiter_requests_channel",
+        sound: String = ""
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -139,9 +147,21 @@ class MainActivity : FlutterActivity() {
 
         val pendingIntent = PendingIntent.getActivity(this, notificationId, intent, flags)
 
-        val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.incoming_prompt)
+        val targetChannelId = if (channelId == "manager_escalation_channel" || sound == "please_hold") {
+            "manager_escalation_channel"
+        } else {
+            "waiter_requests_channel"
+        }
 
-        val builder = NotificationCompat.Builder(this, "waiter_requests_channel")
+        val soundRes = if (targetChannelId == "manager_escalation_channel") {
+            R.raw.please_hold
+        } else {
+            R.raw.incoming_prompt
+        }
+
+        val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + soundRes)
+
+        val builder = NotificationCompat.Builder(this, targetChannelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
@@ -158,28 +178,36 @@ class MainActivity : FlutterActivity() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channelId = "waiter_requests_channel"
-            val channelName = "Waiter Service Requests"
-            val channelDescription = "High-priority alerts when customers at assigned tables request service"
-            val importance = NotificationManager.IMPORTANCE_HIGH
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.incoming_prompt)
             val audioAttributes = AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                 .build()
 
-            val channel = NotificationChannel(channelId, channelName, importance).apply {
-                description = channelDescription
+            // 1. Waiter Request Channel (Incoming_Prompt)
+            val waiterSoundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.incoming_prompt)
+            val waiterChannel = NotificationChannel("waiter_requests_channel", "Waiter Service Requests", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "High-priority alerts when customers at assigned tables request service"
                 enableLights(true)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 500, 250, 500)
-                setSound(soundUri, audioAttributes)
+                setSound(waiterSoundUri, audioAttributes)
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
             }
+            notificationManager.createNotificationChannel(waiterChannel)
 
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            // 2. Manager Escalation Channel (Please_Hold)
+            val managerSoundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.please_hold)
+            val managerChannel = NotificationChannel("manager_escalation_channel", "Manager Escalation Alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "High-priority alerts when table requests remain pending for more than 20 seconds"
+                enableLights(true)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 250, 500)
+                setSound(managerSoundUri, audioAttributes)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            notificationManager.createNotificationChannel(managerChannel)
         }
     }
 }

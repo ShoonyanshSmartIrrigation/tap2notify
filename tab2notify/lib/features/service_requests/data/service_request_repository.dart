@@ -16,6 +16,10 @@ class ServiceRequestRepository {
   final String currentWaiterId;
 
   final Map<String, int> _lastNotifiedTime = {};
+  final Set<String> _escalatedTableIds = {};
+  final Map<String, int> _pendingEntryTimestamps = {};
+  List<TableModel> _cachedTables = [];
+  Timer? _managerEscalationTicker;
   StreamSubscription<List<TableModel>>? _cloudRequestSub;
 
   ServiceRequestRepository(
@@ -70,6 +74,11 @@ class ServiceRequestRepository {
     // Listen to RTDB tables to alert if status is set to pending from cloud/web
     if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
       _startCloudRequestListener();
+      if (currentWaiterId.isEmpty) {
+        _managerEscalationTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+          _checkManagerEscalation(_cachedTables);
+        });
+      }
     }
   }
 
@@ -82,6 +91,7 @@ class ServiceRequestRepository {
           managerEmail: managerEmail,
         )
         .listen((tables) {
+      _cachedTables = tables;
       for (final table in tables) {
         if (table.flag == 0 || table.status == 'pending') {
           _triggerRequestNotification(
@@ -92,9 +102,42 @@ class ServiceRequestRepository {
           );
         }
       }
+      if (currentWaiterId.isEmpty) {
+        _checkManagerEscalation(tables);
+      }
     }, onError: (e) {
       debugPrint('[CLOUD NOTIF LISTENER] Error: $e');
     });
+  }
+
+  void _checkManagerEscalation(List<TableModel> tables) {
+    if (currentWaiterId.isNotEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    for (final table in tables) {
+      if (table.isPending) {
+        final sentTime = table.requestSentAt ?? _pendingEntryTimestamps[table.id] ?? now;
+        _pendingEntryTimestamps[table.id] ??= sentTime;
+
+        final elapsed = now - (_pendingEntryTimestamps[table.id] ?? sentTime);
+        if (elapsed >= 20000 && !_escalatedTableIds.contains(table.id)) {
+          _escalatedTableIds.add(table.id);
+          debugPrint('[MANAGER ESCALATION] Table ${table.tableNumber} pending for ${elapsed ~/ 1000}s >= 20s. Alerting manager.');
+          NotificationAudioService().playManagerEscalationPrompt(tableId: table.id);
+          FCMService().showNativeNotification(
+            title: '⚠️ Unattended Table ${table.tableNumber} Alert!',
+            body: 'Table ${table.tableNumber} (${table.waiterName.isNotEmpty ? table.waiterName : "Unassigned"}) has been pending for >20s!',
+            requestId: table.id,
+            tableNumber: table.tableNumber,
+            channelId: 'manager_escalation_channel',
+            sound: 'please_hold',
+          );
+        }
+      } else {
+        _pendingEntryTimestamps.remove(table.id);
+        _escalatedTableIds.remove(table.id);
+      }
+    }
   }
 
   void _triggerRequestNotification({
@@ -415,5 +458,6 @@ class ServiceRequestRepository {
 
   void dispose() {
     _cloudRequestSub?.cancel();
+    _managerEscalationTicker?.cancel();
   }
 }

@@ -257,6 +257,8 @@ class FCMService {
     required String requestId,
     int? tableNumber,
     int? notificationId,
+    String? channelId,
+    String? sound,
   }) async {
     try {
       final tNum = tableNumber ??
@@ -268,8 +270,10 @@ class FCMService {
         'requestId': requestId,
         'tableNumber': tNum,
         'notificationId': notificationId ?? tNum,
+        if (channelId != null) 'channelId': channelId,
+        if (sound != null) 'sound': sound,
       });
-      debugPrint('[NATIVE NOTIF] Dispatched notification for $requestId (Table $tNum)');
+      debugPrint('[NATIVE NOTIF] Dispatched notification for $requestId (Table $tNum, channel: $channelId)');
     } catch (e) {
       debugPrint('[NATIVE NOTIF ERROR] Failed to display native notification: $e');
     }
@@ -332,10 +336,13 @@ class FCMService {
     final data = message.data;
     final requestId = data['requestId']?.toString() ?? data['tableId']?.toString() ?? '';
     final waiterId = data['waiterId']?.toString();
+    final type = data['type']?.toString();
 
     // If active user is an authorized WAITER receiving an incoming table request, play audio prompt
     if (_currentUserRole == 'waiter') {
       NotificationAudioService().playIncomingRequestPrompt(tableId: requestId);
+    } else if (_currentUserRole == 'manager' && type == 'manager_escalation') {
+      NotificationAudioService().playManagerEscalationPrompt(tableId: requestId);
     }
 
     final context = AppRouter.navigatorKey.currentContext;

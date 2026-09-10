@@ -13,6 +13,7 @@ class TableModel {
   final int createdAt;
   final int? updatedAt;
   final int? acceptedAt;
+  final int? requestSentAt;
 
   const TableModel({
     required this.id,
@@ -29,6 +30,7 @@ class TableModel {
     required this.createdAt,
     this.updatedAt,
     this.acceptedAt,
+    this.requestSentAt,
   });
 
   bool get isPending => flag == 0 || status == 'pending' || status == 'new_request';
@@ -54,6 +56,7 @@ class TableModel {
       'created_at': createdAt,
       'updated_at': updatedAt,
       'accepted_at': acceptedAt,
+      'request_sent_at': requestSentAt,
     };
   }
 
@@ -126,6 +129,7 @@ class TableModel {
       createdAt: (map['created_at'] as num?)?.toInt() ?? (map['createdAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
       updatedAt: (map['updated_at'] as num?)?.toInt() ?? (map['updatedAt'] as num?)?.toInt(),
       acceptedAt: (map['accepted_at'] as num?)?.toInt() ?? (map['acceptedAt'] as num?)?.toInt(),
+      requestSentAt: (map['request_sent_at'] as num?)?.toInt() ?? (map['requestSentAt'] as num?)?.toInt(),
     );
   }
 
@@ -140,6 +144,7 @@ class TableModel {
     String? managerEmail,
     int? updatedAt,
     int? acceptedAt,
+    int? requestSentAt,
   }) {
     return TableModel(
       id: id,
@@ -156,6 +161,7 @@ class TableModel {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       acceptedAt: acceptedAt ?? this.acceptedAt,
+      requestSentAt: requestSentAt ?? this.requestSentAt,
     );
   }
 }

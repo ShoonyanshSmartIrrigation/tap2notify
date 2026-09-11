@@ -41,7 +41,14 @@ class BleService {
 
   List<TableModel> get currentTables {
     final list = _tables.values.where((t) => isTableOnline(t.id)).toList();
-    list.sort((a, b) => a.tableNumber.compareTo(b.tableNumber));
+    list.sort((a, b) {
+      final aNum = int.tryParse(a.tableNumber.toString());
+      final bNum = int.tryParse(b.tableNumber.toString());
+      if (aNum != null && bNum != null) {
+        return aNum.compareTo(bNum);
+      }
+      return a.tableNumber.toString().compareTo(b.tableNumber.toString());
+    });
     return list;
   }
 
@@ -49,24 +56,23 @@ class BleService {
     if (_lastSeenTimes.containsKey(tableId)) {
       return DateTime.now().difference(_lastSeenTimes[tableId]!).inSeconds <= 20;
     }
-    final tNum = int.tryParse(tableId.replaceAll(RegExp(r'[^0-9]'), ''));
-    if (tNum != null && _lastSeenTimes.containsKey('table_$tNum')) {
-      return DateTime.now().difference(_lastSeenTimes['table_$tNum']!).inSeconds <= 20;
+    final rawId = tableId.startsWith('table_') ? tableId.substring(6) : tableId;
+    if (_lastSeenTimes.containsKey('table_$rawId')) {
+      return DateTime.now().difference(_lastSeenTimes['table_$rawId']!).inSeconds <= 20;
     }
     return false;
   }
 
   TableModel? getLiveBleTable(String tableId) {
     if (_tables.containsKey(tableId)) return _tables[tableId];
-    final tNum = int.tryParse(tableId.replaceAll(RegExp(r'[^0-9]'), ''));
-    if (tNum != null) {
-      return _tables['table_$tNum'] ??
-          _tables.values.cast<TableModel?>().firstWhere(
-                (t) => t?.tableNumber == tNum,
-                orElse: () => null,
-              );
-    }
-    return null;
+    final rawId = tableId.startsWith('table_') ? tableId.substring(6) : tableId;
+    return _tables['table_$rawId'] ??
+        _tables.values.cast<TableModel?>().firstWhere(
+              (t) =>
+                  t?.tableNumber.toString() == tableId ||
+                  t?.tableNumber.toString() == rawId,
+              orElse: () => null,
+            );
   }
 
   Stream<bool> get isScanningStream => FlutterBluePlus.isScanning;
@@ -187,7 +193,7 @@ class BleService {
 
     final mfgData = result.advertisementData.manufacturerData;
 
-    int? extractedTableNumber;
+    dynamic extractedTableNumber;
     int? detectedFlag;
     String? detectedStatus;
     String? detectedWaiter;
@@ -206,13 +212,16 @@ class BleService {
         final combinedStr = '$keyChars$rawValStr'.trim();
 
         for (final candidate in [combinedStr, rawValStr]) {
-          // Strategy 1: Delimited Payload (e.g. "2:0:1", "2,0,1", "2;0;1", "2:0", "2 -1 3")
+          // Strategy 1: Delimited Payload (e.g. "2:0:1", "2,0,1", "2;0;1", "2:0", "2 -1 3", "A1:0:1")
           if (candidate.contains(':') || candidate.contains(',') || candidate.contains(';') || candidate.contains('-')) {
             final parts = candidate.split(RegExp(r'[:,;\s]')).where((s) => s.isNotEmpty).toList();
             if (parts.length >= 2) {
-              final tNum = int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), ''));
+              final tNum = parts[0].trim();
               final f = int.tryParse(parts[1].trim());
-              if (tNum != null && tNum > 0 && tNum <= 100) extractedTableNumber = tNum;
+              if (tNum.isNotEmpty) {
+                final asInt = int.tryParse(tNum);
+                extractedTableNumber = asInt ?? tNum;
+              }
               if (f != null) {
                 detectedFlag = f;
                 if (f == 0) detectedStatus = 'pending';
@@ -228,9 +237,10 @@ class BleService {
             try {
               final json = jsonDecode(candidate);
               if (json['t'] != null) {
-                final parsed = int.tryParse(json['t'].toString());
-                if (parsed != null && parsed > 0 && parsed <= 100) {
-                  extractedTableNumber = parsed;
+                final parsedStr = json['t'].toString().trim();
+                final asInt = int.tryParse(parsedStr);
+                if (parsedStr.isNotEmpty) {
+                  extractedTableNumber = asInt ?? parsedStr;
                 }
               }
               if (json['f'] != null) {
@@ -283,20 +293,24 @@ class BleService {
 
     // 2. Extract Table Number strictly from Tab2Notify Device Names
     if (extractedTableNumber == null && name.isNotEmpty) {
-      final match = RegExp(r'T2N[_-]?(?:Table[_-]?|T)?(\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'Table[_-]?(\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'Tap2Notify[_-]?(\d+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'(?:REQ|ACC|IDLE)[_-]?(?:T)?(\d+)', caseSensitive: false).firstMatch(name);
+      final match = RegExp(r'T2N[_-]?(?:Table[_-]?|T)?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name) ??
+                    RegExp(r'Table[_-]?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name) ??
+                    RegExp(r'Tap2Notify[_-]?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name) ??
+                    RegExp(r'(?:REQ|ACC|IDLE)[_-]?(?:T)?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name);
       if (match != null) {
-        final parsed = int.tryParse(match.group(1) ?? '');
-        if (parsed != null && parsed > 0 && parsed <= 100) {
-          extractedTableNumber = parsed;
+        final parsed = match.group(1)?.trim();
+        if (parsed != null && parsed.isNotEmpty) {
+          final upperParsed = parsed.toUpperCase();
+          if (upperParsed != 'REQ' && upperParsed != 'ACC' && upperParsed != 'IDLE') {
+            final asInt = int.tryParse(parsed);
+            extractedTableNumber = asInt ?? parsed;
+          }
         }
       }
     }
 
     // If no legitimate table number was determined, do NOT process this foreign device!
-    if (extractedTableNumber == null || extractedTableNumber <= 0 || extractedTableNumber > 100) {
+    if (extractedTableNumber == null || extractedTableNumber.toString().isEmpty) {
       return;
     }
 
@@ -472,7 +486,7 @@ class BleService {
     _emitTables();
   }
 
-  Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {
+  Future<void> triggerTableRequest(String tableId, {dynamic tableNumber}) async {
     final current = _tables[tableId];
     final num = tableNumber ?? (current?.tableNumber ?? 1);
     final now = DateTime.now().millisecondsSinceEpoch;

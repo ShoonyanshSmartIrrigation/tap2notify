@@ -414,8 +414,8 @@ class FirebaseRealtimeService {
         raw.forEach((key, value) {
           if (value is Map) {
             final table = TableModel.fromMap(value, key.toString());
-            // Only accept valid configured floor tables (1 to 100)
-            if (table.tableNumber >= 1 && table.tableNumber <= 100) {
+            // Accept valid configured floor tables
+            if (table.tableNumber.toString().trim().isNotEmpty) {
               tables.add(table);
             } else {
               invalidKeys.add(key.toString());
@@ -433,14 +433,21 @@ class FirebaseRealtimeService {
           final item = raw[i];
           if (item is Map) {
             final table = TableModel.fromMap(item, 'table_$i');
-            if (table.tableNumber >= 1 && table.tableNumber <= 100) {
+            if (table.tableNumber.toString().trim().isNotEmpty) {
               tables.add(table);
             }
           }
         }
       }
 
-      tables.sort((a, b) => a.tableNumber.compareTo(b.tableNumber));
+      tables.sort((a, b) {
+        final aNum = int.tryParse(a.tableNumber.toString());
+        final bNum = int.tryParse(b.tableNumber.toString());
+        if (aNum != null && bNum != null) {
+          return aNum.compareTo(bNum);
+        }
+        return a.tableNumber.toString().compareTo(b.tableNumber.toString());
+      });
       return tables;
     });
   }
@@ -699,7 +706,7 @@ class FirebaseRealtimeService {
   // Sync live BLE table status and online presence to Firebase (ONLY for existing configured tables of manager)
   Future<void> syncBleDeviceStatus({
     required String tableId,
-    required int tableNumber,
+    required dynamic tableNumber,
     required String status,
     required int flag,
     required bool isOnline,

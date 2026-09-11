@@ -37,8 +37,10 @@ class MainActivity : FlutterActivity() {
                         val title = call.argument<String>("title") ?: "Table Request"
                         val body = call.argument<String>("body") ?: "A table is requesting assistance"
                         val requestId = call.argument<String>("requestId") ?: ""
-                        val tableNumber = call.argument<Int>("tableNumber") ?: 1
-                        val notificationId = call.argument<Int>("notificationId") ?: tableNumber
+                        val tableNumberRaw = call.argument<Any>("tableNumber")
+                        val tableNumberStr = tableNumberRaw?.toString() ?: "1"
+                        val tableNumber = tableNumberStr.toIntOrNull() ?: 1
+                        val notificationId = call.argument<Int>("notificationId") ?: (tableNumberStr.hashCode() and 0x7FFFFFFF)
                         val channelId = call.argument<String>("channelId") ?: "waiter_requests_channel"
                         val sound = call.argument<String>("sound") ?: ""
                         showNativeNotification(title, body, requestId, tableNumber, notificationId, channelId, sound)

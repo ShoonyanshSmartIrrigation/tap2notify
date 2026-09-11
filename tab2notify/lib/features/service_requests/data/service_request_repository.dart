@@ -142,7 +142,7 @@ class ServiceRequestRepository {
 
   void _triggerRequestNotification({
     required String tableId,
-    required int tableNumber,
+    required dynamic tableNumber,
     String assignedWaiterId = '',
     String waiterName = '',
   }) {
@@ -234,7 +234,14 @@ class ServiceRequestRepository {
           merged.add(bleTable);
         }
       }
-      merged.sort((a, b) => a.tableNumber.compareTo(b.tableNumber));
+      merged.sort((a, b) {
+        final aNum = int.tryParse(a.tableNumber.toString());
+        final bNum = int.tryParse(b.tableNumber.toString());
+        if (aNum != null && bNum != null) {
+          return aNum.compareTo(bNum);
+        }
+        return a.tableNumber.toString().compareTo(b.tableNumber.toString());
+      });
       return merged;
     }
 
@@ -447,7 +454,7 @@ class ServiceRequestRepository {
     await _bleService.resetAllTables();
   }
 
-  Future<void> triggerTableRequest(String tableId, {int? tableNumber}) async {
+  Future<void> triggerTableRequest(String tableId, {dynamic tableNumber}) async {
     await _dbService.triggerTableRequest(
       tableId,
       tableNumber: tableNumber,

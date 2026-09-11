@@ -255,25 +255,28 @@ class FCMService {
     required String title,
     required String body,
     required String requestId,
-    int? tableNumber,
+    dynamic tableNumber,
     int? notificationId,
     String? channelId,
     String? sound,
   }) async {
     try {
-      final tNum = tableNumber ??
-          int.tryParse(requestId.replaceAll(RegExp(r'[^0-9]'), '')) ??
-          1;
+      final tNum = tableNumber != null
+          ? (int.tryParse(tableNumber.toString()) ?? 1)
+          : (int.tryParse(requestId.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1);
+      final notifId = notificationId ??
+          (int.tryParse(tableNumber?.toString() ?? '') ??
+              (tableNumber != null ? (tableNumber.toString().hashCode & 0x7FFFFFFF) : tNum));
       await _nativeChannel.invokeMethod('showNotification', {
         'title': title,
         'body': body,
         'requestId': requestId,
-        'tableNumber': tNum,
-        'notificationId': notificationId ?? tNum,
+        'tableNumber': tableNumber ?? tNum,
+        'notificationId': notifId,
         'channelId': ?channelId,
         'sound': ?sound,
       });
-      debugPrint('[NATIVE NOTIF] Dispatched notification for $requestId (Table $tNum, channel: $channelId)');
+      debugPrint('[NATIVE NOTIF] Dispatched notification for $requestId (Table ${tableNumber ?? tNum}, channel: $channelId)');
     } catch (e) {
       debugPrint('[NATIVE NOTIF ERROR] Failed to display native notification: $e');
     }

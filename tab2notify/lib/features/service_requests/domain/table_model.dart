@@ -1,6 +1,6 @@
 class TableModel {
   final String id;
-  final int tableNumber;
+  final dynamic tableNumber;
   final String deviceId;
   final String status; // 'idle', 'pending', 'accepted', 'completed', 'in_progress'
   final int flag; // 0 = pending, 1 = accepted, -1 = idle
@@ -76,16 +76,16 @@ class TableModel {
       parsedFlag = 1;
     }
 
-    int parsedTableNumber = 1;
+    dynamic parsedTableNumber = '1';
     if (map['table_number'] != null) {
-      parsedTableNumber = (map['table_number'] as num).toInt();
+      parsedTableNumber = map['table_number'];
     } else if (map['tableNumber'] != null) {
-      parsedTableNumber = int.tryParse(map['tableNumber'].toString()) ?? 1;
+      parsedTableNumber = map['tableNumber'];
     } else {
-      // Parse from ID (e.g. table_1 -> 1)
-      final numStr = id.replaceAll(RegExp(r'[^0-9]'), '');
+      // Parse from ID (e.g. table_1 -> 1, table_A1 -> A1)
+      final numStr = id.startsWith('table_') ? id.substring(6) : id;
       if (numStr.isNotEmpty) {
-        parsedTableNumber = int.tryParse(numStr) ?? 1;
+        parsedTableNumber = numStr;
       }
     }
 

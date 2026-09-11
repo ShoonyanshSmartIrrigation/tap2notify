@@ -36,7 +36,7 @@ Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 // ==========================================
 // --- Table & BLE Configuration ---
 // ==========================================
-const int TABLE_NUMBER = 1; // Table 1, Table 2, Table 3...
+const char* TABLE_NUMBER = "1"; // e.g. "1", "2", "3", "10", "A1"...
 
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
@@ -193,7 +193,7 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.printf("\n=== Tab2Notify Table %d Bluetooth (BLE) Booting ===\n", TABLE_NUMBER);
+  Serial.printf("\n=== Tab2Notify Table %s Bluetooth (BLE) Booting ===\n", TABLE_NUMBER);
 
   // Initialize GPIO Pins (Strictly LOW on Buzzer)
   pinMode(TOUCH_PIN, INPUT_PULLDOWN);   // GPIO 1: Touch / Button
@@ -248,7 +248,7 @@ void setup() {
 
   Serial.println("-------------------------------------------");
   Serial.printf("✓ Bluetooth Low Energy (BLE) ACTIVE (Zero-Delay Mode)!\n");
-  Serial.printf("✓ Assigned to Table %d\n", TABLE_NUMBER);
+  Serial.printf("✓ Assigned to Table %s\n", TABLE_NUMBER);
   Serial.println("✓ Two-Press Logic: 1st Press -> RED, 2nd Press -> GREEN, 3rd/6s -> IDLE\n");
   Serial.println("-------------------------------------------");
 }
@@ -282,7 +282,7 @@ void loop() {
 
         // Non-blocking single beep
         triggerNonBlockingBeep(120, 1);
-        Serial.printf("\n[1st PRESS] Table %d: Instant RED / PENDING Broadcasted\n", TABLE_NUMBER);
+        Serial.printf("\n[1st PRESS] Table %s: Instant RED / PENDING Broadcasted\n", TABLE_NUMBER);
 
       } else if (currentState == STATE_PENDING) {
         // ========================================================
@@ -297,7 +297,7 @@ void loop() {
 
         // Non-blocking 2 confirmation beeps
         triggerNonBlockingBeep(60, 2, 50);
-        Serial.printf("\n[2nd PRESS] Table %d: Instant GREEN / ACCEPTED Broadcasted\n", TABLE_NUMBER);
+        Serial.printf("\n[2nd PRESS] Table %s: Instant GREEN / ACCEPTED Broadcasted\n", TABLE_NUMBER);
 
       } else if (currentState == STATE_ACCEPTED) {
         // ========================================================
@@ -309,7 +309,7 @@ void loop() {
         updateBleAdvertisement();
 
         triggerNonBlockingBeep(40, 1);
-        Serial.printf("\n[3rd PRESS] Table %d: Instant IDLE / OFF Broadcasted\n", TABLE_NUMBER);
+        Serial.printf("\n[3rd PRESS] Table %s: Instant IDLE / OFF Broadcasted\n", TABLE_NUMBER);
       }
     }
   }

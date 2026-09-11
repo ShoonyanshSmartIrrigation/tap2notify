@@ -182,7 +182,7 @@ class SettingsTabView extends ConsumerWidget {
                   _buildTermItem(
                     title: '2. Hardware & Bluetooth Mesh Safety',
                     desc:
-                        'Physical ESP32 table nodes transmit low-energy beacon packets. Staff must ensure hardware buttons, touch sensors, and status LED rings remain undamaged and properly mounted.',
+                        'Physical Device table nodes transmit low-energy beacon packets. Staff must ensure hardware buttons, touch sensors, and status LED rings remain undamaged and properly mounted.',
                     isDark: isDark,
                   ),
                   _buildTermItem(
@@ -526,8 +526,8 @@ class SettingsTabView extends ConsumerWidget {
                                     (profile?.email.isNotEmpty == true)
                                         ? profile!.email
                                         : (user?.email?.isNotEmpty == true
-                                            ? user!.email!
-                                            : 'No email registered'),
+                                              ? user!.email!
+                                              : 'No email registered'),
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: isDark
@@ -565,8 +565,8 @@ class SettingsTabView extends ConsumerWidget {
                               final phone = (profile?.phone.isNotEmpty == true)
                                   ? profile!.phone
                                   : (user?.phoneNumber?.isNotEmpty == true
-                                      ? user!.phoneNumber!
-                                      : '');
+                                        ? user!.phoneNumber!
+                                        : '');
                               if (phone.isEmpty) return const SizedBox.shrink();
                               return Row(
                                 children: [

@@ -247,14 +247,14 @@ class ServiceRequestRepository {
         ).listen(
           (dbList) {
             lastDbTables = dbList;
-            scheduleMicrotask(() {
+            Future(() {
               if (!controller.isClosed) {
                 controller.add(computeMerged());
               }
             });
           },
           onError: (e) {
-            scheduleMicrotask(() {
+            Future(() {
               if (!controller.isClosed) controller.addError(e);
             });
           },
@@ -262,7 +262,7 @@ class ServiceRequestRepository {
 
         bleSub = _bleService.tablesStream.listen(
           (_) {
-            scheduleMicrotask(() {
+            Future(() {
               if (!controller.isClosed) {
                 controller.add(computeMerged());
               }
@@ -319,14 +319,14 @@ class ServiceRequestRepository {
         ).listen(
           (dbList) {
             lastDbTables = dbList;
-            scheduleMicrotask(() {
+            Future(() {
               if (!controller.isClosed) {
                 controller.add(computeMerged());
               }
             });
           },
           onError: (e) {
-            scheduleMicrotask(() {
+            Future(() {
               if (!controller.isClosed) controller.addError(e);
             });
           },
@@ -334,7 +334,7 @@ class ServiceRequestRepository {
 
         bleSub = _bleService.tablesStream.listen(
           (_) {
-            scheduleMicrotask(() {
+            Future(() {
               if (!controller.isClosed) {
                 controller.add(computeMerged());
               }

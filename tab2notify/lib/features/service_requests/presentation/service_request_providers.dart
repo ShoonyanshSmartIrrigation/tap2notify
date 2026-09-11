@@ -15,67 +15,71 @@ final bleServiceProvider = Provider<BleService>((ref) {
   return BleService();
 });
 
-final serviceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref) {
+// Real-time Stream of all Dynamic Hotel Tables (from Firebase Realtime Database for Manager)
+final serviceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepository>((ref) {
+  final bleService = ref.watch(bleServiceProvider);
+  final dbService = ref.watch(firebaseRealtimeServiceProvider);
+  final authUser = ref.watch(authStateProvider).value;
+  final profileAsync = ref.watch(currentUserProfileProvider);
+
+  final managerPhone = (profileAsync.value?.phone.isNotEmpty ?? false)
+      ? profileAsync.value!.phone
+      : (authUser?.phoneNumber ?? authUser?.uid ?? '');
+
+  final managerUid = authUser?.uid ?? '';
+  final managerEmail = profileAsync.value?.email ?? authUser?.email;
+
+  final repo = ServiceRequestRepository(
+    bleService,
+    dbService,
+    managerPhone: managerPhone,
+    managerUid: managerUid,
+    managerEmail: managerEmail,
+  );
+
+  ref.onDispose(() => repo.dispose());
+  return repo;
+});
+
+// Waiter Service Request Repository (Floor Session Scoped)
+final waiterServiceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepository>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
   final currentWaiter = ref.watch(currentLoggedWaiterProvider);
 
-  ServiceRequestRepository repo;
-  // If a waiter floor session is active, construct repository directly from waiter credentials
-  if (currentWaiter != null && currentWaiter.managerPhone.isNotEmpty) {
-    repo = ServiceRequestRepository(
-      bleService,
-      dbService,
-      managerPhone: currentWaiter.managerPhone,
-      managerUid: currentWaiter.managerUid,
-      managerEmail: currentWaiter.managerEmail,
-      currentWaiterId: currentWaiter.waiterId,
-    );
-  } else {
-    // Otherwise, construct from authenticated manager's profile
-    final authUser = ref.watch(authStateProvider).value;
-    final profileAsync = ref.watch(currentUserProfileProvider);
-
-    final managerPhone = (profileAsync.value?.phone.isNotEmpty ?? false)
-        ? profileAsync.value!.phone
-        : (authUser?.phoneNumber ?? authUser?.uid ?? '');
-
-    final managerUid = authUser?.uid ?? '';
-    final managerEmail = profileAsync.value?.email ?? authUser?.email;
-
-    repo = ServiceRequestRepository(
-      bleService,
-      dbService,
-      managerPhone: managerPhone,
-      managerUid: managerUid,
-      managerEmail: managerEmail,
-    );
-  }
+  final repo = ServiceRequestRepository(
+    bleService,
+    dbService,
+    managerPhone: currentWaiter?.managerPhone ?? '',
+    managerUid: currentWaiter?.managerUid ?? '',
+    managerEmail: currentWaiter?.managerEmail,
+    currentWaiterId: currentWaiter?.waiterId ?? '',
+  );
 
   ref.onDispose(() => repo.dispose());
   return repo;
 });
 
 // Real-time Stream of all Dynamic Hotel Tables (from Firebase Realtime Database)
-final tablesStreamProvider = StreamProvider<List<TableModel>>((ref) {
+final tablesStreamProvider = StreamProvider.autoDispose<List<TableModel>>((ref) {
   final repo = ref.watch(serviceRequestRepositoryProvider);
   return repo.getTablesStream();
 });
 
 // Real-time Stream of all Registered Waiters
-final waitersStreamProvider = StreamProvider<List<WaiterModel>>((ref) {
+final waitersStreamProvider = StreamProvider.autoDispose<List<WaiterModel>>((ref) {
   final repo = ref.watch(serviceRequestRepositoryProvider);
   return repo.getWaitersStream();
 });
 
 // Real-time Stream of Tables for a Specific Waiter
-final waiterTablesStreamProvider = StreamProvider.family<List<TableModel>, String>((ref, waiterId) {
-  final repo = ref.watch(serviceRequestRepositoryProvider);
+final waiterTablesStreamProvider = StreamProvider.autoDispose.family<List<TableModel>, String>((ref, waiterId) {
+  final repo = ref.watch(waiterServiceRequestRepositoryProvider);
   return repo.getTablesForWaiterStream(waiterId);
 });
 
 // Real-time Stream of Service Requests
-final serviceRequestsStreamProvider = StreamProvider<List<ServiceRequestModel>>((ref) {
+final serviceRequestsStreamProvider = StreamProvider.autoDispose<List<ServiceRequestModel>>((ref) {
   final repo = ref.watch(serviceRequestRepositoryProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
   return dbService.getServiceRequestsStream(managerPhone: repo.managerPhone);
@@ -134,17 +138,17 @@ final bleAdapterStateStreamProvider = StreamProvider<BluetoothAdapterState>((ref
 });
 
 // Derived Providers for filtered Tables
-final pendingTablesProvider = Provider<List<TableModel>>((ref) {
+final pendingTablesProvider = Provider.autoDispose<List<TableModel>>((ref) {
   final tablesAsync = ref.watch(tablesStreamProvider);
   return tablesAsync.value?.where((t) => t.isPending).toList() ?? [];
 });
 
-final acceptedTablesProvider = Provider<List<TableModel>>((ref) {
+final acceptedTablesProvider = Provider.autoDispose<List<TableModel>>((ref) {
   final tablesAsync = ref.watch(tablesStreamProvider);
   return tablesAsync.value?.where((t) => t.isAccepted).toList() ?? [];
 });
 
-final idleTablesProvider = Provider<List<TableModel>>((ref) {
+final idleTablesProvider = Provider.autoDispose<List<TableModel>>((ref) {
   final tablesAsync = ref.watch(tablesStreamProvider);
   return tablesAsync.value?.where((t) => t.isIdle).toList() ?? [];
 });

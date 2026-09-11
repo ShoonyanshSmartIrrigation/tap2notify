@@ -71,7 +71,7 @@ class AppInfoCard extends StatelessWidget {
                 step: '1',
                 title: 'Guest Presses Touch Sensor',
                 desc:
-                    'The physical ESP32 button on the table illuminates RED and triggers a water-drop chime.',
+                    'The physical Device button on the table illuminates RED and triggers a water-drop chime.',
                 color: const Color(0xFFE53935),
                 isDark: isDark,
               ),
@@ -89,7 +89,7 @@ class AppInfoCard extends StatelessWidget {
                 step: '3',
                 title: '1-Tap Manager Acceptance',
                 desc:
-                    'Manager taps Accept -> ESP32 hardware LED turns GREEN and the table state updates live.',
+                    'Manager taps Accept ->  Device LED turns GREEN and the table state updates live.',
                 color: const Color(0xFF2E7D32),
                 isDark: isDark,
               ),
@@ -164,11 +164,9 @@ class AppInfoCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return InkWell(
-      onTap: () => _showSystemGuideModal(context),
-      borderRadius: BorderRadius.circular(24),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16.0),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -207,10 +205,20 @@ class AppInfoCard extends StatelessWidget {
             ),
           ],
         ),
-        child: ClipRRect(
+        child: Material(
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            children: [
+          child: InkWell(
+            onTap: () => _showSystemGuideModal(context),
+            borderRadius: BorderRadius.circular(24),
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            focusColor: Colors.transparent,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Stack(
+                children: [
               // Top Right Ambient Flare
               Positioned(
                 right: -30,
@@ -488,7 +496,9 @@ class AppInfoCard extends StatelessWidget {
                   ],
                 ),
               ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),

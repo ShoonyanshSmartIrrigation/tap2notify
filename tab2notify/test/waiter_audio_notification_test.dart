@@ -43,7 +43,7 @@ void main() {
       final dbService = MockFirebaseRealtimeService();
 
       // Active session: Waiter W001
-      final repoWaiterA = ServiceRequestRepository(
+      ServiceRequestRepository(
         bleService,
         dbService,
         managerPhone: '9876543210',
@@ -76,7 +76,7 @@ void main() {
       final dbService = MockFirebaseRealtimeService();
 
       // Active session: Waiter W001
-      final repoWaiterA = ServiceRequestRepository(
+      ServiceRequestRepository(
         bleService,
         dbService,
         managerPhone: '9876543210',
@@ -105,7 +105,7 @@ void main() {
       final bleService = BleService();
       final dbService = MockFirebaseRealtimeService();
 
-      final repoWaiterA = ServiceRequestRepository(
+      ServiceRequestRepository(
         bleService,
         dbService,
         managerPhone: '9876543210',
@@ -133,14 +133,14 @@ void main() {
       final bleService = BleService();
       final dbService = MockFirebaseRealtimeService();
 
-      final repoWaiterA = ServiceRequestRepository(
+      ServiceRequestRepository(
         bleService,
         dbService,
         managerPhone: '9876543210',
         currentWaiterId: 'W001',
       );
 
-      final repoWaiterB = ServiceRequestRepository(
+      ServiceRequestRepository(
         bleService,
         dbService,
         managerPhone: '9876543210',
@@ -173,7 +173,7 @@ void main() {
       final dbService = MockFirebaseRealtimeService();
 
       // Manager session: currentWaiterId is empty
-      final repoManager = ServiceRequestRepository(
+      ServiceRequestRepository(
         bleService,
         dbService,
         managerPhone: '9876543210',

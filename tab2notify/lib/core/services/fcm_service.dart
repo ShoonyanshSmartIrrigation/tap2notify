@@ -270,8 +270,8 @@ class FCMService {
         'requestId': requestId,
         'tableNumber': tNum,
         'notificationId': notificationId ?? tNum,
-        if (channelId != null) 'channelId': channelId,
-        if (sound != null) 'sound': sound,
+        'channelId': ?channelId,
+        'sound': ?sound,
       });
       debugPrint('[NATIVE NOTIF] Dispatched notification for $requestId (Table $tNum, channel: $channelId)');
     } catch (e) {

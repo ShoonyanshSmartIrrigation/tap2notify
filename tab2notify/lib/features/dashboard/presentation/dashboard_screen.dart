@@ -329,7 +329,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Pressing your physical ESP32 device button transmits raw BLE manufacturer packets to this app instantly.',
+                'Pressing your physical device button transmits raw BLE manufacturer packets to this app instantly.',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -408,7 +408,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.25 : 0.15),
+                    color: theme.colorScheme.primary.withValues(
+                      alpha: isDark ? 0.25 : 0.15,
+                    ),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),

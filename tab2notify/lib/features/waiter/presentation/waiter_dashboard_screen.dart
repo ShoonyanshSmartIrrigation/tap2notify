@@ -135,7 +135,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(dialogContext);
 
-                final repo = ref.read(serviceRequestRepositoryProvider);
+                final repo = ref.read(waiterServiceRequestRepositoryProvider);
                 await repo.acceptTableRequest(
                   tableId: table.id,
                   waiterName: waiterName,
@@ -224,7 +224,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(dialogContext);
 
-                final repo = ref.read(serviceRequestRepositoryProvider);
+                final repo = ref.read(waiterServiceRequestRepositoryProvider);
                 await repo.resetTableStatus(table.id);
 
                 if (mounted) {
@@ -248,12 +248,13 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
   }
 
   void _handleSignOut() async {
+    final waiterNotifier = ref.read(currentLoggedWaiterProvider.notifier);
     try {
       await FCMService().unregisterCurrentSession();
     } catch (e) {
       debugPrint('[WAITER SIGN OUT] Error unregistering FCM token: $e');
     }
-    await ref.read(currentLoggedWaiterProvider.notifier).setWaiter(null);
+    await waiterNotifier.setWaiter(null);
     if (mounted) {
       context.go('/login');
     }
@@ -369,26 +370,6 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Refresh Status',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () async {
-              HapticFeedback.lightImpact();
-              // Restart and force-poll BLE scanner
-              await ref.read(bleServiceProvider).startScan();
-              // Invalidate waiter stream provider to re-merge
-              ref.invalidate(waiterTablesStreamProvider(waiterId));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('⚡ Refreshed table statuses & BLE scanner!'),
-                    duration: Duration(seconds: 1),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
-          ),
-          IconButton(
             tooltip: 'Toggle Theme',
             icon: Icon(
               theme.brightness == Brightness.dark
@@ -404,8 +385,18 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           ),
         ],
       ),
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: () async {
+          HapticFeedback.lightImpact();
+          // Restart and force-poll BLE scanner
+          await ref.read(bleServiceProvider).startScan();
+          // Invalidate waiter stream provider to re-merge
+          ref.invalidate(waiterTablesStreamProvider(waiterId));
+          await Future.delayed(const Duration(milliseconds: 500));
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           // Hero Banner for Waiter
           SliverToBoxAdapter(
             child: Padding(
@@ -597,7 +588,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

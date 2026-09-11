@@ -202,149 +202,159 @@ class TablesTabView extends StatelessWidget {
                         fontSize: 16,
                       ),
                     ),
-                    PopupMenuButton<String>(
-                      tooltip: 'Filter Tables',
-                      initialValue: selectedFilter,
-                      onSelected: onFilterChanged,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                    Theme(
+                      data: theme.copyWith(
+                        splashFactory: NoSplash.splashFactory,
+                        splashColor: Colors.transparent,
+                        highlightColor: Colors.transparent,
+                        hoverColor: Colors.transparent,
+                        focusColor: Colors.transparent,
                       ),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
+                      child: PopupMenuButton<String>(
+                        borderRadius: BorderRadius.circular(20),
+                        tooltip: 'Filter Tables',
+                        initialValue: selectedFilter,
+                        onSelected: onFilterChanged,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                            width: 1,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
                           ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.filter_list_rounded,
-                              size: 16,
-                              color: theme.colorScheme.primary,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                              width: 1,
                             ),
-                            const SizedBox(width: 5),
-                            Text(
-                              selectedFilter == 'all'
-                                  ? 'All (${tablesList.length})'
-                                  : (selectedFilter == 'pending'
-                                      ? 'Pending (${pendingTables.length})'
-                                      : (selectedFilter == 'accepted'
-                                          ? 'Accepted (${acceptedTables.length})'
-                                          : (selectedFilter == 'assigned'
-                                              ? 'Assigned'
-                                              : (selectedFilter == 'unassigned'
-                                                  ? 'Unassigned'
-                                                  : 'Idle (${idleTables.length})')))),
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Icon(
-                              Icons.arrow_drop_down_rounded,
-                              size: 18,
-                              color: theme.colorScheme.primary,
-                            ),
-                          ],
-                        ),
-                      ),
-                      itemBuilder: (context) => [
-                        PopupMenuItem(
-                          value: 'all',
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.table_restaurant_rounded,
-                                size: 18,
-                                color: Colors.blueGrey,
-                              ),
-                              const SizedBox(width: 10),
-                              Text('All Tables (${tablesList.length})'),
-                            ],
                           ),
-                        ),
-                        PopupMenuItem(
-                          value: 'pending',
                           child: Row(
-                            children: [
-                              const Icon(
-                                Icons.notifications_active_rounded,
-                                size: 18,
-                                color: Color(0xFFE53935),
-                              ),
-                              const SizedBox(width: 10),
-                              Text('Pending 🔴 (${pendingTables.length})'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'accepted',
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.check_circle_rounded,
-                                size: 18,
-                                color: Color(0xFF2E7D32),
-                              ),
-                              const SizedBox(width: 10),
-                              Text('Accepted 🟢 (${acceptedTables.length})'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'idle',
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.radio_button_unchecked_rounded,
-                                size: 18,
-                                color: Color(0xFFFF9800),
-                              ),
-                              const SizedBox(width: 10),
-                              Text('Idle 🟠 (${idleTables.length})'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: 'assigned',
-                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons.person_rounded,
+                                Icons.filter_list_rounded,
+                                size: 16,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                selectedFilter == 'all'
+                                    ? 'All (${tablesList.length})'
+                                    : (selectedFilter == 'pending'
+                                        ? 'Pending (${pendingTables.length})'
+                                        : (selectedFilter == 'accepted'
+                                            ? 'Accepted (${acceptedTables.length})'
+                                            : (selectedFilter == 'assigned'
+                                                ? 'Assigned'
+                                                : (selectedFilter == 'unassigned'
+                                                    ? 'Unassigned'
+                                                    : 'Idle (${idleTables.length})')))),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(
+                                Icons.arrow_drop_down_rounded,
                                 size: 18,
                                 color: theme.colorScheme.primary,
                               ),
-                              const SizedBox(width: 10),
-                              const Text('Assigned Tables 👤'),
                             ],
                           ),
                         ),
-                        PopupMenuItem(
-                          value: 'unassigned',
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.person_off_rounded,
-                                size: 18,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(width: 10),
-                              const Text('Unassigned Tables ⚠️'),
-                            ],
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'all',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.table_restaurant_rounded,
+                                  size: 18,
+                                  color: Colors.blueGrey,
+                                ),
+                                const SizedBox(width: 10),
+                                Text('All Tables (${tablesList.length})'),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                          PopupMenuItem(
+                            value: 'pending',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.notifications_active_rounded,
+                                  size: 18,
+                                  color: Color(0xFFE53935),
+                                ),
+                                const SizedBox(width: 10),
+                                Text('Pending 🔴 (${pendingTables.length})'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'accepted',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 18,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                                const SizedBox(width: 10),
+                                Text('Accepted 🟢 (${acceptedTables.length})'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'idle',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.radio_button_unchecked_rounded,
+                                  size: 18,
+                                  color: Color(0xFFFF9800),
+                                ),
+                                const SizedBox(width: 10),
+                                Text('Idle 🟠 (${idleTables.length})'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(),
+                          PopupMenuItem(
+                            value: 'assigned',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.person_rounded,
+                                  size: 18,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: 10),
+                                const Text('Assigned Tables 👤'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'unassigned',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.person_off_rounded,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(width: 10),
+                                const Text('Unassigned Tables ⚠️'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

@@ -3,9 +3,8 @@ import '../../features/service_requests/domain/table_model.dart';
 
 class TableCard extends StatelessWidget {
   final TableModel table;
-  final VoidCallback onTap;
 
-  const TableCard({super.key, required this.table, required this.onTap});
+  const TableCard({super.key, required this.table});
 
   @override
   Widget build(BuildContext context) {
@@ -45,29 +44,26 @@ class TableCard extends StatelessWidget {
       statusIcon = Icons.radio_button_unchecked_rounded;
     }
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: borderColor,
-            width: isPending ? 2.0 : (isAccepted ? 1.8 : 1.0),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: statusColor.withValues(
-                alpha: isPending ? 0.35 : (isAccepted ? 0.25 : 0.04),
-              ),
-              blurRadius: isPending || isAccepted ? 8 : 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: borderColor,
+          width: isPending ? 2.0 : (isAccepted ? 1.8 : 1.0),
         ),
-        child: Stack(
+        boxShadow: [
+          BoxShadow(
+            color: statusColor.withValues(
+              alpha: isPending ? 0.35 : (isAccepted ? 0.25 : 0.04),
+            ),
+            blurRadius: isPending || isAccepted ? 8 : 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
           children: [
             // Online Status Dot (Top Right Corner)
             Positioned(
@@ -228,7 +224,6 @@ class TableCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }

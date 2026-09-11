@@ -575,13 +575,6 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                     final table = displayList[index];
                     return TableCard(
                       table: table,
-                      onTap: () {
-                        if (table.isPending) {
-                          _showAcceptDialog(table, waiterName, waiterId);
-                        } else if (table.isAccepted) {
-                          _showCompleteDialog(table);
-                        }
-                      },
                     );
                   },
                   childCount: displayList.length,

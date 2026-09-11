@@ -13,7 +13,6 @@ class TablesTabView extends StatelessWidget {
   final List<TableModel> idleTables;
   final String selectedFilter;
   final ValueChanged<String> onFilterChanged;
-  final ValueChanged<TableModel> onTableTap;
   final bool isScanning;
   final BluetoothAdapterState adapterState;
   final VoidCallback onBleInfoTap;
@@ -30,7 +29,6 @@ class TablesTabView extends StatelessWidget {
     required this.idleTables,
     required this.selectedFilter,
     required this.onFilterChanged,
-    required this.onTableTap,
     required this.isScanning,
     required this.adapterState,
     required this.onBleInfoTap,
@@ -425,7 +423,6 @@ class TablesTabView extends StatelessWidget {
                   final table = displayList[index];
                   return TableCard(
                     table: table,
-                    onTap: () => onTableTap(table),
                   );
                 },
                 childCount: displayList.length,

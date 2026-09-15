@@ -50,7 +50,7 @@ void main() {
         currentWaiterId: 'W001',
       );
 
-      // Simulate Table 1 (assigned to W001) triggering a request
+      // Simulate Table 1 (assigned to W001 and unlocked) triggering a request
       final table1 = TableModel(
         id: 'table_1',
         tableNumber: 1,
@@ -59,6 +59,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: 1700000000000,
       );
 
@@ -92,6 +93,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W002',
         waiterName: 'Suresh (W002)',
+        isUnlocked: true,
         createdAt: 1700000000000,
       );
 
@@ -121,6 +123,7 @@ void main() {
         flag: 0,
         assignedWaiterId: '',
         waiterName: '',
+        isUnlocked: true,
         createdAt: 1700000000000,
       );
 
@@ -156,6 +159,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W002',
         waiterName: 'Suresh (W002)',
+        isUnlocked: true,
         createdAt: 1700000000000,
       );
 
@@ -188,6 +192,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: 1700000000000,
       );
 

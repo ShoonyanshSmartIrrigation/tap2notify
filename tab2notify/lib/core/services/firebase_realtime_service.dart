@@ -266,6 +266,9 @@ class FirebaseRealtimeService {
           'waiter_name': existing['waiter_name'] ?? existing['assigned_waiter_name'] ?? '',
           'assigned_waiter_id': existing['assigned_waiter_id'] ?? '',
           'assigned_waiter_name': existing['assigned_waiter_name'] ?? existing['waiter_name'] ?? '',
+          'is_unlocked': existing['is_unlocked'] == true || existing['unlocked'] == true,
+          'unlocked_at': existing['unlocked_at'],
+          'unlocked_by': existing['unlocked_by'],
           'manager_phone': resolvedPhone,
           'manager_uid': resolvedUid,
           'manager_email': resolvedEmail,
@@ -273,7 +276,7 @@ class FirebaseRealtimeService {
           'updated_at': now,
         };
       } else {
-        // Create new table
+        // Create new table (Locked by default until authorized with password)
         updatedTables[tableId] = {
           'id': tableId,
           'table_number': i,
@@ -283,6 +286,7 @@ class FirebaseRealtimeService {
           'waiter_name': '',
           'assigned_waiter_id': '',
           'assigned_waiter_name': '',
+          'is_unlocked': false,
           'manager_phone': resolvedPhone,
           'manager_uid': resolvedUid,
           'manager_email': resolvedEmail,
@@ -452,7 +456,7 @@ class FirebaseRealtimeService {
     });
   }
 
-  // Listen to STRICTLY Assigned Tables in real time for a Waiter under a Manager Phone
+  // Listen to STRICTLY Assigned AND Unlocked Tables in real time for a Waiter under a Manager Phone
   Stream<List<TableModel>> getTablesForWaiterStream(
     String waiterId, {
     String? managerPhone,
@@ -466,11 +470,44 @@ class FirebaseRealtimeService {
     ).map((allTables) {
       return allTables
           .where((t) =>
-              t.assignedWaiterId == waiterId ||
-              t.waiterName == waiterId ||
-              t.waiterName.contains('($waiterId)') ||
-              t.waiterName.contains(waiterId))
+              t.isUnlocked &&
+              (t.assignedWaiterId == waiterId ||
+                  t.waiterName == waiterId ||
+                  t.waiterName.contains('($waiterId)') ||
+                  t.waiterName.contains(waiterId)))
           .toList();
+    });
+  }
+
+  // Manager Unlocks and Authorizes Table with Password
+  Future<void> unlockTable(
+    String tableId, {
+    String? managerPhone,
+    String? managerUid,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedUid = managerUid ?? _currentAuthUid;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+
+    await _tablesRef(resolvedPhone).child(tableId).update({
+      'is_unlocked': true,
+      'unlocked_at': now,
+      'unlocked_by': resolvedUid,
+      'updated_at': now,
+    });
+  }
+
+  // Manager Locks Table
+  Future<void> lockTable(
+    String tableId, {
+    String? managerPhone,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final int now = DateTime.now().millisecondsSinceEpoch;
+
+    await _tablesRef(resolvedPhone).child(tableId).update({
+      'is_unlocked': false,
+      'updated_at': now,
     });
   }
 
@@ -587,6 +624,11 @@ class FirebaseRealtimeService {
       return;
     }
     final map = snapshot.value as Map;
+    final bool isUnlocked = map['is_unlocked'] == true || map['unlocked'] == true;
+    if (!isUnlocked) {
+      debugPrint('[RTDB TRIGGER REJECTED] Table $tableId is LOCKED. Cannot trigger service request.');
+      return;
+    }
     final String wName = map['assigned_waiter_name']?.toString() ?? map['waiter_name']?.toString() ?? '';
     final String wId = map['assigned_waiter_id']?.toString() ?? '';
 
@@ -725,6 +767,9 @@ class FirebaseRealtimeService {
       return;
     }
     final existingData = tableSnap.value as Map;
+    final isTableUnlocked = existingData['is_unlocked'] == true || existingData['unlocked'] == true;
+    final int effectiveFlag = isTableUnlocked ? flag : -1;
+    final String effectiveStatus = isTableUnlocked ? status : 'idle';
 
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {
@@ -732,23 +777,26 @@ class FirebaseRealtimeService {
       'table_number': tableNumber,
       'device_id': existingData['device_id'] ?? 'device_$tableNumber',
       'device_online': isOnline,
-      'status': status,
-      'flag': flag,
+      'status': effectiveStatus,
+      'flag': effectiveFlag,
       'waiter_name': existingData['waiter_name'] ?? existingData['assigned_waiter_name'] ?? '',
       'assigned_waiter_id': existingData['assigned_waiter_id'] ?? '',
       'assigned_waiter_name': existingData['assigned_waiter_name'] ?? existingData['waiter_name'] ?? '',
+      'is_unlocked': isTableUnlocked,
+      'unlocked_at': existingData['unlocked_at'],
+      'unlocked_by': existingData['unlocked_by'],
       'manager_phone': resolvedPhone,
       'manager_uid': resolvedUid,
       'manager_email': resolvedEmail,
       'created_at': existingData['created_at'] ?? now,
       'updated_at': now,
     };
-    if (flag == 0) {
+    if (effectiveFlag == 0 && isTableUnlocked) {
       final existingSentAt = existingData['request_sent_at'] ?? existingData['requestSentAt'];
       updates['request_sent_at'] = (existingData['flag'] == 0 && existingSentAt != null) ? existingSentAt : now;
     }
     await _tablesRef(resolvedPhone).child(tableId).update(updates);
-    if (flag == 0) {
+    if (effectiveFlag == 0 && isTableUnlocked) {
       final int sentAt = updates['request_sent_at'] as int? ?? now;
       // Ensure urgent request exists in /serviceRequests/$managerPhone
       await _requestsRef(resolvedPhone).child(tableId).set({

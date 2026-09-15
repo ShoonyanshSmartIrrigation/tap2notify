@@ -22,6 +22,10 @@ class BleService {
   final Map<String, TableModel> _tables = {};
   final Map<String, BluetoothDevice> _discoveredDevices = {};
   final Map<String, DateTime> _lastSeenTimes = {};
+  final Set<String> _unlockedTableIds = {};
+
+  /// Optional custom/device password validator callback (e.g. for testing or secure token authenticators)
+  Future<bool> Function(String tableId, String password)? devicePasswordValidator;
 
   final StreamController<List<TableModel>> _tablesController =
       StreamController<List<TableModel>>.broadcast();
@@ -212,7 +216,7 @@ class BleService {
         final combinedStr = '$keyChars$rawValStr'.trim();
 
         for (final candidate in [combinedStr, rawValStr]) {
-          // Strategy 1: Delimited Payload (e.g. "2:0:1", "2,0,1", "2;0;1", "2:0", "2 -1 3", "A1:0:1")
+          // Strategy 1: Delimited Payload (e.g. "1:-2:1", "2:0:1", "2,0,1", "2;0;1", "2:0", "2 -1 3", "A1:0:1")
           if (candidate.contains(':') || candidate.contains(',') || candidate.contains(';') || candidate.contains('-')) {
             final parts = candidate.split(RegExp(r'[:,;\s]')).where((s) => s.isNotEmpty).toList();
             if (parts.length >= 2) {
@@ -224,6 +228,7 @@ class BleService {
               }
               if (f != null) {
                 detectedFlag = f;
+                if (f == -2) detectedStatus = 'locked';
                 if (f == 0) detectedStatus = 'pending';
                 if (f == 1) detectedStatus = 'accepted';
                 if (f == -1) detectedStatus = 'idle';
@@ -247,6 +252,7 @@ class BleService {
                 final f = int.tryParse(json['f'].toString());
                 if (f != null) {
                   detectedFlag = f;
+                  if (f == -2) detectedStatus = 'locked';
                   if (f == 0) detectedStatus = 'pending';
                   if (f == 1) detectedStatus = 'accepted';
                   if (f == -1) detectedStatus = 'idle';
@@ -269,7 +275,11 @@ class BleService {
               final rawFlag = bytes[1];
               if (tNum > 0 && tNum <= 100) {
                 extractedTableNumber = tNum;
-                if (rawFlag == 0) {
+                if (rawFlag == 0xFE || rawFlag == 254 || rawFlag == -2) {
+                  detectedFlag = -2;
+                  detectedStatus = 'locked';
+                  break;
+                } else if (rawFlag == 0) {
                   detectedFlag = 0;
                   detectedStatus = 'pending';
                   break;
@@ -296,12 +306,12 @@ class BleService {
       final match = RegExp(r'T2N[_-]?(?:Table[_-]?|T)?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name) ??
                     RegExp(r'Table[_-]?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name) ??
                     RegExp(r'Tap2Notify[_-]?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name) ??
-                    RegExp(r'(?:REQ|ACC|IDLE)[_-]?(?:T)?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name);
+                    RegExp(r'(?:REQ|ACC|IDLE|LOCKED)[_-]?(?:T)?([a-zA-Z0-9]+)', caseSensitive: false).firstMatch(name);
       if (match != null) {
         final parsed = match.group(1)?.trim();
         if (parsed != null && parsed.isNotEmpty) {
           final upperParsed = parsed.toUpperCase();
-          if (upperParsed != 'REQ' && upperParsed != 'ACC' && upperParsed != 'IDLE') {
+          if (upperParsed != 'REQ' && upperParsed != 'ACC' && upperParsed != 'IDLE' && upperParsed != 'LOCKED') {
             final asInt = int.tryParse(parsed);
             extractedTableNumber = asInt ?? parsed;
           }
@@ -314,13 +324,16 @@ class BleService {
       return;
     }
 
-    // 3. Fallback to LIVE Advertisement Name status (e.g. T2N_T1_REQ, T2N_T1_ACC, T2N_T1_IDLE)
+    // 3. Fallback to LIVE Advertisement Name status (e.g. T2N_T1_LOCKED, T2N_T1_REQ, T2N_T1_ACC, T2N_T1_IDLE)
     // Inspect live advertised packet name (advName or deviceAdvName)
     if (detectedFlag == null) {
       final liveName = advName.isNotEmpty ? advName : deviceAdvName;
       if (liveName.isNotEmpty) {
         final upper = liveName.toUpperCase();
-        if (upper.contains('REQ') ||
+        if (upper.contains('LOCKED') || upper.contains('LOCK')) {
+          detectedFlag = -2;
+          detectedStatus = 'locked';
+        } else if (upper.contains('REQ') ||
             upper.contains('PEND') ||
             upper.contains('CALL') ||
             upper.contains('HELP') ||
@@ -372,14 +385,24 @@ class BleService {
       detectedStatus = 'idle';
     }
 
-    final finalFlag = detectedFlag;
-    final finalStatus = detectedStatus ??
-        (finalFlag == 0 ? 'pending' : (finalFlag == 1 ? 'accepted' : 'idle'));
+    final bool isHardwareLocked = (detectedFlag == -2) || (detectedStatus == 'locked');
+    if (isHardwareLocked) {
+      _unlockedTableIds.remove(tableId);
+    }
+
+    final bool isUnlocked = !isHardwareLocked &&
+        ((existing?.isUnlocked ?? false) || _unlockedTableIds.contains(tableId));
+
+    final finalFlag = isHardwareLocked ? -1 : detectedFlag!;
+    final finalStatus = isHardwareLocked
+        ? 'idle'
+        : (detectedStatus ?? (finalFlag == 0 ? 'pending' : (finalFlag == 1 ? 'accepted' : 'idle')));
     final finalWaiter = detectedWaiter ?? (existing?.waiterName ?? '');
 
     final bool stateChanged = existing == null ||
         existing.flag != finalFlag ||
         existing.status != finalStatus ||
+        existing.isUnlocked != isUnlocked ||
         existing.isDeviceOnline != true;
 
     final updatedTable = TableModel(
@@ -390,6 +413,9 @@ class BleService {
       flag: finalFlag,
       waiterName: finalWaiter,
       isDeviceOnline: true,
+      isUnlocked: isUnlocked,
+      unlockedAt: existing?.unlockedAt,
+      unlockedBy: existing?.unlockedBy,
       createdAt: existing?.createdAt ?? DateTime.now().millisecondsSinceEpoch,
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
@@ -400,8 +426,8 @@ class BleService {
     if (stateChanged) {
       _emitTables();
 
-      debugPrint('[BLE INSTANT] Table $tableNum STATE CHANGED -> Flag: $finalFlag ($finalStatus)');
-      if (finalFlag == 0) {
+      debugPrint('[BLE INSTANT] Table $tableNum STATE CHANGED -> Flag: $finalFlag ($finalStatus, Unlocked: $isUnlocked)');
+      if (finalFlag == 0 && isUnlocked) {
         try {
           HapticFeedback.heavyImpact();
         } catch (_) {}
@@ -499,12 +525,215 @@ class BleService {
       flag: 0,
       waiterName: '',
       isDeviceOnline: true,
+      isUnlocked: current?.isUnlocked ?? _unlockedTableIds.contains(tableId),
+      unlockedAt: current?.unlockedAt,
+      unlockedBy: current?.unlockedBy,
       createdAt: now,
       updatedAt: now,
     );
     _tables[tableId] = updated;
     _emitTables();
     onDeviceDiscovered?.call(updated);
+  }
+
+  bool isTableUnlocked(String tableId) {
+    final cleanId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    return _unlockedTableIds.contains(cleanId) || (_tables[cleanId]?.isUnlocked ?? false);
+  }
+
+  Future<bool> verifyDevicePassword({
+    required String tableId,
+    required String password,
+  }) async {
+    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final tableNum = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final trimmedPassword = password.trim();
+    if (trimmedPassword.isEmpty) return false;
+
+    // 1. Locate discovered device in memory cache or matching table number
+    BluetoothDevice? device = _discoveredDevices[cleanTableId];
+    if (device == null && tableNum.isNotEmpty) {
+      for (final entry in _discoveredDevices.entries) {
+        if (entry.key == cleanTableId ||
+            entry.key == 'table_$tableNum' ||
+            entry.key == tableId ||
+            entry.key.endsWith('_$tableNum')) {
+          device = entry.value;
+          break;
+        }
+      }
+    }
+
+    // 2. If device is not cached yet, perform a fast scan to discover physical hardware
+    if (device == null) {
+      debugPrint('[BLE AUTH] Device $cleanTableId not in active cache. Performing quick scan...');
+      try {
+        if (!FlutterBluePlus.isScanningNow) {
+          await FlutterBluePlus.startScan(
+            timeout: const Duration(seconds: 2),
+            androidScanMode: AndroidScanMode.lowLatency,
+          );
+          await Future.delayed(const Duration(milliseconds: 1500));
+        }
+      } catch (e) {
+        debugPrint('[BLE AUTH] Fast scan attempt: $e');
+      }
+      device = _discoveredDevices[cleanTableId];
+    }
+
+    // 3. Attempt Over-The-Air BLE GATT Authentication if device is found
+    if (device != null) {
+      try {
+        debugPrint('[BLE AUTH] Connecting to device for $cleanTableId (${device.remoteId})...');
+        await device.connect(timeout: const Duration(seconds: 5), autoConnect: false);
+        final services = await device.discoverServices();
+        final targetSvcUuid = serviceUuid.toLowerCase().replaceAll('-', '');
+        final targetCharUuid = charUuid.toLowerCase().replaceAll('-', '');
+
+        for (final s in services) {
+          final sUuid = s.uuid.toString().toLowerCase().replaceAll('-', '');
+          if (sUuid == targetSvcUuid || sUuid.contains(targetSvcUuid)) {
+            for (final c in s.characteristics) {
+              final cUuid = c.uuid.toString().toLowerCase().replaceAll('-', '');
+              if (cUuid == targetCharUuid || cUuid.contains(targetCharUuid)) {
+                String authResponse = '';
+                final completer = Completer<String>();
+                StreamSubscription? notifSub;
+
+                try {
+                  await c.setNotifyValue(true);
+                  notifSub = c.onValueReceived.listen((data) {
+                    final val = utf8.decode(data).trim();
+                    debugPrint('[BLE AUTH NOTIF] Received: $val');
+                    if (val.contains('AUTH_OK') || val.contains('AUTH_FAIL')) {
+                      if (!completer.isCompleted) completer.complete(val);
+                    }
+                  });
+                } catch (e) {
+                  debugPrint('[BLE AUTH] Notification setup: $e');
+                }
+
+                debugPrint('[BLE AUTH] Writing AUTH command to GATT...');
+                await c.write(utf8.encode('AUTH:$trimmedPassword'), withoutResponse: false);
+
+                try {
+                  authResponse = await completer.future.timeout(const Duration(milliseconds: 1200));
+                } catch (_) {
+                  // Fallback: Read characteristic directly
+                  await Future.delayed(const Duration(milliseconds: 150));
+                  final readBytes = await c.read();
+                  authResponse = utf8.decode(readBytes).trim();
+                  debugPrint('[BLE AUTH READ] Direct read response: $authResponse');
+                }
+
+                try {
+                  await notifSub?.cancel();
+                  await c.setNotifyValue(false);
+                } catch (_) {}
+
+                try {
+                  await device.disconnect();
+                } catch (_) {}
+
+                if (authResponse.contains('AUTH_OK') || (authResponse.contains(':') && !authResponse.contains(':-2'))) {
+                  debugPrint('[BLE AUTH SUCCESS] Table $cleanTableId authorized via GATT!');
+                  _unlockedTableIds.add(cleanTableId);
+                  _updateTableUnlockState(cleanTableId, true);
+                  return true;
+                } else if (authResponse.contains('AUTH_FAIL') || authResponse.contains(':-2')) {
+                  debugPrint('[BLE AUTH FAIL] Table $cleanTableId authorization rejected by firmware (Response: $authResponse)');
+                  return false;
+                }
+              }
+            }
+          }
+        }
+        try {
+          await device.disconnect();
+        } catch (_) {}
+      } catch (e) {
+        debugPrint('[BLE AUTH] Direct GATT verification error: $e');
+        try {
+          await device.disconnect();
+        } catch (_) {}
+        throw Exception('Bluetooth GATT communication error: $e');
+      }
+    }
+
+    // 4. Custom device password validator callback (e.g. for unit tests or remote cloud tokens)
+    if (devicePasswordValidator != null) {
+      final isValid = await devicePasswordValidator!(cleanTableId, trimmedPassword);
+      if (isValid) {
+        _unlockedTableIds.add(cleanTableId);
+        _updateTableUnlockState(cleanTableId, true);
+        return true;
+      }
+      return false;
+    }
+
+    if (device == null) {
+      throw Exception('Device for Table ${tableNum.isNotEmpty ? tableNum : cleanTableId} is not in Bluetooth range. Please make sure the table device is powered ON and nearby.');
+    }
+
+    return false;
+  }
+
+  void _updateTableUnlockState(String tableId, bool unlocked) {
+    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final current = _tables[cleanTableId];
+    if (current != null) {
+      final updated = current.copyWith(
+        isUnlocked: unlocked,
+        unlockedAt: unlocked ? DateTime.now().millisecondsSinceEpoch : null,
+      );
+      _tables[cleanTableId] = updated;
+      _emitTables();
+      onDeviceDiscovered?.call(updated);
+    }
+  }
+
+  Future<void> unlockTableLocally(String tableId) async {
+    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    _unlockedTableIds.add(cleanTableId);
+    _updateTableUnlockState(cleanTableId, true);
+  }
+
+  Future<void> lockTableLocally(String tableId) async {
+    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    _unlockedTableIds.remove(cleanTableId);
+
+    // Over-The-Air BLE GATT Lock Command to ESP32 Hardware
+    final device = _discoveredDevices[cleanTableId];
+    if (device != null) {
+      try {
+        debugPrint('[BLE LOCK] Sending LOCK command to hardware $cleanTableId...');
+        await device.connect(timeout: const Duration(seconds: 4), autoConnect: false);
+        final services = await device.discoverServices();
+        final targetSvcUuid = serviceUuid.toLowerCase().replaceAll('-', '');
+        final targetCharUuid = charUuid.toLowerCase().replaceAll('-', '');
+
+        for (final s in services) {
+          final sUuid = s.uuid.toString().toLowerCase().replaceAll('-', '');
+          if (sUuid == targetSvcUuid || sUuid.contains(targetSvcUuid)) {
+            for (final c in s.characteristics) {
+              final cUuid = c.uuid.toString().toLowerCase().replaceAll('-', '');
+              if (cUuid == targetCharUuid || cUuid.contains(targetCharUuid)) {
+                await c.write(utf8.encode('LOCK'), withoutResponse: false);
+                break;
+              }
+            }
+          }
+        }
+        await device.disconnect();
+      } catch (e) {
+        debugPrint('[BLE LOCK] OTA Lock command failed/skipped: $e');
+        try {
+          await device.disconnect();
+        } catch (_) {}
+      }
+    }
+
+    _updateTableUnlockState(cleanTableId, false);
   }
 
   void dispose() {

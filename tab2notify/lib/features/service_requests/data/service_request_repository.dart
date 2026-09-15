@@ -33,13 +33,14 @@ class ServiceRequestRepository {
     // Forward BLE physical device discoveries to Firebase Realtime Database asynchronously
     _bleService.onDeviceDiscovered = (TableModel bleTable) {
       debugPrint('[BLE DISCOVERED HOOK] Table ${bleTable.tableNumber} (${bleTable.id}) status=${bleTable.status} flag=${bleTable.flag} managerPhone=$managerPhone currentWaiterId=$currentWaiterId');
-      // Instant Native Notification Alert for urgent service requests
-      if (bleTable.flag == 0) {
+      // Instant Native Notification Alert for urgent service requests (STRICTLY for UNLOCKED tables)
+      if (bleTable.flag == 0 && bleTable.isUnlocked) {
         _triggerRequestNotification(
           tableId: bleTable.id,
           tableNumber: bleTable.tableNumber,
           assignedWaiterId: bleTable.assignedWaiterId,
           waiterName: bleTable.waiterName,
+          isUnlocked: bleTable.isUnlocked,
         );
       }
 
@@ -99,6 +100,7 @@ class ServiceRequestRepository {
             tableNumber: table.tableNumber,
             assignedWaiterId: table.assignedWaiterId,
             waiterName: table.waiterName,
+            isUnlocked: table.isUnlocked,
           );
         }
       }
@@ -145,6 +147,7 @@ class ServiceRequestRepository {
     required dynamic tableNumber,
     String assignedWaiterId = '',
     String waiterName = '',
+    bool isUnlocked = false,
   }) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final normKey = tableNumber.toString();
@@ -159,7 +162,18 @@ class ServiceRequestRepository {
       return;
     }
 
-    // 2. If user is a WAITER: Strictly verify the table is assigned to THIS waiter.
+    // 2. If user is a WAITER: Strictly verify the table is unlocked by manager
+    final cachedTable = _cachedTables.cast<TableModel?>().firstWhere(
+          (t) => t?.id == tableId || t?.tableNumber.toString() == normKey,
+          orElse: () => null,
+        );
+    final tableUnlocked = isUnlocked || (cachedTable?.isUnlocked ?? false) || _bleService.isTableUnlocked(tableId);
+    if (!tableUnlocked) {
+      debugPrint('[NOTIF SCOPE] Table $tableNumber is LOCKED. Waiter alert suppressed.');
+      return;
+    }
+
+    // 3. Strictly verify the table is assigned to THIS waiter.
     final isAssigned = (assignedWaiterId.isNotEmpty && assignedWaiterId == currentWaiterId) ||
         waiterName.contains('($currentWaiterId)') ||
         (waiterName.isNotEmpty && waiterName == currentWaiterId);
@@ -218,15 +232,20 @@ class ServiceRequestRepository {
       final merged = lastDbTables.map((t) {
         final isBleOnline = _bleService.isTableOnline(t.id);
         final liveBleTable = _bleService.getLiveBleTable(t.id);
+        final isUnlocked = t.isUnlocked || _bleService.isTableUnlocked(t.id) || (liveBleTable?.isUnlocked ?? false);
         if (liveBleTable != null) {
           return t.copyWith(
             isDeviceOnline: isBleOnline,
             status: liveBleTable.status,
             flag: liveBleTable.flag,
+            isUnlocked: isUnlocked,
             waiterName: liveBleTable.waiterName.isNotEmpty ? liveBleTable.waiterName : t.waiterName,
           );
         }
-        return t.copyWith(isDeviceOnline: isBleOnline);
+        return t.copyWith(
+          isDeviceOnline: isBleOnline,
+          isUnlocked: isUnlocked,
+        );
       }).toList();
 
       for (final bleTable in _bleService.currentTables) {
@@ -286,7 +305,7 @@ class ServiceRequestRepository {
     return controller.stream;
   }
 
-  // Stream only tables assigned to a specific waiter with live merged BLE online status
+  // Stream only tables assigned to a specific waiter with live merged BLE online status (Strictly Unlocked only)
   Stream<List<TableModel>> getTablesForWaiterStream(String waiterId) {
     late StreamController<List<TableModel>> controller;
     StreamSubscription? dbSub;
@@ -296,24 +315,33 @@ class ServiceRequestRepository {
     List<TableModel> computeMerged() {
       if (lastDbTables.isEmpty) {
         return _bleService.currentTables.where((t) {
-          return (t.assignedWaiterId.isNotEmpty && t.assignedWaiterId == waiterId) ||
-              t.waiterName.contains('($waiterId)') ||
-              (t.waiterName.isNotEmpty && t.waiterName == waiterId);
+          final isUnlocked = t.isUnlocked || _bleService.isTableUnlocked(t.id);
+          return isUnlocked &&
+              ((t.assignedWaiterId.isNotEmpty && t.assignedWaiterId == waiterId) ||
+                  t.waiterName.contains('($waiterId)') ||
+                  (t.waiterName.isNotEmpty && t.waiterName == waiterId));
         }).toList();
       }
-      return lastDbTables.map((t) {
+      return lastDbTables
+          .where((t) => t.isUnlocked || _bleService.isTableUnlocked(t.id))
+          .map((t) {
         final isBleOnline = _bleService.isTableOnline(t.id);
         final liveBleTable = _bleService.getLiveBleTable(t.id);
+        final isUnlocked = t.isUnlocked || _bleService.isTableUnlocked(t.id) || (liveBleTable?.isUnlocked ?? false);
         if (liveBleTable != null) {
           return t.copyWith(
             isDeviceOnline: isBleOnline,
             status: liveBleTable.status,
             flag: liveBleTable.flag,
+            isUnlocked: isUnlocked,
             waiterName: liveBleTable.waiterName.isNotEmpty ? liveBleTable.waiterName : t.waiterName,
           );
         }
-        return t.copyWith(isDeviceOnline: isBleOnline);
-      }).toList();
+        return t.copyWith(
+          isDeviceOnline: isBleOnline,
+          isUnlocked: isUnlocked,
+        );
+      }).where((t) => t.isUnlocked).toList();
     }
 
     controller = StreamController<List<TableModel>>(
@@ -463,6 +491,40 @@ class ServiceRequestRepository {
       managerEmail: managerEmail,
     );
     await _bleService.triggerTableRequest(tableId, tableNumber: tableNumber);
+  }
+
+  // Authorize & Unlock a Table with Firmware Password (Manager Only)
+  Future<bool> verifyAndUnlockTable({
+    required String tableId,
+    required String password,
+  }) async {
+    final verified = await _bleService.verifyDevicePassword(
+      tableId: tableId,
+      password: password,
+    );
+    if (verified) {
+      if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+        await _dbService.unlockTable(
+          tableId,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        );
+      }
+      await _bleService.unlockTableLocally(tableId);
+      return true;
+    }
+    return false;
+  }
+
+  // Lock a Table (Manager Only)
+  Future<void> lockTable(String tableId) async {
+    if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+      await _dbService.lockTable(
+        tableId,
+        managerPhone: managerPhone,
+      );
+    }
+    await _bleService.lockTableLocally(tableId);
   }
 
   void dispose() {

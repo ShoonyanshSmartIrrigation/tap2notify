@@ -178,7 +178,7 @@ void main() {
         currentWaiterId: 'W001',
       );
 
-      // Simulate Table 1 calling (Assigned to W001)
+      // Simulate Table 1 calling (Assigned to W001 and unlocked)
       mockDb.emitTables([
         TableModel(
           id: 'table_1',
@@ -188,6 +188,7 @@ void main() {
           flag: 0,
           assignedWaiterId: 'W001',
           waiterName: 'Rahul Sharma (W001)',
+          isUnlocked: true,
           createdAt: DateTime.now().millisecondsSinceEpoch,
         ),
       ]);
@@ -217,6 +218,7 @@ void main() {
           flag: 0,
           assignedWaiterId: 'W001',
           waiterName: 'Rahul Sharma (W001)',
+          isUnlocked: true,
           createdAt: DateTime.now().millisecondsSinceEpoch,
         ),
       ]);
@@ -354,6 +356,7 @@ void main() {
           flag: 0,
           assignedWaiterId: 'W001',
           waiterName: 'Rahul Sharma (W001)',
+          isUnlocked: true,
           createdAt: DateTime.now().millisecondsSinceEpoch,
         ),
       ]);
@@ -371,6 +374,7 @@ void main() {
           flag: 0,
           assignedWaiterId: 'W002',
           waiterName: 'Priya Singh (W002)',
+          isUnlocked: true,
           createdAt: DateTime.now().millisecondsSinceEpoch,
         ),
       ]);

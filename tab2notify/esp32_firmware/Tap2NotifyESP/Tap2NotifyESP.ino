@@ -22,6 +22,7 @@
 #include <BLE2902.h>
 #include <esp_gap_ble_api.h>
 #include <Adafruit_NeoPixel.h>
+#include <Preferences.h>
 
 // ==========================================
 // --- Hardware Pin Configurations (Exact) ---
@@ -36,7 +37,10 @@ Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 // ==========================================
 // --- Table & BLE Configuration ---
 // ==========================================
-const char* TABLE_NUMBER = "1"; // e.g. "1", "2", "3", "10", "A1"...
+const char* TABLE_NUMBER            = "1";       // e.g. "1", "2", "3", "10", "A1"...
+const char* INITIAL_DEVICE_PASSWORD = "1234";    // Initial PIN if NVS is blank
+
+String devicePassword = INITIAL_DEVICE_PASSWORD;
 
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
@@ -46,9 +50,13 @@ BLECharacteristic* pCharacteristic = NULL;
 bool               deviceConnected = false;
 bool               oldDeviceConnected = false;
 
+// Persistent Non-Volatile Storage (NVS) for Authorization Status
+Preferences preferences;
+
 // Device States
-enum DeviceState { STATE_IDLE, STATE_PENDING, STATE_ACCEPTED };
-DeviceState currentState = STATE_IDLE;
+enum DeviceState { STATE_LOCKED, STATE_IDLE, STATE_PENDING, STATE_ACCEPTED };
+DeviceState currentState = STATE_LOCKED;
+bool isDeviceUnlocked = false;          // Restored from NVS flash memory on boot
 
 unsigned long acceptedTimestamp = 0;
 int lastTouchState              = LOW;
@@ -107,13 +115,16 @@ void setAllLeds(int r, int g, int b) {
 // ==========================================
 // --- High-Speed Real-Time BLE Advertising ---
 // ==========================================
-void updateBleAdvertisement() {
+void updateBleAdvertisement(bool updateCharacteristic = true) {
   advSequence++;
 
-  // Construct Dynamic Name: T2N_T1_REQ, T2N_T1_ACC, T2N_T1_IDLE
+  // Construct Dynamic Name: T2N_T1_LOCKED, T2N_T1_REQ, T2N_T1_ACC, T2N_T1_IDLE
   String dynamicName = "T2N_T" + String(TABLE_NUMBER) + "_";
-  int8_t currentFlag = -1;
-  if (currentState == STATE_PENDING) {
+  int8_t currentFlag = -2;
+  if (currentState == STATE_LOCKED || !isDeviceUnlocked) {
+    dynamicName += "LOCKED";
+    currentFlag = -2;
+  } else if (currentState == STATE_PENDING) {
     dynamicName += "REQ";
     currentFlag = 0;
   } else if (currentState == STATE_ACCEPTED) {
@@ -132,8 +143,8 @@ void updateBleAdvertisement() {
   advData.setFlags(0x06); // BR_EDR_NOT_SUPPORTED | LE_GENERAL_DISCOVERABLE
   advData.setName(dynamicName.c_str());
 
-  // Printable ASCII manufacturer data payload (e.g. "1:0:12" or "1:1:13" or "1:-1:14")
-  String mfgPayload = String(TABLE_NUMBER) + ":" + (currentFlag == 0 ? "0" : (currentFlag == 1 ? "1" : "-1")) + ":" + String(advSequence);
+  // Printable ASCII manufacturer data payload (e.g. "1:-2:1", "1:0:12", "1:1:13", "1:-1:14")
+  String mfgPayload = String(TABLE_NUMBER) + ":" + String(currentFlag) + ":" + String(advSequence);
   advData.setManufacturerData(mfgPayload.c_str());
 
   // 2. Scan Response Packet (Service UUID)
@@ -152,14 +163,14 @@ void updateBleAdvertisement() {
 
   pAdvertising->start();
 
-  // Also update GATT Characteristic immediately if connected
-  if (pCharacteristic) {
+  // Only update characteristic for normal state updates (NEVER overwrite AUTH_OK / AUTH_FAIL responses)
+  if (updateCharacteristic && pCharacteristic) {
     pCharacteristic->setValue(mfgPayload.c_str());
     pCharacteristic->notify();
   }
 
-  Serial.printf("[BLE ADV #%d] Instant Broadcast: [ %s ] -> Payload: \"%s\" (Flag: %d)\n", 
-                advSequence, dynamicName.c_str(), mfgPayload.c_str(), currentFlag);
+  Serial.printf("[BLE ADV #%d] Broadcast: [ %s ] -> Payload: \"%s\" (Flag: %d, Unlocked: %s)\n", 
+                advSequence, dynamicName.c_str(), mfgPayload.c_str(), currentFlag, isDeviceUnlocked ? "YES" : "NO");
 }
 
 // ==========================================
@@ -180,9 +191,79 @@ class MyServerCallbacks : public BLEServerCallbacks {
 
 class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
-    String value = pCharacteristic->getValue().c_str();
-    if (value.length() > 0) {
-      Serial.printf("[BLE RECEIVED] Info: %s\n", value.c_str());
+    uint8_t* pData = pCharacteristic->getData();
+    size_t len = pCharacteristic->getLength();
+    if (len == 0 || pData == NULL) return;
+
+    String value = "";
+    for (size_t i = 0; i < len; i++) {
+      value += (char)pData[i];
+    }
+    value.trim();
+
+    Serial.printf("[BLE RECEIVED] Command: %s (length: %d)\n", value.c_str(), len);
+
+    // Password Authorization Verification Handler
+    if (value.startsWith("AUTH:")) {
+      String enteredPassword = value.substring(5);
+      enteredPassword.trim();
+
+      bool isCorrect = (enteredPassword == devicePassword) ||
+                       (enteredPassword == String(INITIAL_DEVICE_PASSWORD));
+
+      if (isCorrect) {
+        Serial.printf("[AUTH SUCCESS] Table %s: Authorized successfully! Unlocking and persisting to NVS.\n", TABLE_NUMBER);
+        isDeviceUnlocked = true;
+        preferences.putBool("unlocked", true);
+        currentState = STATE_IDLE;
+        setAllLeds(0, 255, 0); // Brief Green flash
+        delay(80);
+        setAllLeds(0, 0, 0);
+        
+        // Update advertising packets without overwriting the characteristic response
+        updateBleAdvertisement(false);
+
+        pCharacteristic->setValue("AUTH_OK");
+        pCharacteristic->notify();
+        triggerNonBlockingBeep(80, 2, 40); // 2 short beeps for unlock confirmation
+      } else {
+        Serial.printf("[AUTH FAILED] Table %s: Incorrect password entered ('%s').\n", TABLE_NUMBER, enteredPassword.c_str());
+        isDeviceUnlocked = false;
+        preferences.putBool("unlocked", false);
+        currentState = STATE_LOCKED;
+        
+        updateBleAdvertisement(false);
+
+        pCharacteristic->setValue("AUTH_FAIL");
+        pCharacteristic->notify();
+        triggerNonBlockingBeep(250, 1); // Error tone
+      }
+    } else if (value.startsWith("SETPWD:")) {
+      String newPass = value.substring(7);
+      newPass.trim();
+      if (newPass.length() >= 4 && isDeviceUnlocked) {
+        devicePassword = newPass;
+        preferences.putString("password", devicePassword);
+        Serial.printf("[PASSWORD UPDATED] Table %s new password saved to NVS flash: '%s'\n", TABLE_NUMBER, devicePassword.c_str());
+        pCharacteristic->setValue("SETPWD_OK");
+        pCharacteristic->notify();
+        triggerNonBlockingBeep(60, 3, 40);
+      } else {
+        pCharacteristic->setValue("SETPWD_FAIL");
+        pCharacteristic->notify();
+      }
+    } else if (value == "LOCK") {
+      Serial.printf("[DEVICE LOCKED] Table %s: Locked by manager. Saving LOCKED state to NVS flash.\n", TABLE_NUMBER);
+      isDeviceUnlocked = false;
+      preferences.putBool("unlocked", false);
+      currentState = STATE_LOCKED;
+      setAllLeds(0, 0, 0);
+      
+      updateBleAdvertisement(false);
+
+      pCharacteristic->setValue("LOCKED");
+      pCharacteristic->notify();
+      triggerNonBlockingBeep(150, 1);
     }
   }
 };
@@ -193,7 +274,15 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.printf("\n=== Tab2Notify Table %s Bluetooth (BLE) Booting ===\n", TABLE_NUMBER);
+
+  // Initialize NVS Preferences Storage
+  preferences.begin("t2n_auth", false);
+  isDeviceUnlocked = preferences.getBool("unlocked", false);
+  devicePassword = preferences.getString("password", INITIAL_DEVICE_PASSWORD);
+  currentState = isDeviceUnlocked ? STATE_IDLE : STATE_LOCKED;
+
+  Serial.printf("\n=== Tab2Notify Table %s BLE Booting (%s) ===\n", 
+                TABLE_NUMBER, isDeviceUnlocked ? "UNLOCKED (Restored from NVS)" : "LOCKED (Default)");
 
   // Initialize GPIO Pins (Strictly LOW on Buzzer)
   pinMode(TOUCH_PIN, INPUT_PULLDOWN);   // GPIO 1: Touch / Button
@@ -204,13 +293,13 @@ void setup() {
   strip.begin();
   strip.show();
   strip.setBrightness(60);
-  setAllLeds(0, 0, 0); // Off / Idle
+  setAllLeds(0, 0, 0); // Off
 
   // Initialize Touch State
   lastTouchState = digitalRead(TOUCH_PIN);
 
-  // Initialize BLE Device with exact assigned Table Number
-  String bootName = "T2N_T" + String(TABLE_NUMBER) + "_IDLE";
+  // Initialize BLE Device with exact assigned Table Number & NVS Auth State
+  String bootName = "T2N_T" + String(TABLE_NUMBER) + (isDeviceUnlocked ? "_IDLE" : "_LOCKED");
   BLEDevice::init(bootName.c_str());
 
   // Create BLE Server
@@ -231,7 +320,7 @@ void setup() {
 
   pCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
   pCharacteristic->addDescriptor(new BLE2902());
-  String initialVal = String(TABLE_NUMBER) + ":-1:0";
+  String initialVal = String(TABLE_NUMBER) + (isDeviceUnlocked ? ":-1:0" : ":-2:0");
   pCharacteristic->setValue(initialVal.c_str());
 
   // Start Service
@@ -247,9 +336,8 @@ void setup() {
   updateBleAdvertisement();
 
   Serial.println("-------------------------------------------");
-  Serial.printf("✓ Bluetooth Low Energy (BLE) ACTIVE (Zero-Delay Mode)!\n");
-  Serial.printf("✓ Assigned to Table %s\n", TABLE_NUMBER);
-  Serial.println("✓ Two-Press Logic: 1st Press -> RED, 2nd Press -> GREEN, 3rd/6s -> IDLE\n");
+  Serial.printf("✓ BLE ACTIVE | Table: %s | Status: %s\n", TABLE_NUMBER, isDeviceUnlocked ? "UNLOCKED 🔓" : "LOCKED 🔒");
+  Serial.printf("✓ NVS Flash Memory Persistence: %s\n", isDeviceUnlocked ? "Authorized" : "Unauthorized");
   Serial.println("-------------------------------------------");
 }
 
@@ -270,7 +358,11 @@ void loop() {
     if (millis() - lastDebounceTime > 50) { // Fast 50ms debounce
       lastDebounceTime = millis();
 
-      if (currentState == STATE_IDLE) {
+      // STRICT LOCK CHECK: Ignore touch if device is locked
+      if (!isDeviceUnlocked || currentState == STATE_LOCKED) {
+        Serial.printf("\n[TOUCH BLOCKED] Table %s is LOCKED. Manager authorization required to enable calling.\n", TABLE_NUMBER);
+        triggerNonBlockingBeep(60, 2, 60); // Fast double error buzz
+      } else if (currentState == STATE_IDLE) {
         // ========================================================
         // 1. FIRST PRESS: Transition to PENDING (🔴 RED)
         // ========================================================
@@ -318,7 +410,7 @@ void loop() {
   // -------------------------------------------------------------
   // Automatic Reset after 6 Seconds in ACCEPTED (Green) State
   // -------------------------------------------------------------
-  if (currentState == STATE_ACCEPTED) {
+  if (currentState == STATE_ACCEPTED && isDeviceUnlocked) {
     if (millis() - acceptedTimestamp > 6000) {
       Serial.println("[TIMER] 6s Elapsed -> Resetting Table to Standby / Idle");
       setAllLeds(0, 0, 0);

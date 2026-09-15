@@ -68,6 +68,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: now,
         requestSentAt: now,
       );

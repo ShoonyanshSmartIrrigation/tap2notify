@@ -4,6 +4,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../../../core/widgets/app_info_card.dart';
 import '../../../../core/widgets/table_card.dart';
 import '../../../service_requests/domain/table_model.dart';
+import '../widgets/table_unlock_dialog.dart';
 
 class TablesTabView extends StatelessWidget {
   final List<TableModel> tablesList;
@@ -249,7 +250,11 @@ class TablesTabView extends StatelessWidget {
                                                 ? 'Assigned'
                                                 : (selectedFilter == 'unassigned'
                                                     ? 'Unassigned'
-                                                    : 'Idle (${idleTables.length})')))),
+                                                    : (selectedFilter == 'locked'
+                                                        ? 'Locked 🔒'
+                                                        : (selectedFilter == 'unlocked'
+                                                            ? 'Unlocked 🔓'
+                                                            : 'Idle (${idleTables.length})')))))),
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -319,6 +324,35 @@ class TablesTabView extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 10),
                                 Text('Idle 🟠 (${idleTables.length})'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(),
+                          PopupMenuItem(
+                            value: 'locked',
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.lock_rounded,
+                                  size: 18,
+                                  color: Color(0xFFEA580C),
+                                ),
+                                SizedBox(width: 10),
+                                Text('Locked Tables 🔒'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'unlocked',
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.lock_open_rounded,
+                                  size: 18,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                                SizedBox(width: 10),
+                                Text('Unlocked Tables 🔓'),
                               ],
                             ),
                           ),
@@ -423,6 +457,8 @@ class TablesTabView extends StatelessWidget {
                   final table = displayList[index];
                   return TableCard(
                     table: table,
+                    isManagerView: true,
+                    onUnlock: () => TableUnlockDialog.show(context, table),
                   );
                 },
                 childCount: displayList.length,

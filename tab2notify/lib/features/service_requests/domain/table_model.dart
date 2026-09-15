@@ -7,6 +7,9 @@ class TableModel {
   final String waiterName;
   final String assignedWaiterId;
   final bool isDeviceOnline;
+  final bool isUnlocked; // Authorization status (Manager-only password unlock)
+  final int? unlockedAt;
+  final String? unlockedBy;
   final String managerPhone;
   final String managerUid;
   final String? managerEmail;
@@ -24,6 +27,9 @@ class TableModel {
     this.waiterName = '',
     this.assignedWaiterId = '',
     this.isDeviceOnline = false,
+    this.isUnlocked = false,
+    this.unlockedAt,
+    this.unlockedBy,
     this.managerPhone = '',
     this.managerUid = '',
     this.managerEmail,
@@ -50,6 +56,9 @@ class TableModel {
       'assigned_waiter_id': assignedWaiterId,
       'assigned_waiter_name': waiterName,
       'device_online': isDeviceOnline,
+      'is_unlocked': isUnlocked,
+      'unlocked_at': unlockedAt,
+      'unlocked_by': unlockedBy,
       'manager_phone': managerPhone,
       'manager_uid': managerUid,
       'manager_email': managerEmail,
@@ -93,6 +102,10 @@ class TableModel {
         (map['online'] == true) ||
         (map['is_online'] == true);
 
+    final bool unlocked = (map['is_unlocked'] == true) ||
+        (map['isUnlocked'] == true) ||
+        (map['unlocked'] == true);
+
     final String wName = map['assigned_waiter_name']?.toString() ??
         map['waiter_name']?.toString() ??
         map['waiterName']?.toString() ??
@@ -123,6 +136,9 @@ class TableModel {
       waiterName: wName,
       assignedWaiterId: wId,
       isDeviceOnline: online,
+      isUnlocked: unlocked,
+      unlockedAt: (map['unlocked_at'] as num?)?.toInt() ?? (map['unlockedAt'] as num?)?.toInt(),
+      unlockedBy: map['unlocked_by']?.toString() ?? map['unlockedBy']?.toString(),
       managerPhone: mPhone,
       managerUid: mUid,
       managerEmail: mEmail,
@@ -139,6 +155,9 @@ class TableModel {
     String? waiterName,
     String? assignedWaiterId,
     bool? isDeviceOnline,
+    bool? isUnlocked,
+    int? unlockedAt,
+    String? unlockedBy,
     String? managerPhone,
     String? managerUid,
     String? managerEmail,
@@ -155,6 +174,9 @@ class TableModel {
       waiterName: waiterName ?? this.waiterName,
       assignedWaiterId: assignedWaiterId ?? this.assignedWaiterId,
       isDeviceOnline: isDeviceOnline ?? this.isDeviceOnline,
+      isUnlocked: isUnlocked ?? this.isUnlocked,
+      unlockedAt: unlockedAt ?? this.unlockedAt,
+      unlockedBy: unlockedBy ?? this.unlockedBy,
       managerPhone: managerPhone ?? this.managerPhone,
       managerUid: managerUid ?? this.managerUid,
       managerEmail: managerEmail ?? this.managerEmail,

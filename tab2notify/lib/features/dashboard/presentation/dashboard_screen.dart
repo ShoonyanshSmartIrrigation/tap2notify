@@ -187,6 +187,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       displayList = tablesList.where((t) => t.isAssigned).toList();
     } else if (_selectedFilter == 'unassigned') {
       displayList = tablesList.where((t) => !t.isAssigned).toList();
+    } else if (_selectedFilter == 'locked') {
+      displayList = tablesList.where((t) => !t.isUnlocked).toList();
+    } else if (_selectedFilter == 'unlocked') {
+      displayList = tablesList.where((t) => t.isUnlocked).toList();
     } else {
       displayList = tablesList;
     }

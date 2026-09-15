@@ -17,11 +17,14 @@ class OverviewTabView extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final pendingList = tables.where((t) => t.isPending).toList();
-    final acceptedList = tables.where((t) => t.isAccepted).toList();
-    final idleList = tables.where((t) => !t.isPending && !t.isAccepted).toList();
+    final unlockedTables = tables.where((t) => t.isUnlocked).toList();
+    final lockedTables = tables.where((t) => !t.isUnlocked).toList();
 
-    final totalCount = tables.length;
+    final pendingList = unlockedTables.where((t) => t.isPending).toList();
+    final acceptedList = unlockedTables.where((t) => t.isAccepted).toList();
+    final idleList = unlockedTables.where((t) => !t.isPending && !t.isAccepted).toList();
+
+    final totalCount = unlockedTables.length;
     final pendingCount = pendingList.length;
     final acceptedCount = acceptedList.length;
     final idleCount = idleList.length;
@@ -155,10 +158,12 @@ class OverviewTabView extends StatelessWidget {
                 onTap: () => onSelectTab(0),
               ),
               _buildKpiCard(
-                title: 'Total Tables',
+                title: 'Unlocked Tables',
                 count: '$totalCount',
-                subtitle: 'Connected Devices',
-                icon: Icons.sensors_rounded,
+                subtitle: lockedTables.isNotEmpty
+                    ? '${lockedTables.length} Locked'
+                    : 'Active Devices',
+                icon: Icons.table_restaurant_rounded,
                 color: const Color(0xFF0284C7),
                 isDark: isDark,
                 onTap: () => onSelectTab(0),

@@ -125,11 +125,11 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       backgroundColor: theme.colorScheme.surface,
       elevation: 16,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
           child: Form(
             key: _formKey,
             child: Column(
@@ -139,8 +139,8 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                 // Header Icon with Gradient
                 Center(
                   child: Container(
-                    width: 64,
-                    height: 64,
+                    width: 56,
+                    height: 56,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFFEA580C), Color(0xFFFB923C)],
@@ -151,19 +151,19 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFFEA580C).withValues(alpha: 0.35),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
                         ),
                       ],
                     ),
                     child: const Icon(
                       Icons.lock_rounded,
                       color: Colors.white,
-                      size: 32,
+                      size: 28,
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 // Title
                 Text(
@@ -171,10 +171,10 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 20,
+                    fontSize: 19,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
 
                 // Description
                 Text(
@@ -182,19 +182,19 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    fontSize: 13,
+                    fontSize: 12.5,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Device Info Card
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: isDark
                         ? Colors.white.withValues(alpha: 0.05)
                         : Colors.black.withValues(alpha: 0.04),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.08)
@@ -208,38 +208,38 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                         children: [
                           Icon(
                             Icons.memory_rounded,
-                            size: 18,
+                            size: 16,
                             color: theme.colorScheme.primary,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Text(
                             widget.table.deviceId,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: 12.5,
+                              fontSize: 12,
                             ),
                           ),
                         ],
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                         decoration: BoxDecoration(
                           color: const Color(0xFFE53935).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               Icons.lock_outline_rounded,
-                              size: 11,
+                              size: 10,
                               color: Color(0xFFE53935),
                             ),
-                            SizedBox(width: 4),
+                            SizedBox(width: 3),
                             Text(
                               'LOCKED',
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 9.5,
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFFE53935),
                               ),
@@ -250,7 +250,7 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Password Field
                 TextFormField(
@@ -281,23 +281,23 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                         ? Colors.white.withValues(alpha: 0.05)
                         : Colors.black.withValues(alpha: 0.03),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
+                      horizontal: 14,
+                      vertical: 12,
                     ),
                   ),
                 ),
 
                 // Error Message Display
                 if (_errorMessage != null) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       color: const Color(0xFFE53935).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: const Color(0xFFE53935).withValues(alpha: 0.3),
                       ),
@@ -307,16 +307,16 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                         const Icon(
                           Icons.error_outline_rounded,
                           color: Color(0xFFE53935),
-                          size: 18,
+                          size: 16,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             _errorMessage!,
                             style: const TextStyle(
                               color: Color(0xFFE53935),
                               fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                              fontSize: 11.5,
                             ),
                           ),
                         ),
@@ -324,7 +324,7 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
                 // Action Buttons
                 Row(
@@ -333,7 +333,7 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                       child: TextButton(
                         onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
                         style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -347,7 +347,7 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       flex: 2,
                       child: ElevatedButton(
@@ -355,32 +355,32 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.colorScheme.primary,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 2,
                         ),
                         child: _isLoading
                             ? const SizedBox(
-                                height: 20,
-                                width: 20,
+                                height: 18,
+                                width: 18,
                                 child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
+                                  strokeWidth: 2.0,
                                   color: Colors.white,
                                 ),
                               )
                             : const Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.lock_open_rounded, size: 18),
+                                  Icon(Icons.lock_open_rounded, size: 16),
                                   SizedBox(width: 6),
                                   Text(
                                     'UNLOCK DEVICE',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 13.5,
-                                      letterSpacing: 0.4,
+                                      fontSize: 13,
+                                      letterSpacing: 0.3,
                                     ),
                                   ),
                                 ],

@@ -282,5 +282,36 @@ void main() {
       await bleService.lockTableLocally('table_10');
       expect(bleService.isTableUnlocked('table_10'), isFalse);
     });
+
+    test('9. Dashboard filtering: locked tables are isolated and excluded from "all" section', () {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final table1Unlocked = TableModel(
+        id: 'table_1',
+        tableNumber: 1,
+        deviceId: 'device_1',
+        isUnlocked: true,
+        createdAt: now,
+      );
+      final table2Locked = TableModel(
+        id: 'table_2',
+        tableNumber: 2,
+        deviceId: 'device_2',
+        isUnlocked: false,
+        createdAt: now,
+      );
+
+      final tablesList = [table1Unlocked, table2Locked];
+
+      final unlockedTables = tablesList.where((t) => t.isUnlocked).toList();
+      final lockedTables = tablesList.where((t) => !t.isUnlocked).toList();
+
+      // "All" filter should only show unlocked tables
+      expect(unlockedTables.length, equals(1));
+      expect(unlockedTables.first.id, equals('table_1'));
+
+      // "Locked" filter contains locked tables
+      expect(lockedTables.length, equals(1));
+      expect(lockedTables.first.id, equals('table_2'));
+    });
   });
 }

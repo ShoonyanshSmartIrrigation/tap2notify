@@ -170,9 +170,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     final tablesList = tablesAsync.value ?? [];
 
-    final pendingTables = tablesList.where((t) => t.isPending).toList();
-    final acceptedTables = tablesList.where((t) => t.isAccepted).toList();
-    final idleTables = tablesList
+    final unlockedTables = tablesList.where((t) => t.isUnlocked).toList();
+    final lockedTables = tablesList.where((t) => !t.isUnlocked).toList();
+
+    final pendingTables = unlockedTables.where((t) => t.isPending).toList();
+    final acceptedTables = unlockedTables.where((t) => t.isAccepted).toList();
+    final idleTables = unlockedTables
         .where((t) => !t.isPending && !t.isAccepted)
         .toList();
 
@@ -184,15 +187,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     } else if (_selectedFilter == 'idle') {
       displayList = idleTables;
     } else if (_selectedFilter == 'assigned') {
-      displayList = tablesList.where((t) => t.isAssigned).toList();
+      displayList = unlockedTables.where((t) => t.isAssigned).toList();
     } else if (_selectedFilter == 'unassigned') {
-      displayList = tablesList.where((t) => !t.isAssigned).toList();
+      displayList = unlockedTables.where((t) => !t.isAssigned).toList();
     } else if (_selectedFilter == 'locked') {
-      displayList = tablesList.where((t) => !t.isUnlocked).toList();
+      displayList = lockedTables;
     } else if (_selectedFilter == 'unlocked') {
-      displayList = tablesList.where((t) => t.isUnlocked).toList();
+      displayList = unlockedTables;
     } else {
-      displayList = tablesList;
+      // Default: 'all' filter shows only unlocked tables
+      displayList = unlockedTables;
     }
 
     return Scaffold(
@@ -312,6 +316,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           // Tab 0: Tables Grid
           TablesTabView(
             tablesList: tablesList,
+            unlockedTables: unlockedTables,
+            lockedTables: lockedTables,
             displayList: displayList,
             pendingTables: pendingTables,
             acceptedTables: acceptedTables,

@@ -8,6 +8,8 @@ import '../widgets/table_unlock_dialog.dart';
 
 class TablesTabView extends StatelessWidget {
   final List<TableModel> tablesList;
+  final List<TableModel> unlockedTables;
+  final List<TableModel> lockedTables;
   final List<TableModel> displayList;
   final List<TableModel> pendingTables;
   final List<TableModel> acceptedTables;
@@ -24,6 +26,8 @@ class TablesTabView extends StatelessWidget {
   const TablesTabView({
     super.key,
     required this.tablesList,
+    required this.unlockedTables,
+    required this.lockedTables,
     required this.displayList,
     required this.pendingTables,
     required this.acceptedTables,
@@ -195,7 +199,11 @@ class TablesTabView extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Hotel Tables (${tablesList.length})',
+                      selectedFilter == 'locked'
+                          ? 'Locked Tables (${lockedTables.length})'
+                          : (selectedFilter == 'all'
+                              ? 'Hotel Tables (${unlockedTables.length})'
+                              : 'Hotel Tables (${displayList.length})'),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -223,10 +231,14 @@ class TablesTabView extends StatelessWidget {
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            color: selectedFilter == 'locked'
+                                ? const Color(0xFFEA580C).withValues(alpha: 0.15)
+                                : theme.colorScheme.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                              color: selectedFilter == 'locked'
+                                  ? const Color(0xFFEA580C).withValues(alpha: 0.4)
+                                  : theme.colorScheme.primary.withValues(alpha: 0.3),
                               width: 1,
                             ),
                           ),
@@ -234,38 +246,46 @@ class TablesTabView extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons.filter_list_rounded,
+                                selectedFilter == 'locked'
+                                    ? Icons.lock_rounded
+                                    : Icons.filter_list_rounded,
                                 size: 16,
-                                color: theme.colorScheme.primary,
+                                color: selectedFilter == 'locked'
+                                    ? const Color(0xFFEA580C)
+                                    : theme.colorScheme.primary,
                               ),
                               const SizedBox(width: 5),
                               Text(
                                 selectedFilter == 'all'
-                                    ? 'All (${tablesList.length})'
+                                    ? 'All (${unlockedTables.length})'
                                     : (selectedFilter == 'pending'
                                         ? 'Pending (${pendingTables.length})'
                                         : (selectedFilter == 'accepted'
                                             ? 'Accepted (${acceptedTables.length})'
                                             : (selectedFilter == 'assigned'
-                                                ? 'Assigned'
+                                                ? 'Assigned (${unlockedTables.where((t) => t.isAssigned).length})'
                                                 : (selectedFilter == 'unassigned'
-                                                    ? 'Unassigned'
+                                                    ? 'Unassigned (${unlockedTables.where((t) => !t.isAssigned).length})'
                                                     : (selectedFilter == 'locked'
-                                                        ? 'Locked 🔒'
+                                                        ? 'Locked 🔒 (${lockedTables.length})'
                                                         : (selectedFilter == 'unlocked'
-                                                            ? 'Unlocked 🔓'
+                                                            ? 'Unlocked 🔓 (${unlockedTables.length})'
                                                             : 'Idle (${idleTables.length})')))))),
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
+                                  color: selectedFilter == 'locked'
+                                      ? const Color(0xFFEA580C)
+                                      : theme.colorScheme.primary,
                                 ),
                               ),
                               const SizedBox(width: 2),
                               Icon(
                                 Icons.arrow_drop_down_rounded,
                                 size: 18,
-                                color: theme.colorScheme.primary,
+                                color: selectedFilter == 'locked'
+                                    ? const Color(0xFFEA580C)
+                                    : theme.colorScheme.primary,
                               ),
                             ],
                           ),
@@ -281,7 +301,7 @@ class TablesTabView extends StatelessWidget {
                                   color: Colors.blueGrey,
                                 ),
                                 const SizedBox(width: 10),
-                                Text('All Tables (${tablesList.length})'),
+                                Text('All Tables (${unlockedTables.length})'),
                               ],
                             ),
                           ),
@@ -330,29 +350,29 @@ class TablesTabView extends StatelessWidget {
                           const PopupMenuDivider(),
                           PopupMenuItem(
                             value: 'locked',
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.lock_rounded,
                                   size: 18,
                                   color: Color(0xFFEA580C),
                                 ),
-                                SizedBox(width: 10),
-                                Text('Locked Tables 🔒'),
+                                const SizedBox(width: 10),
+                                Text('Locked Tables 🔒 (${lockedTables.length})'),
                               ],
                             ),
                           ),
                           PopupMenuItem(
                             value: 'unlocked',
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.lock_open_rounded,
                                   size: 18,
                                   color: Color(0xFF2E7D32),
                                 ),
-                                SizedBox(width: 10),
-                                Text('Unlocked Tables 🔓'),
+                                const SizedBox(width: 10),
+                                Text('Unlocked Tables 🔓 (${unlockedTables.length})'),
                               ],
                             ),
                           ),
@@ -367,7 +387,7 @@ class TablesTabView extends StatelessWidget {
                                   color: theme.colorScheme.primary,
                                 ),
                                 const SizedBox(width: 10),
-                                const Text('Assigned Tables 👤'),
+                                Text('Assigned Tables 👤 (${unlockedTables.where((t) => t.isAssigned).length})'),
                               ],
                             ),
                           ),
@@ -381,7 +401,7 @@ class TablesTabView extends StatelessWidget {
                                   color: Colors.grey,
                                 ),
                                 const SizedBox(width: 10),
-                                const Text('Unassigned Tables ⚠️'),
+                                Text('Unassigned Tables ⚠️ (${unlockedTables.where((t) => !t.isAssigned).length})'),
                               ],
                             ),
                           ),
@@ -408,7 +428,9 @@ class TablesTabView extends StatelessWidget {
                 child: Column(
                   children: [
                     Icon(
-                      Icons.table_bar_rounded,
+                      selectedFilter == 'locked'
+                          ? Icons.lock_open_rounded
+                          : Icons.table_bar_rounded,
                       size: 64,
                       color: theme.colorScheme.primary.withValues(alpha: 0.4),
                     ),
@@ -416,9 +438,13 @@ class TablesTabView extends StatelessWidget {
                     Text(
                       selectedFilter == 'pending'
                           ? 'No pending table requests!'
-                          : (tablesList.isEmpty
-                              ? 'Scanning for nearby table devices...'
-                              : 'No tables in this category.'),
+                          : (selectedFilter == 'locked'
+                              ? 'No locked tables!'
+                              : (unlockedTables.isEmpty
+                                  ? (lockedTables.isNotEmpty
+                                      ? 'All ${lockedTables.length} table(s) are currently locked.'
+                                      : 'Scanning for nearby table devices...')
+                                  : 'No tables in this category.')),
                       style: TextStyle(
                         fontSize: 16,
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
@@ -427,9 +453,13 @@ class TablesTabView extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      tablesList.isEmpty
-                          ? 'Make sure your ESP32 table device is powered on.'
-                          : 'Table devices connected via Bluetooth.',
+                      selectedFilter == 'locked'
+                          ? 'All configured tables are authorized & unlocked.'
+                          : (unlockedTables.isEmpty && lockedTables.isNotEmpty
+                              ? 'Switch to the "Locked 🔒" filter to unlock your tables with password.'
+                              : (tablesList.isEmpty
+                                  ? 'Make sure your ESP32 table device is powered on.'
+                                  : 'Table devices connected via Bluetooth.')),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,

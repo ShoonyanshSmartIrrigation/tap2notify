@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/theme/theme_provider.dart';
 import '../../../core/widgets/custom_bottom_navbar.dart';
 import '../../service_requests/domain/table_model.dart';
 import '../../service_requests/presentation/service_request_providers.dart';
@@ -251,7 +250,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         actions: [
           // BLE Radar Scanner Pill
           Padding(
-            padding: const EdgeInsets.only(right: 6.0),
+            padding: const EdgeInsets.only(right: 16.0),
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: () =>
@@ -298,15 +297,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
             ),
-          ),
-          IconButton(
-            tooltip: 'Toggle Theme',
-            icon: Icon(
-              theme.brightness == Brightness.dark
-                  ? Icons.light_mode
-                  : Icons.dark_mode,
-            ),
-            onPressed: () => ref.read(themeModeProvider.notifier).toggleTheme(),
           ),
         ],
       ),

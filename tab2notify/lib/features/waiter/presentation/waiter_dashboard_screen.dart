@@ -27,7 +27,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(bleServiceProvider).requestPermissionsAndStartScan();
+      ref.read(gatewayWifiServiceProvider).startScan();
       _checkInitialRequest();
       final currentWaiter = ref.read(currentLoggedWaiterProvider);
       if (currentWaiter != null && currentWaiter.managerPhone.isNotEmpty) {
@@ -388,8 +388,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
       body: RefreshIndicator(
         onRefresh: () async {
           HapticFeedback.lightImpact();
-          // Restart and force-poll BLE scanner
-          await ref.read(bleServiceProvider).startScan();
+          // Refresh Wi-Fi Gateway devices
+          await ref.read(gatewayWifiServiceProvider).refreshDevices();
           // Invalidate waiter stream provider to re-merge
           ref.invalidate(waiterTablesStreamProvider(waiterId));
           await Future.delayed(const Duration(milliseconds: 500));

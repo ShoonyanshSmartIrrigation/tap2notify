@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/gateway_wifi_service.dart';
 import '../../../core/widgets/custom_bottom_navbar.dart';
 import '../../service_requests/domain/table_model.dart';
 import '../../service_requests/presentation/service_request_providers.dart';
@@ -28,19 +28,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(bleServiceProvider).requestPermissionsAndStartScan();
+      ref.read(gatewayWifiServiceProvider).startScan();
     });
   }
 
-
-
-  void _showBleInfoModal(
+  void _showGatewayInfoModal(
     List<TableModel> tables,
     bool isScanning,
-    BluetoothAdapterState adapterState,
+    GatewayConnectionStatus connectionStatus,
+    String gatewayIp,
   ) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isConnected = connectionStatus == GatewayConnectionStatus.connected;
 
     showModalBottomSheet(
       context: context,
@@ -74,20 +74,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(
-                            0xFF0284C7,
-                          ).withValues(alpha: 0.15),
+                          color: (isConnected ? const Color(0xFF2E7D32) : const Color(0xFF0284C7))
+                              .withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.bluetooth_audio_rounded,
-                          color: Color(0xFF0284C7),
+                        child: Icon(
+                          isConnected ? Icons.wifi_rounded : Icons.wifi_find_rounded,
+                          color: isConnected ? const Color(0xFF2E7D32) : const Color(0xFF0284C7),
                           size: 22,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Text(
-                        'BLE Radar Diagnostics',
+                        'Wi-Fi Gateway Diagnostics',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -96,9 +95,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh_rounded),
-                    tooltip: 'Restart Scan',
+                    tooltip: 'Refresh Devices',
                     onPressed: () {
-                      ref.read(bleServiceProvider).startScan();
+                      ref.read(gatewayWifiServiceProvider).refreshDevices();
                       Navigator.pop(ctx);
                     },
                   ),
@@ -106,18 +105,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               const Divider(height: 24),
               _buildDiagRow(
-                'Adapter Status',
-                adapterState == BluetoothAdapterState.on
-                    ? 'Bluetooth ON ✓'
-                    : 'Bluetooth OFF ✗',
-                adapterState == BluetoothAdapterState.on
-                    ? const Color(0xFF2E7D32)
-                    : const Color(0xFFE53935),
+                'Gateway Status',
+                isConnected ? 'Connected ✓ (Online)' : 'Searching Gateway...',
+                isConnected ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
               ),
               _buildDiagRow(
-                'Radar Scanner',
-                isScanning ? 'Actively Scanning...' : 'Idle',
-                isScanning ? const Color(0xFF0284C7) : Colors.grey,
+                'Gateway IP Address',
+                '$gatewayIp:80',
+                isDark ? Colors.white70 : Colors.black87,
+              ),
+              _buildDiagRow(
+                'Communication Mode',
+                'Pure Wi-Fi (REST / Event Stream)',
+                const Color(0xFF0284C7),
               ),
               _buildDiagRow(
                 'Total Devices Found',
@@ -126,7 +126,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Pressing your physical device button transmits raw BLE manufacturer packets to this app instantly.',
+                'ESP32-WROOM Gateway communicates over local Wi-Fi with instant sub-5ms event dispatching.',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -162,10 +162,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final tablesAsync = ref.watch(tablesStreamProvider);
-    final bleScanState = ref.watch(bleScanningStreamProvider).value ?? false;
-    final adapterState =
-        ref.watch(bleAdapterStateStreamProvider).value ??
-        BluetoothAdapterState.unknown;
+    final wifiService = ref.watch(gatewayWifiServiceProvider);
+    final connectionStatus =
+        ref.watch(gatewayConnectionStatusStreamProvider).value ??
+        wifiService.connectionStatus;
+    final isScanning =
+        ref.watch(gatewayScanningStreamProvider).value ?? false;
+    final isConnected = connectionStatus == GatewayConnectionStatus.connected;
 
     final tablesList = tablesAsync.value ?? [];
 
@@ -248,47 +251,54 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ),
         actions: [
-          // BLE Radar Scanner Pill
+          // Wi-Fi Gateway Status Pill
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
-              onTap: () =>
-                  _showBleInfoModal(tablesList, bleScanState, adapterState),
+              onTap: () => _showGatewayInfoModal(
+                tablesList,
+                isScanning,
+                connectionStatus,
+                wifiService.gatewayIp,
+              ),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: (bleScanState ? const Color(0xFF0284C7) : Colors.grey)
+                  color: (isConnected
+                          ? const Color(0xFF2E7D32)
+                          : const Color(0xFF0284C7))
                       .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color:
-                        (bleScanState ? const Color(0xFF0284C7) : Colors.grey)
-                            .withValues(alpha: 0.4),
+                    color: (isConnected
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFF0284C7))
+                        .withValues(alpha: 0.4),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      bleScanState
-                          ? Icons.bluetooth_searching_rounded
-                          : Icons.bluetooth_disabled_rounded,
+                      isConnected
+                          ? Icons.wifi_rounded
+                          : Icons.wifi_find_rounded,
                       size: 15,
-                      color: bleScanState
-                          ? const Color(0xFF0284C7)
-                          : Colors.grey,
+                      color: isConnected
+                          ? const Color(0xFF2E7D32)
+                          : const Color(0xFF0284C7),
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      bleScanState ? 'BLE Active' : 'Offline',
+                      isConnected ? 'Gateway Connected' : 'Wi-Fi Searching',
                       style: TextStyle(
-                        color: bleScanState
-                            ? const Color(0xFF0284C7)
-                            : Colors.grey,
+                        color: isConnected
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFF0284C7),
                         fontWeight: FontWeight.bold,
                         fontSize: 11,
                       ),
@@ -319,10 +329,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             onManageWaiters: () => WaiterManagementSheet.show(context),
             onAssignWaiters: () =>
                 AssignWaiterModal.show(context, allTables: tablesList),
-            isScanning: bleScanState,
-            adapterState: adapterState,
-            onBleInfoTap: () =>
-                _showBleInfoModal(tablesList, bleScanState, adapterState),
+            isScanning: isScanning,
+            connectionStatus: connectionStatus,
+            onGatewayInfoTap: () => _showGatewayInfoModal(
+              tablesList,
+              isScanning,
+              connectionStatus,
+              wifiService.gatewayIp,
+            ),
           ),
 
           // Tab 1: Overview Analytics

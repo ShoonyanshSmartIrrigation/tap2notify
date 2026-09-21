@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/services/ble_service.dart';
+import '../../../core/services/gateway_wifi_service.dart';
 import '../../../core/services/shared_preferences_provider.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../waiter/domain/waiter_model.dart';
@@ -11,9 +10,12 @@ import '../data/service_request_repository.dart';
 import '../domain/service_request_model.dart';
 import '../domain/table_model.dart';
 
-final bleServiceProvider = Provider<BleService>((ref) {
-  return BleService();
+final gatewayWifiServiceProvider = Provider<GatewayWifiService>((ref) {
+  return GatewayWifiService();
 });
+
+// Backward compatible provider alias
+final bleServiceProvider = gatewayWifiServiceProvider;
 
 // Real-time Stream of all Dynamic Hotel Tables (from Firebase Realtime Database for Manager)
 final serviceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepository>((ref) {
@@ -125,16 +127,19 @@ final currentLoggedWaiterProvider =
   CurrentLoggedWaiterNotifier.new,
 );
 
-// BLE Scanning state
-final bleScanningStreamProvider = StreamProvider<bool>((ref) {
-  final ble = ref.watch(bleServiceProvider);
-  return ble.isScanningStream;
+// Gateway Wi-Fi Scanning / Refreshing state
+final gatewayScanningStreamProvider = StreamProvider<bool>((ref) {
+  final service = ref.watch(gatewayWifiServiceProvider);
+  return service.isScanningStream;
 });
 
-// BLE Adapter state
-final bleAdapterStateStreamProvider = StreamProvider<BluetoothAdapterState>((ref) {
-  final ble = ref.watch(bleServiceProvider);
-  return ble.adapterStateStream;
+// Backward compatible provider alias
+final bleScanningStreamProvider = gatewayScanningStreamProvider;
+
+// Gateway Wi-Fi Connection status
+final gatewayConnectionStatusStreamProvider = StreamProvider<GatewayConnectionStatus>((ref) {
+  final service = ref.watch(gatewayWifiServiceProvider);
+  return service.connectionStatusStream;
 });
 
 // Derived Providers for filtered Tables

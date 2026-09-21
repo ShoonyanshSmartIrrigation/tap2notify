@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import '../../../../core/services/gateway_wifi_service.dart';
 import '../../../../core/widgets/app_info_card.dart';
 import '../../../../core/widgets/table_card.dart';
 import '../../../service_requests/domain/table_model.dart';
@@ -17,8 +17,8 @@ class TablesTabView extends StatelessWidget {
   final String selectedFilter;
   final ValueChanged<String> onFilterChanged;
   final bool isScanning;
-  final BluetoothAdapterState adapterState;
-  final VoidCallback onBleInfoTap;
+  final GatewayConnectionStatus connectionStatus;
+  final VoidCallback onGatewayInfoTap;
   final VoidCallback onConfigureTables;
   final VoidCallback onManageWaiters;
   final VoidCallback onAssignWaiters;
@@ -35,8 +35,8 @@ class TablesTabView extends StatelessWidget {
     required this.selectedFilter,
     required this.onFilterChanged,
     required this.isScanning,
-    required this.adapterState,
-    required this.onBleInfoTap,
+    this.connectionStatus = GatewayConnectionStatus.connected,
+    required this.onGatewayInfoTap,
     required this.onConfigureTables,
     required this.onManageWaiters,
     required this.onAssignWaiters,
@@ -459,7 +459,7 @@ class TablesTabView extends StatelessWidget {
                               ? 'Switch to the "Locked 🔒" filter to unlock your tables with password.'
                               : (tablesList.isEmpty
                                   ? 'Make sure your ESP32 table device is powered on.'
-                                  : 'Table devices connected via Bluetooth.')),
+                                  : 'Table devices connected via Wi-Fi Gateway.')),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,

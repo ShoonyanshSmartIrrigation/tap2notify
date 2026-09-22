@@ -2,7 +2,7 @@
  * ============================================================================
  * Tab2Notify - ESP32-C3 Individual Device Controller Firmware
  * ============================================================================
- * Architecture: App <-> ESP32-WROOM (Gateway) <-> Multiple ESP32-C3 (Device Nodes)
+ * Architecture: ESP32-C3 Devices -> ESP32-WROOM Gateway -> Wi-Fi Router -> Mobile App
  * 
  * Hardware Pin Mapping (ESP32-C3 SuperMini / Standard):
  * - TOUCH_PIN  : GPIO 1 (Touch / Press Sensor - Pull-down)
@@ -14,6 +14,7 @@
  * - Non-blocking multi-stage state machine (LOCKED, IDLE, PENDING, ACCEPTED)
  * - NVS Flash Memory persistence for device password and authorization status
  * - ESP-NOW 2.4GHz ultra-fast (<2ms) wireless transceiver to ESP32-WROOM Gateway
+ * - Automatic Wi-Fi channel hunting to match Gateway router channel
  * - Immediate unsolicited telemetry broadcast on physical touch
  * - Periodic heartbeat telemetry to Gateway for online/offline tracking
  * - 100% NON-BLOCKING (Zero delay() calls during runtime)
@@ -33,7 +34,7 @@
 #define TABLE_NUMBER            "1"
 #define DEVICE_ID               "C3_001"
 #define DEFAULT_PASSWORD        "1234"
-#define WIFI_CHANNEL            1
+#define DEFAULT_WIFI_CHANNEL    1
 
 const int TOUCH_PIN  = 1;    // Touch / Button -> GPIO 1
 const int BUZZER_PIN = 2;    // Buzzer I/O    -> GPIO 2
@@ -54,12 +55,15 @@ enum DeviceState {
 DeviceState currentState = STATE_LOCKED;
 bool isDeviceUnlocked = false;
 String devicePassword = DEFAULT_PASSWORD;
+int currentChannel = DEFAULT_WIFI_CHANNEL;
 
-unsigned long acceptedTimestamp = 0;
-int lastTouchState              = LOW;
-unsigned long lastDebounceTime  = 0;
-unsigned long lastHeartbeatTime = 0;
-static uint16_t packetSequence  = 0;
+unsigned long acceptedTimestamp       = 0;
+int lastTouchState                    = LOW;
+unsigned long lastDebounceTime        = 0;
+unsigned long lastHeartbeatTime       = 0;
+unsigned long lastGatewayContactTime  = 0;
+unsigned long lastChannelScanTime     = 0;
+static uint16_t packetSequence        = 0;
 
 // Gateway Broadcast MAC (0xFF:0xFF:0xFF:0xFF:0xFF:0xFF allows instant auto-pairing with Gateway)
 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -173,10 +177,10 @@ void sendPacketToGateway(MessageType type, const char* payloadStr = "") {
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&pkt, sizeof(pkt));
   
   if (result == ESP_OK) {
-    Serial.printf("[ESP-NOW TX #%d] Type: 0x%02X | Table: %s | Flag: %d | Unlocked: %d | Payload: '%s'\n",
-                  packetSequence, type, TABLE_NUMBER, currentState, isDeviceUnlocked ? 1 : 0, payloadStr);
+    Serial.printf("[ESP-NOW TX #%d (CH %d)] Type: 0x%02X | Table: %s | Flag: %d | Unlocked: %d | Payload: '%s'\n",
+                  packetSequence, currentChannel, type, TABLE_NUMBER, currentState, isDeviceUnlocked ? 1 : 0, payloadStr);
   } else {
-    Serial.printf("[ESP-NOW TX ERROR] Failed to send packet (Code: %d)\n", result);
+    Serial.printf("[ESP-NOW TX ERROR (CH %d)] Failed to send packet (Code: %d)\n", currentChannel, result);
   }
 }
 
@@ -201,8 +205,12 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
     return; // Packet addressed to another C3 device
   }
 
-  Serial.printf("\n[ESP-NOW RX] Command Type: 0x%02X for Table %s (Payload: '%s')\n", 
-                pkt->msgType, pkt->deviceId, pkt->payload);
+  // Update last gateway contact and persist current channel
+  lastGatewayContactTime = millis();
+  preferences.putInt("channel", currentChannel);
+
+  Serial.printf("\n[ESP-NOW RX (CH %d)] Command Type: 0x%02X for Table %s (Payload: '%s')\n", 
+                currentChannel, pkt->msgType, pkt->deviceId, pkt->payload);
 
   switch (pkt->msgType) {
     case MSG_CMD_AUTH: {
@@ -305,6 +313,23 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
 }
 
 // ==========================================
+// --- Wi-Fi Channel Agility Helper ---
+// ==========================================
+void checkChannelHunting() {
+  unsigned long now = millis();
+  // If no contact from Gateway for >15 seconds, scan channels 1..13
+  if (now - lastGatewayContactTime > 15000) {
+    if (now - lastChannelScanTime > 3000) {
+      lastChannelScanTime = now;
+      currentChannel = (currentChannel % 13) + 1;
+      esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+      Serial.printf("[ESP-NOW HUNT] Searching Gateway on Wi-Fi Channel %d...\n", currentChannel);
+      sendPacketToGateway(MSG_HEARTBEAT, "HUNT");
+    }
+  }
+}
+
+// ==========================================
 // --- Setup ---
 // ==========================================
 void setup() {
@@ -315,12 +340,13 @@ void setup() {
   preferences.begin("t2n_auth", false);
   isDeviceUnlocked = preferences.getBool("unlocked", false);
   devicePassword   = preferences.getString("password", DEFAULT_PASSWORD);
+  currentChannel   = preferences.getInt("channel", DEFAULT_WIFI_CHANNEL);
   currentState     = isDeviceUnlocked ? STATE_IDLE : STATE_LOCKED;
 
   Serial.printf("\n============================================\n");
   Serial.printf("  Tab2Notify ESP32-C3 Node Booting\n");
-  Serial.printf("  Table: %s | Device ID: %s | Status: %s\n", 
-                TABLE_NUMBER, DEVICE_ID, isDeviceUnlocked ? "UNLOCKED" : "LOCKED");
+  Serial.printf("  Table: %s | Device ID: %s | Status: %s | Channel: %d\n", 
+                TABLE_NUMBER, DEVICE_ID, isDeviceUnlocked ? "UNLOCKED" : "LOCKED", currentChannel);
   Serial.printf("============================================\n");
 
   // Initialize GPIO Pins
@@ -340,14 +366,15 @@ void setup() {
   // Initialize Wi-Fi in Station Mode for ESP-NOW
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
-  esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
 
   Serial.print("[WIFI] ESP32-C3 MAC Address: ");
   Serial.println(WiFi.macAddress());
 
   // Initialize ESP-NOW Protocol
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("[ESP-NOW] Initialization FAILED!");
+  esp_err_t espNowErr = esp_now_init();
+  if (espNowErr != ESP_OK && espNowErr != ESP_ERR_ESPNOW_EXIST) {
+    Serial.printf("[ESP-NOW] Initialization error: 0x%X\n", espNowErr);
     return;
   }
   Serial.println("[ESP-NOW] Initialized successfully.");
@@ -359,7 +386,7 @@ void setup() {
   esp_now_peer_info_t peerInfo;
   memset(&peerInfo, 0, sizeof(peerInfo));
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = WIFI_CHANNEL;
+  peerInfo.channel = 0; // Channel 0 follows current interface channel
   peerInfo.encrypt = false;
 
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
@@ -367,6 +394,8 @@ void setup() {
   } else {
     Serial.println("[ESP-NOW] Broadcast Peer Registered.");
   }
+
+  lastGatewayContactTime = millis();
 
   // Send Initial Boot Heartbeat to Gateway
   sendPacketToGateway(MSG_HEARTBEAT, "BOOT");
@@ -378,6 +407,9 @@ void setup() {
 void loop() {
   // Update non-blocking buzzer state machine
   updateBuzzer();
+
+  // Channel agility monitor
+  checkChannelHunting();
 
   // -------------------------------------------------------------
   // 1. Customer Physical Touch Button Press on GPIO 1 (Sub-15ms)

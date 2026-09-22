@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/service_requests/domain/table_model.dart';
 
@@ -24,6 +25,8 @@ class GatewayWifiService {
   static const String defaultGatewayIp = '192.168.4.1';
   static const int defaultGatewayPort = 80;
   static const int udpDiscoveryPort = 8888;
+  static const String mdnsHostname = 'tap2notify.local';
+  static const String _prefKeyGatewayIp = 'cached_gateway_ip';
 
   String _gatewayIp = defaultGatewayIp;
   int _gatewayPort = defaultGatewayPort;
@@ -120,10 +123,54 @@ class GatewayWifiService {
     }
   }
 
+  Future<void> initCachedAddress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedIp = prefs.getString(_prefKeyGatewayIp);
+      if (cachedIp != null && cachedIp.isNotEmpty) {
+        _gatewayIp = cachedIp;
+        debugPrint('[GATEWAY WIFI] Loaded cached Gateway IP: $_gatewayIp');
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveCachedGatewayIp(String ip) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefKeyGatewayIp, ip);
+    } catch (_) {}
+  }
+
   void setGatewayAddress(String ip, {int port = 80}) {
     _gatewayIp = ip;
     _gatewayPort = port;
+    _saveCachedGatewayIp(ip);
     refreshDevices();
+  }
+
+  Future<bool> testAndSetGatewayIp(String ip, {int port = 80}) async {
+    final client = _httpClient ?? http.Client();
+    final cleanIp = ip.trim();
+    if (cleanIp.isEmpty) return false;
+
+    try {
+      final url = Uri.parse('http://$cleanIp:$port/api/status');
+      final res = await client.get(url).timeout(const Duration(seconds: 2));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['gateway'] != null) {
+          final staIp = data['sta_ip']?.toString() ?? '';
+          final targetIp = (staIp.isNotEmpty && staIp != '0.0.0.0') ? staIp : cleanIp;
+          _gatewayIp = targetIp;
+          _gatewayPort = port;
+          _saveCachedGatewayIp(targetIp);
+          _setConnectionStatus(GatewayConnectionStatus.connected);
+          await fetchGatewayDevices();
+          return true;
+        }
+      }
+    } catch (_) {}
+    return false;
   }
 
   Future<void> requestPermissionsAndStartScan() async {
@@ -134,6 +181,9 @@ class GatewayWifiService {
     _isScanning = true;
     _isScanningController.add(true);
     _httpClient ??= http.Client();
+
+    // 0. Initialize cached IP if not already loaded
+    await initCachedAddress();
 
     // 1. Start UDP Auto-Discovery listener in background
     _startUdpDiscovery();
@@ -149,7 +199,8 @@ class GatewayWifiService {
       fetchGatewayDevices();
     });
 
-    // Immediate initial fetch
+    // Immediate initial fetch & probe
+    await findReachableGatewayEndpoint();
     await fetchGatewayDevices();
 
     _isScanning = false;
@@ -171,13 +222,18 @@ class GatewayWifiService {
               try {
                 final message = utf8.decode(dg.data);
                 final json = jsonDecode(message);
-                if (json['gateway'] != null && json['ip'] != null) {
-                  final ip = json['ip'].toString();
+                if (json['gateway'] != null) {
+                  final staIp = json['sta_ip']?.toString() ?? '';
+                  final ip = json['ip']?.toString() ?? '';
+                  final targetIp = staIp.isNotEmpty ? staIp : ip;
                   final port = json['port'] != null ? (json['port'] as num).toInt() : 80;
-                  if (ip.isNotEmpty && ip != _gatewayIp) {
-                    debugPrint('[UDP DISCOVERY] Discovered Gateway at $ip:$port');
-                    _gatewayIp = ip;
+
+                  if (targetIp.isNotEmpty && targetIp != _gatewayIp && targetIp != '0.0.0.0') {
+                    debugPrint('[UDP DISCOVERY] Discovered Gateway on Router at $targetIp:$port (SSID: ${json['ssid']})');
+                    _gatewayIp = targetIp;
                     _gatewayPort = port;
+                    _saveCachedGatewayIp(targetIp);
+                    refreshDevices();
                   }
                 }
               } catch (_) {}
@@ -190,6 +246,37 @@ class GatewayWifiService {
     } catch (e) {
       debugPrint('[UDP DISCOVERY] Setup error: $e');
     }
+  }
+
+  /// Probe candidates to find which Gateway endpoint is actively responding
+  Future<String?> findReachableGatewayEndpoint() async {
+    final client = _httpClient ?? http.Client();
+    final candidates = <String>[
+      _gatewayIp,
+      'tap2notify.local',
+      '192.168.4.1',
+    ];
+
+    for (final host in candidates) {
+      if (host.isEmpty || host == '0.0.0.0') continue;
+      try {
+        final url = Uri.parse('http://$host:$_gatewayPort/api/status');
+        final res = await client.get(url).timeout(const Duration(milliseconds: 1200));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data['gateway'] != null) {
+            final staIp = data['sta_ip']?.toString() ?? '';
+            final targetIp = (staIp.isNotEmpty && staIp != '0.0.0.0') ? staIp : host;
+            _gatewayIp = targetIp;
+            _saveCachedGatewayIp(targetIp);
+            _setConnectionStatus(GatewayConnectionStatus.connected);
+            debugPrint('[GATEWAY WIFI] Verified active Gateway at $targetIp');
+            return targetIp;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   // Fetch all active table devices from ESP32-WROOM Wi-Fi Gateway
@@ -213,8 +300,9 @@ class GatewayWifiService {
         }
       }
     } catch (e) {
-      // Disconnected / Gateway not reachable on current IP
-      if (_connectionStatus == GatewayConnectionStatus.connected) {
+      // If primary IP fails, probe candidate endpoints
+      final newIp = await findReachableGatewayEndpoint();
+      if (newIp == null && _connectionStatus == GatewayConnectionStatus.connected) {
         _setConnectionStatus(GatewayConnectionStatus.disconnected);
       }
     }
@@ -311,6 +399,111 @@ class GatewayWifiService {
       _emitTables();
     }
   }
+
+  // ==========================================
+  // --- Wi-Fi Provisioning API Methods ---
+  // ==========================================
+
+  /// Scan available 2.4GHz Wi-Fi networks around the Gateway
+  Future<List<Map<String, dynamic>>> scanGatewayWifiNetworks() async {
+    await findReachableGatewayEndpoint();
+    final client = _httpClient ?? http.Client();
+    final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/scan');
+
+    try {
+      final response = await client.get(url).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final dynamic list = jsonDecode(response.body);
+        if (list is List) {
+          return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('[GATEWAY WIFI] Scan Wi-Fi error: $e');
+    }
+    return [];
+  }
+
+  /// Configure the Gateway to connect to a Wi-Fi Router
+  Future<bool> configureGatewayWifi({
+    required String ssid,
+    required String password,
+  }) async {
+    // 1. Probe for reachable IP if current is unresponsive
+    await findReachableGatewayEndpoint();
+
+    final client = _httpClient ?? http.Client();
+    final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/configure');
+
+    final payload = {
+      'ssid': ssid.trim(),
+      'password': password.trim(),
+    };
+
+    try {
+      final response = await client
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        debugPrint('[GATEWAY WIFI] Wi-Fi router configured successfully with SSID: $ssid');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('[GATEWAY WIFI] Configure Wi-Fi error: $e');
+    }
+    return false;
+  }
+
+  /// Check live Wi-Fi connection status of Gateway to router
+  Future<Map<String, dynamic>?> getGatewayWifiStatus() async {
+    final client = _httpClient ?? http.Client();
+    final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/status');
+
+    try {
+      final response = await client.get(url).timeout(const Duration(seconds: 3));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final staIp = data['sta_ip']?.toString() ?? '';
+        if (staIp.isNotEmpty && staIp != _gatewayIp && staIp != '0.0.0.0' && data['status'] == 'connected') {
+          _gatewayIp = staIp;
+          _saveCachedGatewayIp(staIp);
+          _setConnectionStatus(GatewayConnectionStatus.connected);
+        }
+        return data;
+      }
+    } catch (e) {
+      // Try probing endpoints
+      await findReachableGatewayEndpoint();
+    }
+    return null;
+  }
+
+  /// Reset saved Wi-Fi router credentials on Gateway
+  Future<bool> resetGatewayWifi() async {
+    await findReachableGatewayEndpoint();
+    final client = _httpClient ?? http.Client();
+    final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/reset');
+
+    try {
+      final response = await client.post(url).timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        debugPrint('[GATEWAY WIFI] Wi-Fi credentials reset on Gateway');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('[GATEWAY WIFI] Reset Wi-Fi error: $e');
+    }
+    return false;
+  }
+
+  // ==========================================
+  // --- Device Command Dispatching ---
+  // ==========================================
 
   // Send Command to ESP32-WROOM Wi-Fi Gateway
   Future<bool> sendGatewayCommand({

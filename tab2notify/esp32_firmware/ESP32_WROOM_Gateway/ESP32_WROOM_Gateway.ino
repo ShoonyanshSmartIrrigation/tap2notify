@@ -2,23 +2,32 @@
  * ============================================================================
  * Tab2Notify - ESP32-WROOM Central Wi-Fi Gateway Controller Firmware
  * ============================================================================
- * Architecture: App <-> ESP32-WROOM (Wi-Fi Gateway) <-> Multiple ESP32-C3 (Device Nodes)
+ * Architecture: Mobile Phone -> Wi-Fi Router -> ESP32-WROOM (STA Mode) -> ESP32-C3 Devices
  * 
  * Communication:
- * - App <-> Gateway: Pure Wi-Fi (HTTP REST API, Event Stream SSE, UDP Auto-Discovery)
+ * - App <-> Gateway: Pure Wi-Fi over local Wi-Fi Router (HTTP REST API, SSE, UDP Beacon, mDNS)
  * - Gateway <-> C3 Nodes: ESP-NOW (2.4GHz Wi-Fi Physical Layer, Sub-2ms Latency)
  * 
  * Features:
- * - 100% BLUETOOTH-FREE (All BLE libraries and routines completely removed)
- * - Dynamic auto-discovery and registration for up to 64 ESP32-C3 nodes
- * - Real-time device routing table (Device ID <-> MAC Address <-> State)
- * - Automatic connection & offline detection (>15s heartbeat timeout)
- * - UDP Beacon Broadcast (Port 8888) for zero-configuration App auto-discovery
- * - HTTP Server-Sent Events (SSE) `/api/stream` for instant sub-5ms real-time push events
- * - HTTP REST API:
- *   - GET  /api/devices  -> List of all active table devices and states
- *   - POST /api/command  -> Forward command to target C3 device
- *   - GET  /api/status   -> Gateway system telemetry and health
+ * - 100% BLUETOOTH-FREE (Zero BLE libraries, zero BLE overhead)
+ * - ZERO HARDCODED ROUTER CREDENTIALS (100% dynamically configured via Mobile App & NVS)
+ * - Pure Wi-Fi Station (STA) Mode for normal operation (No persistent hotspot when configured)
+ * - Automatic Fallback Provisioning Hotspot (T2N_GATEWAY) on unconfigured initial boot
+ * - Comprehensive Wi-Fi Event Logging (Exact connect/disconnect reasons decoded)
+ * - Background Continuous Connection & Auto-Reconnect Engine
+ * - Zero-Configuration Local Discovery:
+ *   - UDP Discovery Beacon on Port 8888 (Broadcasts Router STA IP, router SSID, status)
+ *   - mDNS Responder ("tap2notify.local" / "http://tap2notify.local")
+ * - Wi-Fi Provisioning REST API:
+ *   - GET  /api/wifi/scan       -> Scan and list available 2.4GHz Wi-Fi SSIDs
+ *   - POST /api/wifi/configure  -> Save router SSID & password to NVS and connect in STA mode
+ *   - GET  /api/wifi/status     -> Live router connection state, IP, RSSI
+ *   - POST /api/wifi/reset      -> Clear saved router credentials and return to setup mode
+ * - Device Management REST API:
+ *   - GET  /api/devices         -> List of all active table devices and states
+ *   - POST /api/command         -> Forward commands to target C3 device
+ *   - GET  /api/events          -> Live status polling / event streaming
+ *   - GET  /api/status          -> Gateway system telemetry and health
  * ============================================================================
  */
 
@@ -27,14 +36,17 @@
 #include <WebServer.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <ESPmDNS.h>
+#include <Preferences.h>
 #include <ArduinoJson.h>
 
 // ==========================================
 // --- Configuration & Constants ---
 // ==========================================
-#define GATEWAY_NAME            "T2N_GATEWAY"
-#define GATEWAY_WIFI_PASS       "Tap2Notify123"
-#define WIFI_CHANNEL            1
+#define GATEWAY_SETUP_AP_SSID   "T2N_GATEWAY"
+#define GATEWAY_SETUP_AP_PASS   "Tap2Notify123"
+
+#define DEFAULT_WIFI_CHANNEL    1
 #define MAX_DEVICES             64
 #define HEARTBEAT_TIMEOUT_MS    15000
 #define UDP_DISCOVERY_PORT      8888
@@ -81,11 +93,22 @@ int registeredDeviceCount = 0;
 
 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-// Networking Objects
+// Networking & Storage Objects
 WebServer server(HTTP_PORT);
 WiFiUDP udp;
+Preferences wifiPrefs;
+
+// Wi-Fi State Variables (Loaded dynamically from NVS)
+bool routerConfigured = false;
+String routerSSID = "";
+String routerPass = "";
+String lastDisconnectReason = "None";
+bool isSoftApActive = false;
+
+unsigned long lastWifiCheckTime = 0;
+unsigned long lastWifiConnectAttempt = 0;
 unsigned long lastUdpBroadcastTime = 0;
-static uint16_t globalSeqCounter   = 0;
+static uint16_t globalSeqCounter = 0;
 
 // Last pushed event string for client streaming
 String lastEventString = "";
@@ -94,6 +117,110 @@ unsigned long lastEventTimestamp = 0;
 // Forward Declarations
 void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* payload);
 void broadcastEventToApp(const char* eventJson);
+void connectToRouter();
+void startFallbackSoftAP();
+void initEspNow();
+
+// ==========================================
+// --- Wi-Fi Event Callbacks & Debugging ---
+// ==========================================
+const char* getDisconnectReasonName(uint8_t reason) {
+  switch (reason) {
+    case 1:  return "UNSPECIFIED";
+    case 2:  return "AUTH_EXPIRE";
+    case 3:  return "AUTH_LEAVE";
+    case 4:  return "ASSOC_EXPIRE";
+    case 5:  return "ASSOC_TOOMANY";
+    case 6:  return "NOT_AUTHED";
+    case 7:  return "NOT_ASSOCED";
+    case 8:  return "ASSOC_LEAVE";
+    case 9:  return "ASSOC_NOT_AUTHED";
+    case 10: return "DISASSOC_PWRCAP_BAD";
+    case 11: return "DISASSOC_SUPCHAN_BAD";
+    case 13: return "IE_INVALID";
+    case 14: return "MIC_FAILURE";
+    case 15: return "4WAY_HANDSHAKE_TIMEOUT / WRONG PASSWORD";
+    case 16: return "GROUP_KEY_UPDATE_TIMEOUT";
+    case 17: return "IE_IN_4WAY_DIFFERS";
+    case 18: return "GROUP_CIPHER_INVALID";
+    case 19: return "PAIRWISE_CIPHER_INVALID";
+    case 20: return "AKMP_INVALID";
+    case 21: return "UNSUPP_RSN_IE_VERSION";
+    case 22: return "INVALID_RSN_IE_CAP";
+    case 23: return "802_1X_AUTH_FAILED";
+    case 24: return "CIPHER_SUITE_REJECTED";
+    case 201: return "NO_AP_FOUND (SSID NOT FOUND / OUT OF RANGE)";
+    case 202: return "AUTH_FAIL (WRONG PASSWORD)";
+    case 203: return "ASSOC_FAIL";
+    case 204: return "HANDSHAKE_TIMEOUT";
+    case 205: return "CONNECTION_FAIL";
+    default: return "UNKNOWN_DISCONNECT_REASON";
+  }
+}
+
+void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_START:
+      Serial.println("[WIFI EVENT] Wi-Fi Station Mode Started.");
+      break;
+
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.printf("[WIFI EVENT] Connected to AP SSID: '%s' (Channel: %d)\n", 
+                    WiFi.SSID().c_str(), WiFi.channel());
+      break;
+
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.println("\n============================================");
+      Serial.println("✓ [WIFI SUCCESS] Gateway Connected to Router!");
+      Serial.printf("  Router SSID:  %s\n", WiFi.SSID().c_str());
+      Serial.printf("  Assigned IP:  %s\n", WiFi.localIP().toString().c_str());
+      Serial.printf("  Gateway IP:   %s\n", WiFi.gatewayIP().toString().c_str());
+      Serial.printf("  Subnet Mask:  %s\n", WiFi.subnetMask().toString().c_str());
+      Serial.printf("  DNS IP:       %s\n", WiFi.dnsIP().toString().c_str());
+      Serial.printf("  Signal (RSSI):%d dBm\n", WiFi.RSSI());
+      Serial.printf("  Wi-Fi Channel:%d\n", WiFi.channel());
+      Serial.printf("  mDNS URL:     http://tap2notify.local\n");
+      Serial.println("============================================");
+
+      // Disable SoftAP once successfully connected to router
+      if (isSoftApActive) {
+        WiFi.softAPdisconnect(true);
+        isSoftApActive = false;
+        Serial.println("[WIFI AP] Provisioning hotspot disabled. Operating in pure STA mode.");
+      }
+
+      // Start / update mDNS responder
+      MDNS.end();
+      if (MDNS.begin("tap2notify")) {
+        MDNS.addService("http", "tcp", HTTP_PORT);
+        Serial.println("[mDNS] Responder active at 'tap2notify.local'");
+      }
+
+      // Ensure ESP-NOW peer & callbacks remain active on new Wi-Fi channel
+      initEspNow();
+
+      lastDisconnectReason = "Connected";
+      break;
+
+    case ARDUINO_EVENT_WIFI_AP_START:
+      Serial.println("[WIFI EVENT] SoftAP Started for Provisioning.");
+      initEspNow();
+      break;
+
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
+      uint8_t reason = info.wifi_sta_disconnected.reason;
+      lastDisconnectReason = String(getDisconnectReasonName(reason)) + " (code " + String(reason) + ")";
+      Serial.printf("[WIFI WARNING] Disconnected from Router! Reason: %s\n", lastDisconnectReason.c_str());
+      if (routerConfigured && routerSSID.length() > 0) {
+        WiFi.reconnect();
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+}
 
 // ==========================================
 // --- Device Registry Management ---
@@ -126,7 +253,7 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
       esp_now_peer_info_t peerInfo;
       memset(&peerInfo, 0, sizeof(peerInfo));
       memcpy(peerInfo.peer_addr, mac, 6);
-      peerInfo.channel = WIFI_CHANNEL;
+      peerInfo.channel = 0; // Follow interface channel
       peerInfo.encrypt = false;
       esp_now_add_peer(&peerInfo);
     }
@@ -165,12 +292,10 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
 
 void checkDeviceHeartbeats() {
   unsigned long now = millis();
-  bool updated = false;
 
   for (int i = 0; i < registeredDeviceCount; i++) {
     if (deviceRegistry[i].isOnline && (now - deviceRegistry[i].lastSeen > HEARTBEAT_TIMEOUT_MS)) {
       deviceRegistry[i].isOnline = false;
-      updated = true;
       Serial.printf("[GATEWAY TIMEOUT] Table %s is OFFLINE (>15s inactive)\n", deviceRegistry[i].deviceId);
 
       String offlineEvent = "{\"event\":\"device_offline\",\"deviceId\":\"" + String(deviceRegistry[i].deviceId) + 
@@ -221,7 +346,6 @@ void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* p
     strncpy(pkt.payload, payload, sizeof(pkt.payload) - 1);
   }
 
-  // Find target peer MAC or broadcast if not found / broadcast ID
   uint8_t targetMac[6];
   memcpy(targetMac, broadcastAddress, 6);
 
@@ -235,6 +359,26 @@ void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* p
                 targetDeviceId, type, payload ? payload : "", res == ESP_OK ? "OK" : "FAIL");
 }
 
+void initEspNow() {
+  esp_err_t err = esp_now_init();
+  if (err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
+    Serial.printf("[ESP-NOW] Initialization error: 0x%X\n", err);
+    return;
+  }
+  Serial.println("[ESP-NOW] Active and ready.");
+
+  esp_now_register_recv_cb(onEspNowDataReceived);
+
+  if (!esp_now_is_peer_exist(broadcastAddress)) {
+    esp_now_peer_info_t peerInfo;
+    memset(&peerInfo, 0, sizeof(peerInfo));
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0; // Dynamic interface channel
+    peerInfo.encrypt = false;
+    esp_now_add_peer(&peerInfo);
+  }
+}
+
 // ==========================================
 // --- Wi-Fi Event Streaming & UDP Beacon ---
 // ==========================================
@@ -243,14 +387,32 @@ void broadcastEventToApp(const char* eventJson) {
   lastEventTimestamp = millis();
 }
 
+String getActiveGatewayIp() {
+  if (WiFi.status() == WL_CONNECTED) {
+    return WiFi.localIP().toString();
+  }
+  if (isSoftApActive) {
+    return WiFi.softAPIP().toString();
+  }
+  return "0.0.0.0";
+}
+
 void sendUdpDiscoveryBeacon() {
   if (millis() - lastUdpBroadcastTime < 2000) return;
   lastUdpBroadcastTime = millis();
 
+  bool isStaConnected = (WiFi.status() == WL_CONNECTED);
+  String activeIp = getActiveGatewayIp();
+
   IPAddress broadcastIp(255, 255, 255, 255);
-  String beaconData = "{\"gateway\":\"" + String(GATEWAY_NAME) + 
-                      "\",\"ip\":\"" + WiFi.softAPIP().toString() + 
+  String beaconData = "{\"gateway\":\"T2N_GATEWAY"
+                      "\",\"ip\":\"" + activeIp + 
+                      "\",\"sta_ip\":\"" + (isStaConnected ? WiFi.localIP().toString() : "") + 
+                      "\",\"ap_ip\":\"" + (isSoftApActive ? WiFi.softAPIP().toString() : "") + 
                       "\",\"port\":" + String(HTTP_PORT) + 
+                      "\",\"ssid\":\"" + (isStaConnected ? WiFi.SSID() : routerSSID) + 
+                      "\",\"sta_status\":\"" + (isStaConnected ? "connected" : (routerConfigured ? "connecting" : "unconfigured")) + 
+                      "\",\"channel\":" + String(WiFi.channel()) + 
                       "\",\"devices\":" + String(registeredDeviceCount) + "}";
 
   udp.beginPacket(broadcastIp, UDP_DISCOVERY_PORT);
@@ -259,25 +421,97 @@ void sendUdpDiscoveryBeacon() {
 }
 
 // ==========================================
+// --- Wi-Fi Router Connection & Auto-Reconnect ---
+// ==========================================
+void startFallbackSoftAP() {
+  if (isSoftApActive) return;
+  Serial.println("\n============================================");
+  Serial.println("[PROVISIONING MODE] No router configured / unreachable.");
+  Serial.println("Starting Setup Hotspot 'T2N_GATEWAY' (192.168.4.1)...");
+  Serial.println("Connect your phone's Wi-Fi to 'T2N_GATEWAY' to configure your router SSID.");
+  Serial.println("============================================");
+
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(GATEWAY_SETUP_AP_SSID, GATEWAY_SETUP_AP_PASS);
+  isSoftApActive = true;
+  Serial.print("[WIFI AP] Setup Hotspot Active. IP: ");
+  Serial.println(WiFi.softAPIP());
+}
+
+void connectToRouter() {
+  if (!routerConfigured || routerSSID.length() == 0) {
+    startFallbackSoftAP();
+    return;
+  }
+
+  Serial.printf("\n[WIFI STA] Connecting to configured Router SSID: '%s'...\n", routerSSID.c_str());
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false); // Disable modem power saving to prevent router AUTH_EXPIRE
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.disconnect();
+  delay(100);
+
+  WiFi.begin(routerSSID.c_str(), routerPass.c_str());
+  lastWifiConnectAttempt = millis();
+
+  // Wait synchronously up to 15 seconds for initial connection on boot / config
+  int timeoutHalfSecs = 30;
+  while (WiFi.status() != WL_CONNECTED && timeoutHalfSecs > 0) {
+    delay(500);
+    Serial.print(".");
+    timeoutHalfSecs--;
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFi.setSleep(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    Serial.printf("[WIFI STA] Connected! Router IP: %s\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.printf("[WIFI STA ERROR] Could not connect to '%s' (Status code: %d, Reason: %s)\n", 
+                  routerSSID.c_str(), WiFi.status(), lastDisconnectReason.c_str());
+    startFallbackSoftAP();
+  }
+}
+
+void maintainWifiConnection() {
+  if (!routerConfigured || routerSSID.length() == 0) return;
+
+  unsigned long now = millis();
+  if (now - lastWifiCheckTime < 4000) return;
+  lastWifiCheckTime = now;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    if (now - lastWifiConnectAttempt > 5000) {
+      Serial.printf("[WIFI STA] Auto-Reconnect: Re-attempting connection to '%s'...\n", routerSSID.c_str());
+      WiFi.reconnect();
+      lastWifiConnectAttempt = now;
+    }
+  } else {
+    WiFi.setSleep(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+  }
+}
+
+// ==========================================
 // --- HTTP REST & Event Server Endpoints ---
 // ==========================================
 void setupHttpRoutes() {
-  // CORS Helper
   auto enableCORS = []() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
   };
 
-  server.on("/api/devices", HTTP_OPTIONS, [enableCORS]() {
-    enableCORS();
-    server.send(204);
-  });
-
-  server.on("/api/command", HTTP_OPTIONS, [enableCORS]() {
-    enableCORS();
-    server.send(204);
-  });
+  server.on("/api/devices", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
+  server.on("/api/command", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
+  server.on("/api/wifi/scan", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
+  server.on("/api/wifi/configure", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
+  server.on("/api/wifi/status", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
+  server.on("/api/wifi/reset", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
+  server.on("/api/status", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
+  server.on("/api/events", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
 
   // 1. GET /api/devices: Return full array of registered C3 tables
   server.on("/api/devices", HTTP_GET, [enableCORS]() {
@@ -346,7 +580,99 @@ void setupHttpRoutes() {
     }
   });
 
-  // 3. GET /api/events: Long-polling / live state fetch
+  // 3. GET /api/wifi/scan: Scan local 2.4GHz Wi-Fi SSIDs
+  server.on("/api/wifi/scan", HTTP_GET, [enableCORS]() {
+    enableCORS();
+    Serial.println("[WIFI PROVISION] Scanning nearby 2.4GHz Wi-Fi networks...");
+    int n = WiFi.scanNetworks(false, true);
+    String json = "[";
+    for (int i = 0; i < n; i++) {
+      if (i > 0) json += ",";
+      json += "{\"ssid\":\"" + WiFi.SSID(i) + 
+              "\",\"rssi\":" + String(WiFi.RSSI(i)) + 
+              ",\"channel\":" + String(WiFi.channel(i)) + 
+              ",\"secure\":" + (WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false") + "}";
+    }
+    json += "]";
+    WiFi.scanDelete();
+    server.send(200, "application/json", json);
+  });
+
+  // 4. POST /api/wifi/configure: Save router SSID/Password and connect in STA mode
+  server.on("/api/wifi/configure", HTTP_POST, [enableCORS]() {
+    enableCORS();
+    if (!server.hasArg("plain")) {
+      server.send(400, "application/json", "{\"error\":\"Missing body\"}");
+      return;
+    }
+
+#if defined(ARDUINOJSON_VERSION_MAJOR) && ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
+    StaticJsonDocument<256> doc;
+#endif
+    DeserializationError err = deserializeJson(doc, server.arg("plain"));
+    if (err) {
+      server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      return;
+    }
+
+    String ssid = doc["ssid"] | "";
+    String pass = doc["password"] | "";
+
+    if (ssid.length() == 0) {
+      server.send(400, "application/json", "{\"error\":\"SSID cannot be empty\"}");
+      return;
+    }
+
+    routerSSID = ssid;
+    routerPass = pass;
+    routerConfigured = true;
+
+    wifiPrefs.putString("ssid", routerSSID);
+    wifiPrefs.putString("pass", routerPass);
+    wifiPrefs.putBool("configured", true);
+
+    Serial.printf("\n[WIFI PROVISION] New router credentials saved to NVS: SSID='%s'\n", routerSSID.c_str());
+
+    // Respond to app first before re-initializing Wi-Fi
+    server.send(200, "application/json", "{\"status\":\"configured\",\"ssid\":\"" + routerSSID + "\",\"message\":\"Credentials saved to NVS. Connecting in STA mode...\"}");
+    delay(200);
+
+    connectToRouter();
+  });
+
+  // 5. GET /api/wifi/status: Connection telemetry
+  server.on("/api/wifi/status", HTTP_GET, [enableCORS]() {
+    enableCORS();
+    bool isStaConnected = (WiFi.status() == WL_CONNECTED);
+    String json = "{\"configured\":" + String(routerConfigured ? "true" : "false") + 
+                  ",\"ssid\":\"" + (isStaConnected ? WiFi.SSID() : routerSSID) + "\"" +
+                  ",\"status\":\"" + (isStaConnected ? "connected" : (routerConfigured ? "connecting" : "unconfigured")) + "\"" +
+                  ",\"mode\":\"" + (isStaConnected ? "STA" : (isSoftApActive ? "AP_STA" : "STA")) + "\"" +
+                  ",\"sta_ip\":\"" + (isStaConnected ? WiFi.localIP().toString() : "") + "\"" +
+                  ",\"ap_ip\":\"" + (isSoftApActive ? WiFi.softAPIP().toString() : "") + "\"" +
+                  ",\"rssi\":" + String(isStaConnected ? WiFi.RSSI() : 0) + 
+                  ",\"channel\":" + String(WiFi.channel()) + 
+                  ",\"disconnect_reason\":\"" + lastDisconnectReason + "\"" +
+                  ",\"mdns\":\"tap2notify.local\"}";
+    server.send(200, "application/json", json);
+  });
+
+  // 6. POST /api/wifi/reset: Clear router credentials
+  server.on("/api/wifi/reset", HTTP_POST, [enableCORS]() {
+    enableCORS();
+    wifiPrefs.clear();
+    routerConfigured = false;
+    routerSSID = "";
+    routerPass = "";
+    WiFi.disconnect(true);
+    Serial.println("[WIFI PROVISION] Router credentials cleared from NVS.");
+    startFallbackSoftAP();
+    server.send(200, "application/json", "{\"status\":\"reset_complete\"}");
+  });
+
+  // 7. GET /api/events: Live event fetch
   server.on("/api/events", HTTP_GET, [enableCORS]() {
     enableCORS();
     if (lastEventString.length() > 0) {
@@ -356,13 +682,18 @@ void setupHttpRoutes() {
     }
   });
 
-  // 4. GET /api/status: Health & Uptime
+  // 8. GET /api/status: Health & Telemetry
   server.on("/api/status", HTTP_GET, [enableCORS]() {
     enableCORS();
-    String statusJson = "{\"gateway\":\"" + String(GATEWAY_NAME) + 
+    bool isStaConnected = (WiFi.status() == WL_CONNECTED);
+    String statusJson = "{\"gateway\":\"T2N_GATEWAY"
                         "\",\"uptime_ms\":" + String(millis()) + 
                         ",\"registered_devices\":" + String(registeredDeviceCount) + 
-                        ",\"ip\":\"" + WiFi.softAPIP().toString() + "\"}";
+                        ",\"ip\":\"" + getActiveGatewayIp() + "\"" +
+                        ",\"sta_ip\":\"" + (isStaConnected ? WiFi.localIP().toString() : "") + "\"" +
+                        ",\"ap_ip\":\"" + (isSoftApActive ? WiFi.softAPIP().toString() : "") + "\"" +
+                        ",\"mode\":\"" + (isStaConnected ? "STA" : (isSoftApActive ? "AP_STA" : "STA")) + "\"" +
+                        ",\"sta_connected\":" + (isStaConnected ? "true" : "false") + "}";
     server.send(200, "application/json", statusJson);
   });
 }
@@ -378,47 +709,40 @@ void setup() {
   Serial.println("  Tab2Notify ESP32-WROOM Pure Wi-Fi Gateway");
   Serial.println("============================================");
 
-  // Initialize Wi-Fi in AP + STA Mode
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(GATEWAY_NAME, GATEWAY_WIFI_PASS);
-  esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  // Register Wi-Fi Event Handler for detailed status & disconnect logging
+  WiFi.onEvent(onWiFiEvent);
 
-  Serial.print("[WIFI AP] Gateway SSID: ");
-  Serial.println(GATEWAY_NAME);
-  Serial.print("[WIFI AP] Gateway IP:   ");
-  Serial.println(WiFi.softAPIP());
-  Serial.print("[WIFI STA] Gateway MAC:  ");
+  // Initialize NVS Storage for Wi-Fi Router Settings
+  wifiPrefs.begin("t2n_wifi", false);
+  routerConfigured = wifiPrefs.getBool("configured", false);
+  routerSSID = wifiPrefs.getString("ssid", "");
+  routerPass = wifiPrefs.getString("pass", "");
+
+  Serial.print("[WIFI STA] Gateway MAC Address: ");
   Serial.println(WiFi.macAddress());
+
+  // If credentials exist in NVS, connect to router in pure STA mode.
+  // Otherwise start setup hotspot T2N_GATEWAY for app provisioning.
+  if (routerConfigured && routerSSID.length() > 0) {
+    Serial.printf("[WIFI STA] Found stored router credentials in NVS (SSID: '%s'). Connecting in STA mode...\n", routerSSID.c_str());
+    connectToRouter();
+  } else {
+    Serial.println("[PROVISIONING] No router credentials configured yet in NVS.");
+    startFallbackSoftAP();
+  }
 
   // Initialize UDP for Auto-Discovery Beacons
   udp.begin(UDP_DISCOVERY_PORT);
 
   // Initialize ESP-NOW Protocol for C3 Communication
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("[ESP-NOW] Initialization FAILED!");
-    return;
-  }
-  Serial.println("[ESP-NOW] Initialized successfully.");
-
-  // Register Receive Callback for C3 Devices
-  esp_now_register_recv_cb(onEspNowDataReceived);
-
-  // Register Broadcast Peer
-  if (!esp_now_is_peer_exist(broadcastAddress)) {
-    esp_now_peer_info_t peerInfo;
-    memset(&peerInfo, 0, sizeof(peerInfo));
-    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    peerInfo.channel = WIFI_CHANNEL;
-    peerInfo.encrypt = false;
-    esp_now_add_peer(&peerInfo);
-  }
+  initEspNow();
 
   // Setup HTTP Web Server Routes
   setupHttpRoutes();
   server.begin();
 
   Serial.println("============================================");
-  Serial.println("✓ Pure Wi-Fi Gateway Active & Listening on Port 80");
+  Serial.printf("✓ Wi-Fi Gateway Server Listening on Port %d\n", HTTP_PORT);
   Serial.println("============================================");
 }
 
@@ -429,5 +753,6 @@ void loop() {
   server.handleClient();
   checkDeviceHeartbeats();
   sendUdpDiscoveryBeacon();
+  maintainWifiConnection();
   delay(5); // Low CPU load yield
 }

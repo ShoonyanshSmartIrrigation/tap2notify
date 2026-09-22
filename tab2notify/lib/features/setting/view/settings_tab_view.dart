@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../authentication/presentation/auth_providers.dart';
+import '../../dashboard/presentation/widgets/wifi_gateway_setup_dialog.dart';
 
 class SettingsTabView extends ConsumerWidget {
   const SettingsTabView({super.key});
@@ -712,7 +713,62 @@ class SettingsTabView extends ConsumerWidget {
 
           const SizedBox(height: 24),
 
-          // 3. App Appearance & Preferences
+          // 3. Hardware & Gateway Connectivity
+          Text(
+            'Hardware & Gateway',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                onTap: () => WifiGatewaySetupDialog.show(context),
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.router_rounded,
+                    color: Color(0xFF0284C7),
+                    size: 20,
+                  ),
+                ),
+                title: const Text(
+                  'Gateway Wi-Fi Router Setup',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Configure router SSID & connect to hotel network',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // 4. App Appearance & Preferences
           Text(
             'App Preferences',
             style: theme.textTheme.titleMedium?.copyWith(

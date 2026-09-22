@@ -11,6 +11,7 @@ import 'views/tables_tab_view.dart';
 import 'widgets/table_setup_dialog.dart';
 import 'widgets/assign_waiter_modal.dart';
 import 'widgets/waiter_management_sheet.dart';
+import 'widgets/wifi_gateway_setup_dialog.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -130,10 +131,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    WifiGatewaySetupDialog.show(
+                      context,
+                      wifiService: ref.read(gatewayWifiServiceProvider),
+                    );
+                  },
+                  icon: const Icon(Icons.router_rounded, size: 18),
+                  label: const Text('Configure Gateway Wi-Fi Router'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
           ),
         );
       },
+
     );
   }
 

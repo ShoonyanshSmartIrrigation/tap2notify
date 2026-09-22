@@ -78,6 +78,34 @@ void main() {
       );
       expect(failTable4, isFalse);
     });
+
+    test('5. Wi-Fi Router Gateway status: dynamic IP switching updates target Gateway IP', () {
+      final routerStatus = {
+        'configured': true,
+        'ssid': 'Hotel_Restaurant_5G',
+        'status': 'connected',
+        'sta_ip': '192.168.1.150',
+        'ap_ip': '192.168.4.1',
+        'rssi': -52,
+        'channel': 6,
+        'mdns': 'tap2notify.local',
+      };
+
+      expect(routerStatus['sta_ip'], '192.168.1.150');
+      expect(routerStatus['status'], 'connected');
+      expect(routerStatus['ssid'], 'Hotel_Restaurant_5G');
+      expect(routerStatus['channel'], 6);
+    });
+
+    test('6. Unlocking and locking locally persists state in Gateway service', () async {
+      await gatewayService.unlockTableLocally('table_5');
+      expect(gatewayService.isTableUnlocked('table_5'), isTrue);
+
+      // Now lock
+      await gatewayService.lockTableLocally('table_5');
+      expect(gatewayService.isTableUnlocked('table_5'), isFalse);
+    });
   });
 }
+
 

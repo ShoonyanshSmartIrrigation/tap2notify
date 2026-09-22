@@ -449,21 +449,10 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                       isConnected
                           ? Icons.wifi_rounded
                           : Icons.wifi_find_rounded,
-                      size: 13,
+                      size: 14,
                       color: isConnected
-                          ? const Color(0xFF2E7D32)
+                          ? const Color.fromARGB(255, 49, 233, 58)
                           : const Color(0xFF0284C7),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isConnected ? 'Gateway Live' : 'Wi-Fi Search',
-                      style: TextStyle(
-                        color: isConnected
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFF0284C7),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10.5,
-                      ),
                     ),
                   ],
                 ),
@@ -576,49 +565,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                                     : FontWeight.normal,
                                 color: pendingTables.isNotEmpty
                                     ? const Color(0xFFE53935)
-                                    : const Color(0xFF2E7D32),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color:
-                                    (isConnected
-                                            ? const Color(0xFF2E7D32)
-                                            : const Color(0xFF0284C7))
-                                        .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    isConnected
-                                        ? Icons.wifi_rounded
-                                        : Icons.wifi_find_rounded,
-                                    size: 12,
-                                    color: isConnected
-                                        ? const Color(0xFF2E7D32)
-                                        : const Color(0xFF0284C7),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    isConnected
-                                        ? 'Wi-Fi Gateway Connected • ${assignedTables.where((t) => t.isDeviceOnline).length}/${assignedTables.length} Online'
-                                        : 'Searching Wi-Fi Gateway...',
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: isConnected
-                                          ? const Color(0xFF2E7D32)
-                                          : const Color(0xFF0284C7),
-                                    ),
-                                  ),
-                                ],
+                                    : const Color.fromARGB(255, 60, 218, 68),
                               ),
                             ),
                           ],

@@ -30,7 +30,8 @@ class GatewayWifiService {
 
   String _gatewayIp = defaultGatewayIp;
   int _gatewayPort = defaultGatewayPort;
-  GatewayConnectionStatus _connectionStatus = GatewayConnectionStatus.disconnected;
+  GatewayConnectionStatus _connectionStatus =
+      GatewayConnectionStatus.disconnected;
 
   // Dynamic Table State Map: Holds all registered table devices from Gateway
   final Map<String, TableModel> _tables = {};
@@ -38,7 +39,8 @@ class GatewayWifiService {
   final Set<String> _unlockedTableIds = {};
 
   /// Optional custom/device password validator callback (e.g. for unit tests)
-  Future<bool> Function(String tableId, String password)? devicePasswordValidator;
+  Future<bool> Function(String tableId, String password)?
+  devicePasswordValidator;
 
   final StreamController<List<TableModel>> _tablesController =
       StreamController<List<TableModel>>.broadcast();
@@ -59,7 +61,8 @@ class GatewayWifiService {
   Stream<GatewayConnectionStatus> get connectionStatusStream =>
       _connectionStatusController.stream;
 
-  bool get isConnected => _connectionStatus == GatewayConnectionStatus.connected;
+  bool get isConnected =>
+      _connectionStatus == GatewayConnectionStatus.connected;
   bool get isScanning => _isScanning;
   bool _isScanning = false;
 
@@ -87,11 +90,25 @@ class GatewayWifiService {
 
   bool isTableOnline(String tableId) {
     if (_lastSeenTimes.containsKey(tableId)) {
-      return DateTime.now().difference(_lastSeenTimes[tableId]!).inSeconds <= 20;
+      if (DateTime.now().difference(_lastSeenTimes[tableId]!).inSeconds <= 20)
+        return true;
     }
     final rawId = tableId.startsWith('table_') ? tableId.substring(6) : tableId;
     if (_lastSeenTimes.containsKey('table_$rawId')) {
-      return DateTime.now().difference(_lastSeenTimes['table_$rawId']!).inSeconds <= 20;
+      if (DateTime.now()
+              .difference(_lastSeenTimes['table_$rawId']!)
+              .inSeconds <=
+          20)
+        return true;
+    }
+    if (_lastSeenTimes.containsKey(rawId)) {
+      if (DateTime.now().difference(_lastSeenTimes[rawId]!).inSeconds <= 20)
+        return true;
+    }
+    final existing =
+        _tables[tableId] ?? _tables['table_$rawId'] ?? _tables[rawId];
+    if (existing != null && existing.isDeviceOnline) {
+      return true;
     }
     return false;
   }
@@ -99,13 +116,16 @@ class GatewayWifiService {
   TableModel? getLiveTable(String tableId) {
     if (_tables.containsKey(tableId)) return _tables[tableId];
     final rawId = tableId.startsWith('table_') ? tableId.substring(6) : tableId;
-    return _tables['table_$rawId'] ??
-        _tables.values.cast<TableModel?>().firstWhere(
-              (t) =>
-                  t?.tableNumber.toString() == tableId ||
-                  t?.tableNumber.toString() == rawId,
-              orElse: () => null,
-            );
+    if (_tables.containsKey('table_$rawId')) return _tables['table_$rawId'];
+    if (_tables.containsKey(rawId)) return _tables[rawId];
+    return _tables.values.cast<TableModel?>().firstWhere(
+      (t) =>
+          t?.tableNumber.toString() == tableId ||
+          t?.tableNumber.toString() == rawId ||
+          t?.id == tableId ||
+          t?.id == 'table_$rawId',
+      orElse: () => null,
+    );
   }
 
   // Alias for backward compatibility
@@ -119,7 +139,9 @@ class GatewayWifiService {
     if (_connectionStatus != status) {
       _connectionStatus = status;
       _connectionStatusController.add(status);
-      debugPrint('[GATEWAY WIFI] Status Changed -> $status (IP: $_gatewayIp:$_gatewayPort)');
+      debugPrint(
+        '[GATEWAY WIFI] Status Changed -> $status (IP: $_gatewayIp:$_gatewayPort)',
+      );
     }
   }
 
@@ -160,7 +182,9 @@ class GatewayWifiService {
         final data = jsonDecode(res.body);
         if (data['gateway'] != null) {
           final staIp = data['sta_ip']?.toString() ?? '';
-          final targetIp = (staIp.isNotEmpty && staIp != '0.0.0.0') ? staIp : cleanIp;
+          final targetIp = (staIp.isNotEmpty && staIp != '0.0.0.0')
+              ? staIp
+              : cleanIp;
           _gatewayIp = targetIp;
           _gatewayPort = port;
           _saveCachedGatewayIp(targetIp);
@@ -212,61 +236,68 @@ class GatewayWifiService {
     try {
       RawDatagramSocket.bind(InternetAddress.anyIPv4, udpDiscoveryPort)
           .then((socket) {
-        _udpSocket?.close();
-        _udpSocket = socket;
-        _udpSocket?.broadcastEnabled = true;
-        _udpSocket?.listen((RawSocketEvent event) {
-          if (event == RawSocketEvent.read) {
-            final dg = _udpSocket?.receive();
-            if (dg != null) {
-              try {
-                final message = utf8.decode(dg.data);
-                final json = jsonDecode(message);
-                if (json['gateway'] != null) {
-                  final staIp = json['sta_ip']?.toString() ?? '';
-                  final ip = json['ip']?.toString() ?? '';
-                  final targetIp = staIp.isNotEmpty ? staIp : ip;
-                  final port = json['port'] != null ? (json['port'] as num).toInt() : 80;
+            _udpSocket?.close();
+            _udpSocket = socket;
+            _udpSocket?.broadcastEnabled = true;
+            _udpSocket?.listen((RawSocketEvent event) {
+              if (event == RawSocketEvent.read) {
+                final dg = _udpSocket?.receive();
+                if (dg != null) {
+                  try {
+                    final message = utf8.decode(dg.data);
+                    final json = jsonDecode(message);
+                    if (json['gateway'] != null) {
+                      final staIp = json['sta_ip']?.toString() ?? '';
+                      final ip = json['ip']?.toString() ?? '';
+                      final targetIp = staIp.isNotEmpty ? staIp : ip;
+                      final port = json['port'] != null
+                          ? (json['port'] as num).toInt()
+                          : 80;
 
-                  if (targetIp.isNotEmpty && targetIp != _gatewayIp && targetIp != '0.0.0.0') {
-                    debugPrint('[UDP DISCOVERY] Discovered Gateway on Router at $targetIp:$port (SSID: ${json['ssid']})');
-                    _gatewayIp = targetIp;
-                    _gatewayPort = port;
-                    _saveCachedGatewayIp(targetIp);
-                    refreshDevices();
-                  }
+                      if (targetIp.isNotEmpty &&
+                          targetIp != _gatewayIp &&
+                          targetIp != '0.0.0.0') {
+                        debugPrint(
+                          '[UDP DISCOVERY] Discovered Gateway on Router at $targetIp:$port (SSID: ${json['ssid']})',
+                        );
+                        _gatewayIp = targetIp;
+                        _gatewayPort = port;
+                        _saveCachedGatewayIp(targetIp);
+                        refreshDevices();
+                      }
+                    }
+                  } catch (_) {}
                 }
-              } catch (_) {}
-            }
-          }
-        });
-      }).catchError((err) {
-        debugPrint('[UDP DISCOVERY] Bind error: $err');
-      });
+              }
+            });
+          })
+          .catchError((err) {
+            debugPrint('[UDP DISCOVERY] Bind error: $err');
+          });
     } catch (e) {
       debugPrint('[UDP DISCOVERY] Setup error: $e');
     }
   }
 
-  /// Probe candidates to find which Gateway endpoint is actively responding
-  Future<String?> findReachableGatewayEndpoint() async {
+  /// Probe candidate endpoints & scan local subnet to automatically find active Gateway
+  Future<String?> findReachableGatewayEndpoint({bool scanSubnet = true}) async {
     final client = _httpClient ?? http.Client();
-    final candidates = <String>[
-      _gatewayIp,
-      'tap2notify.local',
-      '192.168.4.1',
-    ];
+    final candidates = <String>[_gatewayIp, 'tap2notify.local', '192.168.4.1'];
 
     for (final host in candidates) {
       if (host.isEmpty || host == '0.0.0.0') continue;
       try {
         final url = Uri.parse('http://$host:$_gatewayPort/api/status');
-        final res = await client.get(url).timeout(const Duration(milliseconds: 1200));
+        final res = await client
+            .get(url)
+            .timeout(const Duration(milliseconds: 1200));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           if (data['gateway'] != null) {
             final staIp = data['sta_ip']?.toString() ?? '';
-            final targetIp = (staIp.isNotEmpty && staIp != '0.0.0.0') ? staIp : host;
+            final targetIp = (staIp.isNotEmpty && staIp != '0.0.0.0')
+                ? staIp
+                : host;
             _gatewayIp = targetIp;
             _saveCachedGatewayIp(targetIp);
             _setConnectionStatus(GatewayConnectionStatus.connected);
@@ -275,6 +306,86 @@ class GatewayWifiService {
           }
         }
       } catch (_) {}
+    }
+
+    // If candidate endpoints did not respond, automatically scan the local Wi-Fi subnet
+    if (scanSubnet && !kIsWeb) {
+      final foundIp = await _scanLocalSubnetForGateway();
+      if (foundIp != null) return foundIp;
+    }
+
+    return null;
+  }
+
+  /// Extracts the local IPv4 subnet prefix (e.g. '192.168.1.') of the phone's active Wi-Fi interface
+  Future<String?> _getLocalSubnetPrefix() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          final ip = addr.address;
+          if (ip.startsWith('192.168.') ||
+              ip.startsWith('10.') ||
+              ip.startsWith('172.')) {
+            final parts = ip.split('.');
+            if (parts.length == 4) {
+              return '${parts[0]}.${parts[1]}.${parts[2]}.';
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Fast parallel scan of the local router subnet (1..254) to find the Gateway with zero IP entry
+  Future<String?> _scanLocalSubnetForGateway() async {
+    final prefix = await _getLocalSubnetPrefix();
+    if (prefix == null) return null;
+
+    final client = _httpClient ?? http.Client();
+    debugPrint(
+      '[GATEWAY WIFI] Auto-scanning local subnet ${prefix}1-254 for Gateway...',
+    );
+
+    final ipSuffixes = List<int>.generate(254, (i) => i + 1);
+
+    // Concurrent batches of 30 requests with short 650ms timeout for ultra-fast discovery
+    for (int i = 0; i < ipSuffixes.length; i += 30) {
+      final end = (i + 30 < ipSuffixes.length) ? i + 30 : ipSuffixes.length;
+      final chunk = ipSuffixes.sublist(i, end);
+
+      final futures = chunk.map((suffix) async {
+        final host = '$prefix$suffix';
+        try {
+          final url = Uri.parse('http://$host:$_gatewayPort/api/status');
+          final res = await client
+              .get(url)
+              .timeout(const Duration(milliseconds: 650));
+          if (res.statusCode == 200) {
+            final data = jsonDecode(res.body);
+            if (data['gateway'] != null) {
+              return host;
+            }
+          }
+        } catch (_) {}
+        return null;
+      });
+
+      final results = await Future.wait(futures);
+      final found = results.firstWhere((r) => r != null, orElse: () => null);
+      if (found != null) {
+        debugPrint(
+          '[GATEWAY WIFI] Auto-discovered Gateway on local router at $found',
+        );
+        _gatewayIp = found;
+        _saveCachedGatewayIp(found);
+        _setConnectionStatus(GatewayConnectionStatus.connected);
+        return found;
+      }
     }
     return null;
   }
@@ -285,7 +396,9 @@ class GatewayWifiService {
     final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/devices');
 
     try {
-      final response = await client.get(url).timeout(const Duration(seconds: 2));
+      final response = await client
+          .get(url)
+          .timeout(const Duration(seconds: 2));
 
       if (response.statusCode == 200) {
         _setConnectionStatus(GatewayConnectionStatus.connected);
@@ -302,22 +415,27 @@ class GatewayWifiService {
     } catch (e) {
       // If primary IP fails, probe candidate endpoints
       final newIp = await findReachableGatewayEndpoint();
-      if (newIp == null && _connectionStatus == GatewayConnectionStatus.connected) {
+      if (newIp == null &&
+          _connectionStatus == GatewayConnectionStatus.connected) {
         _setConnectionStatus(GatewayConnectionStatus.disconnected);
       }
     }
   }
 
   void processDevicePayload(Map<dynamic, dynamic> device) {
-    final rawId = device['id']?.toString() ?? device['tableNumber']?.toString() ?? '1';
+    final rawId =
+        device['id']?.toString() ?? device['tableNumber']?.toString() ?? '1';
     final strippedId = rawId.toLowerCase().startsWith('table_')
         ? rawId.substring(6)
-        : (rawId.toLowerCase().startsWith('table') ? rawId.substring(5) : rawId);
+        : (rawId.toLowerCase().startsWith('table')
+              ? rawId.substring(5)
+              : rawId);
     final cleanTableNum = strippedId.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
     final tableId = 'table_$cleanTableNum';
 
     final int rawFlag = (device['flag'] as num?)?.toInt() ?? -1;
-    final bool isOnline = device['online'] == true || device['isOnline'] == true;
+    final bool isOnline =
+        device['online'] == true || device['isOnline'] == true;
     final bool isHardwareLocked = (rawFlag == -2);
 
     if (isHardwareLocked) {
@@ -327,8 +445,15 @@ class GatewayWifiService {
     }
 
     final existing = _tables[tableId];
-    final bool isUnlocked = !isHardwareLocked &&
-        ((existing?.isUnlocked ?? false) || _unlockedTableIds.contains(tableId) || device['unlocked'] == true);
+    final bool hasAssignedWaiter =
+        (existing?.assignedWaiterId.isNotEmpty ?? false) ||
+        (device['assigned_waiter_id']?.toString().isNotEmpty ?? false);
+    final bool isUnlocked =
+        !isHardwareLocked &&
+        ((existing?.isUnlocked ?? false) ||
+            _unlockedTableIds.contains(tableId) ||
+            device['unlocked'] == true ||
+            hasAssignedWaiter);
 
     final finalFlag = isHardwareLocked ? -1 : rawFlag;
     final finalStatus = isHardwareLocked
@@ -337,7 +462,8 @@ class GatewayWifiService {
 
     _lastSeenTimes[tableId] = DateTime.now();
 
-    final bool stateChanged = existing == null ||
+    final bool stateChanged =
+        existing == null ||
         existing.flag != finalFlag ||
         existing.status != finalStatus ||
         existing.isUnlocked != isUnlocked ||
@@ -345,30 +471,44 @@ class GatewayWifiService {
 
     final dynamic parsedNum = int.tryParse(cleanTableNum) ?? cleanTableNum;
 
+    final String assignedWaiterId =
+        (existing?.assignedWaiterId.isNotEmpty ?? false)
+        ? existing!.assignedWaiterId
+        : (device['assigned_waiter_id']?.toString() ??
+              device['assignedWaiterId']?.toString() ??
+              '');
+    final String waiterName = (existing?.waiterName.isNotEmpty ?? false)
+        ? existing!.waiterName
+        : (device['waiterName']?.toString() ??
+              (assignedWaiterId.isNotEmpty ? assignedWaiterId : ''));
+
     final updatedTable = TableModel(
       id: tableId,
       tableNumber: parsedNum,
       deviceId: 'device_$cleanTableNum',
       status: finalStatus,
       flag: finalFlag,
-      waiterName: existing?.waiterName ?? '',
-      assignedWaiterId: existing?.assignedWaiterId ?? '',
+      waiterName: waiterName,
+      assignedWaiterId: assignedWaiterId,
       managerPhone: existing?.managerPhone ?? '',
       managerUid: existing?.managerUid ?? '',
       managerEmail: existing?.managerEmail,
       isDeviceOnline: isOnline,
       isUnlocked: isUnlocked,
-      unlockedAt: isUnlocked ? (existing?.unlockedAt ?? DateTime.now().millisecondsSinceEpoch) : null,
+      unlockedAt: isUnlocked
+          ? (existing?.unlockedAt ?? DateTime.now().millisecondsSinceEpoch)
+          : null,
       unlockedBy: existing?.unlockedBy,
       createdAt: existing?.createdAt ?? DateTime.now().millisecondsSinceEpoch,
       updatedAt: DateTime.now().millisecondsSinceEpoch,
       acceptedAt: existing?.acceptedAt,
       requestSentAt: finalFlag == 0
           ? (existing?.flag == 0 && existing?.requestSentAt != null
-              ? existing!.requestSentAt
-              : (device['requestSentAt'] != null
-                  ? (device['requestSentAt'] as num).toInt()
-                  : (existing?.requestSentAt ?? DateTime.now().millisecondsSinceEpoch)))
+                ? existing!.requestSentAt
+                : (device['requestSentAt'] != null
+                      ? (device['requestSentAt'] as num).toInt()
+                      : (existing?.requestSentAt ??
+                            DateTime.now().millisecondsSinceEpoch)))
           : null,
     );
 
@@ -376,7 +516,9 @@ class GatewayWifiService {
 
     if (stateChanged) {
       _emitTables();
-      debugPrint('[WIFI INSTANT] Table $cleanTableNum STATE CHANGED -> Flag: $finalFlag ($finalStatus, Unlocked: $isUnlocked)');
+      debugPrint(
+        '[WIFI INSTANT] Table $cleanTableNum STATE CHANGED -> Flag: $finalFlag ($finalStatus, Unlocked: $isUnlocked)',
+      );
 
       if (finalFlag == 0 && isUnlocked) {
         try {
@@ -391,6 +533,15 @@ class GatewayWifiService {
   @visibleForTesting
   void processDevicePayloadForTesting(Map<dynamic, dynamic> device) =>
       processDevicePayload(device);
+
+  @visibleForTesting
+  void resetForTesting() {
+    _tables.clear();
+    _lastSeenTimes.clear();
+    _unlockedTableIds.clear();
+    onDeviceDiscovered = null;
+    onDeviceLost = null;
+  }
 
   void _checkStaleDevices() {
     final now = DateTime.now();
@@ -423,7 +574,9 @@ class GatewayWifiService {
     final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/scan');
 
     try {
-      final response = await client.get(url).timeout(const Duration(seconds: 8));
+      final response = await client
+          .get(url)
+          .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final dynamic list = jsonDecode(response.body);
         if (list is List) {
@@ -445,12 +598,11 @@ class GatewayWifiService {
     await findReachableGatewayEndpoint();
 
     final client = _httpClient ?? http.Client();
-    final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/configure');
+    final url = Uri.parse(
+      'http://$_gatewayIp:$_gatewayPort/api/wifi/configure',
+    );
 
-    final payload = {
-      'ssid': ssid.trim(),
-      'password': password.trim(),
-    };
+    final payload = {'ssid': ssid.trim(), 'password': password.trim()};
 
     try {
       final response = await client
@@ -462,7 +614,9 @@ class GatewayWifiService {
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
-        debugPrint('[GATEWAY WIFI] Wi-Fi router configured successfully with SSID: $ssid');
+        debugPrint(
+          '[GATEWAY WIFI] Wi-Fi router configured successfully with SSID: $ssid',
+        );
         return true;
       }
     } catch (e) {
@@ -477,11 +631,16 @@ class GatewayWifiService {
     final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/status');
 
     try {
-      final response = await client.get(url).timeout(const Duration(seconds: 3));
+      final response = await client
+          .get(url)
+          .timeout(const Duration(seconds: 3));
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         final staIp = data['sta_ip']?.toString() ?? '';
-        if (staIp.isNotEmpty && staIp != _gatewayIp && staIp != '0.0.0.0' && data['status'] == 'connected') {
+        if (staIp.isNotEmpty &&
+            staIp != _gatewayIp &&
+            staIp != '0.0.0.0' &&
+            data['status'] == 'connected') {
           _gatewayIp = staIp;
           _saveCachedGatewayIp(staIp);
           _setConnectionStatus(GatewayConnectionStatus.connected);
@@ -502,7 +661,9 @@ class GatewayWifiService {
     final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/wifi/reset');
 
     try {
-      final response = await client.post(url).timeout(const Duration(seconds: 4));
+      final response = await client
+          .post(url)
+          .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         debugPrint('[GATEWAY WIFI] Wi-Fi credentials reset on Gateway');
         return true;
@@ -524,7 +685,9 @@ class GatewayWifiService {
     String? password,
     String? waiterName,
   }) async {
-    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final cleanTableId = tableId.startsWith('table_')
+        ? tableId
+        : 'table_$tableId';
     final tableNum = tableId.replaceAll(RegExp(r'[^0-9]'), '');
     final client = _httpClient ?? http.Client();
     final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/command');
@@ -546,7 +709,9 @@ class GatewayWifiService {
           .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
-        debugPrint('[GATEWAY WIFI] Command $command sent successfully to Table $tableNum');
+        debugPrint(
+          '[GATEWAY WIFI] Command $command sent successfully to Table $tableNum',
+        );
         return true;
       }
     } catch (e) {
@@ -561,13 +726,18 @@ class GatewayWifiService {
     required String tableId,
     required String password,
   }) async {
-    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final cleanTableId = tableId.startsWith('table_')
+        ? tableId
+        : 'table_$tableId';
     final trimmedPassword = password.trim();
     if (trimmedPassword.isEmpty) return false;
 
     // 0. Custom device password validator callback (for unit tests / custom authenticators)
     if (devicePasswordValidator != null) {
-      final isValid = await devicePasswordValidator!(cleanTableId, trimmedPassword);
+      final isValid = await devicePasswordValidator!(
+        cleanTableId,
+        trimmedPassword,
+      );
       if (isValid) {
         _unlockedTableIds.add(cleanTableId);
         _updateTableUnlockState(cleanTableId, true);
@@ -593,7 +763,9 @@ class GatewayWifiService {
   }
 
   void _updateTableUnlockState(String tableId, bool unlocked) {
-    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final cleanTableId = tableId.startsWith('table_')
+        ? tableId
+        : 'table_$tableId';
     final current = _tables[cleanTableId];
     if (current != null) {
       final updated = current.copyWith(
@@ -608,17 +780,22 @@ class GatewayWifiService {
 
   bool isTableUnlocked(String tableId) {
     final cleanId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
-    return _unlockedTableIds.contains(cleanId) || (_tables[cleanId]?.isUnlocked ?? false);
+    return _unlockedTableIds.contains(cleanId) ||
+        (_tables[cleanId]?.isUnlocked ?? false);
   }
 
   Future<void> unlockTableLocally(String tableId) async {
-    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final cleanTableId = tableId.startsWith('table_')
+        ? tableId
+        : 'table_$tableId';
     _unlockedTableIds.add(cleanTableId);
     _updateTableUnlockState(cleanTableId, true);
   }
 
   Future<void> lockTableLocally(String tableId) async {
-    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final cleanTableId = tableId.startsWith('table_')
+        ? tableId
+        : 'table_$tableId';
     _unlockedTableIds.remove(cleanTableId);
 
     // Send HTTP LOCK Command to Gateway
@@ -627,16 +804,53 @@ class GatewayWifiService {
   }
 
   void assignWaiterLocally(String tableId, String waiterId, String waiterName) {
-    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final cleanTableId = tableId.startsWith('table_')
+        ? tableId
+        : 'table_$tableId';
+    final stripped = cleanTableId.replaceFirst('table_', '');
+    final tableNum = int.tryParse(stripped) ?? stripped;
     final existing = _tables[cleanTableId];
     if (existing != null) {
+      final bool alreadyAssigned =
+          existing.assignedWaiterId == waiterId &&
+          existing.waiterName == waiterName &&
+          (waiterId.isEmpty ||
+              (existing.isUnlocked &&
+                  _unlockedTableIds.contains(cleanTableId)));
+      if (alreadyAssigned) {
+        return;
+      }
       final updated = existing.copyWith(
         assignedWaiterId: waiterId,
         waiterName: waiterName,
+        isUnlocked: waiterId.isNotEmpty ? true : existing.isUnlocked,
+        unlockedAt: waiterId.isNotEmpty
+            ? (existing.unlockedAt ?? DateTime.now().millisecondsSinceEpoch)
+            : existing.unlockedAt,
       );
+      if (waiterId.isNotEmpty) {
+        _unlockedTableIds.add(cleanTableId);
+      }
       _tables[cleanTableId] = updated;
       _emitTables();
       onDeviceDiscovered?.call(updated);
+    } else if (waiterId.isNotEmpty) {
+      _unlockedTableIds.add(cleanTableId);
+      final newTable = TableModel(
+        id: cleanTableId,
+        tableNumber: tableNum,
+        deviceId: 'device_$stripped',
+        assignedWaiterId: waiterId,
+        waiterName: waiterName,
+        isUnlocked: true,
+        unlockedAt: DateTime.now().millisecondsSinceEpoch,
+        status: 'idle',
+        flag: -1,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      _tables[cleanTableId] = newTable;
+      _emitTables();
+      onDeviceDiscovered?.call(newTable);
     }
   }
 
@@ -686,11 +900,7 @@ class GatewayWifiService {
   Future<void> resetAllTables() async {
     final updatedMap = <String, TableModel>{};
     _tables.forEach((key, table) {
-      final updated = table.copyWith(
-        flag: -1,
-        status: 'idle',
-        waiterName: '',
-      );
+      final updated = table.copyWith(flag: -1, status: 'idle', waiterName: '');
       updatedMap[key] = updated;
       onDeviceDiscovered?.call(updated);
     });
@@ -702,7 +912,10 @@ class GatewayWifiService {
     await sendGatewayCommand(tableId: 'ALL', command: 'RESET');
   }
 
-  Future<void> triggerTableRequest(String tableId, {dynamic tableNumber}) async {
+  Future<void> triggerTableRequest(
+    String tableId, {
+    dynamic tableNumber,
+  }) async {
     final current = _tables[tableId];
     final num = tableNumber ?? (current?.tableNumber ?? 1);
     final now = DateTime.now().millisecondsSinceEpoch;

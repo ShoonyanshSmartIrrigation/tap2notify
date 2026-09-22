@@ -36,6 +36,8 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
   bool _isScanningNetworks = false;
   bool _isConfiguring = false;
   bool _isTestingIp = false;
+  bool _isAutoDiscovering = false;
+  bool _showAdvancedIp = false;
   List<Map<String, dynamic>> _scannedNetworks = [];
   Map<String, dynamic>? _wifiStatus;
   String? _statusMessage;
@@ -45,7 +47,7 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
   void initState() {
     super.initState();
     _ipController.text = widget.wifiService.gatewayIp;
-    _fetchCurrentStatus();
+    _autoDiscoverAndFetch();
   }
 
   @override
@@ -54,6 +56,33 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
     _passController.dispose();
     _ipController.dispose();
     super.dispose();
+  }
+
+  Future<void> _autoDiscoverAndFetch() async {
+    setState(() {
+      _isAutoDiscovering = true;
+    });
+
+    // 1. Automatically probe endpoints and local subnet without requiring user to enter IP
+    final discoveredIp = await widget.wifiService.findReachableGatewayEndpoint(scanSubnet: true);
+    
+    if (mounted && discoveredIp != null) {
+      _ipController.text = discoveredIp;
+    }
+
+    // 2. Fetch live status
+    await _fetchCurrentStatus();
+
+    if (mounted) {
+      setState(() {
+        _isAutoDiscovering = false;
+      });
+
+      // 3. If connected, automatically scan available router SSIDs for 1-tap selection
+      if (widget.wifiService.isConnected && _scannedNetworks.isEmpty) {
+        _scanNetworks();
+      }
+    }
   }
 
   Future<void> _fetchCurrentStatus() async {
@@ -110,8 +139,8 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
       setState(() {
         _isScanningNetworks = false;
         _scannedNetworks = networks;
-        if (networks.isEmpty) {
-          _statusMessage = 'No Wi-Fi networks found. If in initial setup, ensure phone is connected to T2N_GATEWAY or same router.';
+        if (networks.isEmpty && !widget.wifiService.isConnected) {
+          _statusMessage = 'Searching for Gateway... If in initial setup, connect your phone to "T2N_GATEWAY" Wi-Fi.';
         }
       });
     }
@@ -333,24 +362,32 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    isConnected ? Icons.check_circle_rounded : Icons.wifi_find_rounded,
-                    color: isConnected ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
-                    size: 20,
-                  ),
+                  _isAutoDiscovering
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF0284C7)),
+                        )
+                      : Icon(
+                          isConnected ? Icons.check_circle_rounded : Icons.wifi_find_rounded,
+                          color: isConnected ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
+                          size: 20,
+                        ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          isConnected
-                              ? 'Gateway Connected (${widget.wifiService.gatewayIp})'
-                              : 'Gateway Disconnected / Searching...',
+                          _isAutoDiscovering
+                              ? '⚡ Auto-Searching Gateway on Wi-Fi...'
+                              : (isConnected
+                                  ? '✓ Gateway Connected (${widget.wifiService.gatewayIp})'
+                                  : 'Gateway Searching / Disconnected'),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
-                            color: isConnected ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
+                            color: isConnected ? const Color(0xFF2E7D32) : (_isAutoDiscovering ? const Color(0xFF0284C7) : const Color(0xFFF57C00)),
                           ),
                         ),
                         if (_wifiStatus != null)
@@ -362,9 +399,11 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.refresh, size: 18),
-                    onPressed: _fetchCurrentStatus,
-                    tooltip: 'Refresh Status',
+                    icon: _isAutoDiscovering
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.refresh, size: 18),
+                    onPressed: _isAutoDiscovering ? null : _autoDiscoverAndFetch,
+                    tooltip: 'Auto-Discover Gateway',
                   ),
                 ],
               ),
@@ -456,37 +495,61 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
             ),
             const SizedBox(height: 12),
 
-            // Gateway IP Input & Direct Connect
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ipController,
-                    decoration: InputDecoration(
-                      labelText: 'Gateway IP Address',
-                      hintText: 'e.g. 192.168.1.15',
-                      prefixIcon: const Icon(Icons.settings_ethernet_rounded),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            // Advanced Settings: Manual IP (Optional Fallback)
+            InkWell(
+              onTap: () => setState(() => _showAdvancedIp = !_showAdvancedIp),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      _showAdvancedIp ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _showAdvancedIp ? 'Hide Advanced (Manual IP)' : 'Advanced: Manual IP / Override (Optional)',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_showAdvancedIp) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _ipController,
+                      decoration: InputDecoration(
+                        labelText: 'Gateway IP Address',
+                        hintText: 'e.g. 192.168.1.15',
+                        prefixIcon: const Icon(Icons.settings_ethernet_rounded),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _isTestingIp ? null : _testDirectIp,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _isTestingIp ? null : _testDirectIp,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isTestingIp
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Test IP'),
                   ),
-                  child: _isTestingIp
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Test IP'),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Status message

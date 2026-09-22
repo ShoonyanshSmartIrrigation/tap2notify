@@ -266,8 +266,8 @@ class FirebaseRealtimeService {
           'waiter_name': existing['waiter_name'] ?? existing['assigned_waiter_name'] ?? '',
           'assigned_waiter_id': existing['assigned_waiter_id'] ?? '',
           'assigned_waiter_name': existing['assigned_waiter_name'] ?? existing['waiter_name'] ?? '',
-          'is_unlocked': existing['is_unlocked'] == true || existing['unlocked'] == true,
-          'unlocked_at': existing['unlocked_at'],
+          'is_unlocked': existing['is_unlocked'] == true || existing['unlocked'] == true || (existing['assigned_waiter_id'] != null && existing['assigned_waiter_id'].toString().isNotEmpty),
+          'unlocked_at': existing['unlocked_at'] ?? (existing['is_unlocked'] == true ? now : null),
           'unlocked_by': existing['unlocked_by'],
           'manager_phone': resolvedPhone,
           'manager_uid': resolvedUid,
@@ -314,6 +314,8 @@ class FirebaseRealtimeService {
       updates['$tableId/assigned_waiter_id'] = waiterId;
       updates['$tableId/assigned_waiter_name'] = waiterName;
       updates['$tableId/waiter_name'] = waiterName;
+      updates['$tableId/is_unlocked'] = true;
+      updates['$tableId/unlocked_at'] = now;
       updates['$tableId/updated_at'] = now;
     }
 
@@ -463,19 +465,50 @@ class FirebaseRealtimeService {
     String? managerUid,
     String? managerEmail,
   }) {
+    final resolvedPhone = _resolvePhone(managerPhone);
     return getTablesStream(
-      managerPhone: managerPhone,
+      managerPhone: resolvedPhone,
       managerUid: managerUid,
       managerEmail: managerEmail,
-    ).map((allTables) {
-      return allTables
-          .where((t) =>
-              t.isUnlocked &&
-              (t.assignedWaiterId == waiterId ||
-                  t.waiterName == waiterId ||
-                  t.waiterName.contains('($waiterId)') ||
-                  t.waiterName.contains(waiterId)))
-          .toList();
+    ).asyncMap((allTables) async {
+      // 1. Fetch waiter's registered assignedTableIds list from /waiters/$managerPhone/$waiterId
+      List<String> waiterAssignedTableIds = [];
+      try {
+        final waiterSnap = await _waitersRef(resolvedPhone).child(waiterId).get();
+        if (waiterSnap.exists && waiterSnap.value is Map) {
+          final wMap = waiterSnap.value as Map;
+          if (wMap['assignedTableIds'] is List) {
+            waiterAssignedTableIds = (wMap['assignedTableIds'] as List).map((e) => e.toString()).toList();
+          } else if (wMap['assignedTableIds'] is Map) {
+            waiterAssignedTableIds = (wMap['assignedTableIds'] as Map).values.map((e) => e.toString()).toList();
+          }
+        }
+      } catch (e) {
+        debugPrint('[FIREBASE_RTDB] Error fetching assignedTableIds for waiter $waiterId: $e');
+      }
+
+      // 2. Cross-reference all tables under manager with waiter assignment
+      final List<TableModel> waiterTables = [];
+      for (final t in allTables) {
+        final cleanTableNum = t.tableNumber.toString().replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
+        final isAssignedDirect = t.assignedWaiterId == waiterId ||
+            t.waiterName == waiterId ||
+            t.waiterName.contains('($waiterId)') ||
+            t.waiterName.contains(waiterId);
+        final isAssignedViaList = waiterAssignedTableIds.contains(t.id) ||
+            waiterAssignedTableIds.contains(cleanTableNum) ||
+            waiterAssignedTableIds.contains('table_$cleanTableNum');
+
+        if (isAssignedDirect || isAssignedViaList) {
+          final isUnlocked = t.isUnlocked || isAssignedDirect || isAssignedViaList;
+          final updatedTable = t.copyWith(
+            assignedWaiterId: t.assignedWaiterId.isNotEmpty ? t.assignedWaiterId : waiterId,
+            isUnlocked: isUnlocked,
+          );
+          waiterTables.add(updatedTable);
+        }
+      }
+      return waiterTables;
     });
   }
 
@@ -767,9 +800,20 @@ class FirebaseRealtimeService {
       return;
     }
     final existingData = tableSnap.value as Map;
-    final isTableUnlocked = existingData['is_unlocked'] == true || existingData['unlocked'] == true;
+    final isTableUnlocked = existingData['is_unlocked'] == true ||
+        existingData['unlocked'] == true ||
+        (existingData['assigned_waiter_id'] != null && existingData['assigned_waiter_id'].toString().isNotEmpty);
     final int effectiveFlag = isTableUnlocked ? flag : -1;
     final String effectiveStatus = isTableUnlocked ? status : 'idle';
+
+    // Guard: Do not write to RTDB if status, flag, online state, and unlocked state are unchanged
+    final bool currentUnlocked = existingData['is_unlocked'] == true || existingData['unlocked'] == true;
+    if (existingData['status'] == effectiveStatus &&
+        existingData['flag'] == effectiveFlag &&
+        existingData['device_online'] == isOnline &&
+        currentUnlocked == isTableUnlocked) {
+      return;
+    }
 
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {

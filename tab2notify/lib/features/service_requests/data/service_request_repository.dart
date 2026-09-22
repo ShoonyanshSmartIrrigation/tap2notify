@@ -35,6 +35,7 @@ class ServiceRequestRepository {
       debugPrint('[BLE DISCOVERED HOOK] Table ${bleTable.tableNumber} (${bleTable.id}) status=${bleTable.status} flag=${bleTable.flag} managerPhone=$managerPhone currentWaiterId=$currentWaiterId');
       // Instant Native Notification Alert for urgent service requests (STRICTLY for UNLOCKED tables)
       if (bleTable.flag == 0 && bleTable.isUnlocked) {
+        _pendingEntryTimestamps[bleTable.id] ??= bleTable.requestSentAt ?? DateTime.now().millisecondsSinceEpoch;
         _triggerRequestNotification(
           tableId: bleTable.id,
           tableNumber: bleTable.tableNumber,
@@ -42,6 +43,9 @@ class ServiceRequestRepository {
           waiterName: bleTable.waiterName,
           isUnlocked: bleTable.isUnlocked,
         );
+      } else if (bleTable.flag != 0) {
+        _pendingEntryTimestamps.remove(bleTable.id);
+        _escalatedTableIds.remove(bleTable.id);
       }
 
       if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
@@ -75,11 +79,13 @@ class ServiceRequestRepository {
     // Listen to RTDB tables to alert if status is set to pending from cloud/web
     if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
       _startCloudRequestListener();
-      if (currentWaiterId.isEmpty) {
-        _managerEscalationTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-          _checkManagerEscalation(_cachedTables);
-        });
-      }
+    }
+
+    // Always start escalation ticker for manager session (works in pure Wi-Fi mode & cloud)
+    if (currentWaiterId.isEmpty) {
+      _managerEscalationTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        _checkManagerEscalation(_cachedTables);
+      });
     }
   }
 
@@ -116,12 +122,33 @@ class ServiceRequestRepository {
     if (currentWaiterId.isNotEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    for (final table in tables) {
-      if (table.isPending) {
-        final sentTime = table.requestSentAt ?? _pendingEntryTimestamps[table.id] ?? now;
-        _pendingEntryTimestamps[table.id] ??= sentTime;
+    // Merge tables with _bleService.currentTables so local Wi-Fi tables are always checked
+    final allActiveTables = <String, TableModel>{};
+    for (final t in tables) {
+      allActiveTables[t.id] = t;
+    }
+    for (final t in _bleService.currentTables) {
+      if (allActiveTables.containsKey(t.id)) {
+        final existing = allActiveTables[t.id]!;
+        allActiveTables[t.id] = existing.copyWith(
+          flag: t.flag,
+          status: t.status,
+          isUnlocked: t.isUnlocked || existing.isUnlocked,
+          isDeviceOnline: t.isDeviceOnline,
+          requestSentAt: t.requestSentAt ?? existing.requestSentAt,
+        );
+      } else {
+        allActiveTables[t.id] = t;
+      }
+    }
 
-        final elapsed = now - (_pendingEntryTimestamps[table.id] ?? sentTime);
+    for (final table in allActiveTables.values) {
+      final isUnlocked = table.isUnlocked || _bleService.isTableUnlocked(table.id);
+      if (table.isPending && isUnlocked) {
+        final effectiveSentTime = table.requestSentAt ?? _pendingEntryTimestamps[table.id] ?? now;
+        _pendingEntryTimestamps[table.id] = effectiveSentTime;
+
+        final elapsed = now - effectiveSentTime;
         if (elapsed >= 20000 && !_escalatedTableIds.contains(table.id)) {
           _escalatedTableIds.add(table.id);
           debugPrint('[MANAGER ESCALATION] Table ${table.tableNumber} pending for ${elapsed ~/ 1000}s >= 20s. Alerting manager.');
@@ -239,7 +266,8 @@ class ServiceRequestRepository {
             status: liveBleTable.status,
             flag: liveBleTable.flag,
             isUnlocked: isUnlocked,
-            waiterName: liveBleTable.waiterName.isNotEmpty ? liveBleTable.waiterName : t.waiterName,
+            waiterName: t.waiterName.isNotEmpty ? t.waiterName : liveBleTable.waiterName,
+            assignedWaiterId: t.assignedWaiterId.isNotEmpty ? t.assignedWaiterId : liveBleTable.assignedWaiterId,
           );
         }
         return t.copyWith(
@@ -249,7 +277,7 @@ class ServiceRequestRepository {
       }).toList();
 
       for (final bleTable in _bleService.currentTables) {
-        if (!merged.any((m) => m.id == bleTable.id || m.tableNumber == bleTable.tableNumber)) {
+        if (!merged.any((m) => m.id == bleTable.id || m.tableNumber.toString() == bleTable.tableNumber.toString())) {
           merged.add(bleTable);
         }
       }
@@ -319,10 +347,10 @@ class ServiceRequestRepository {
           return isUnlocked &&
               ((t.assignedWaiterId.isNotEmpty && t.assignedWaiterId == waiterId) ||
                   t.waiterName.contains('($waiterId)') ||
-                  (t.waiterName.isNotEmpty && t.waiterName == waiterId));
+                  (t.waiterName.isNotEmpty && (t.waiterName == waiterId || t.waiterName.contains(waiterId))));
         }).toList();
       }
-      return lastDbTables
+      final merged = lastDbTables
           .where((t) => t.isUnlocked || _bleService.isTableUnlocked(t.id))
           .map((t) {
         final isBleOnline = _bleService.isTableOnline(t.id);
@@ -334,7 +362,8 @@ class ServiceRequestRepository {
             status: liveBleTable.status,
             flag: liveBleTable.flag,
             isUnlocked: isUnlocked,
-            waiterName: liveBleTable.waiterName.isNotEmpty ? liveBleTable.waiterName : t.waiterName,
+            waiterName: t.waiterName.isNotEmpty ? t.waiterName : liveBleTable.waiterName,
+            assignedWaiterId: t.assignedWaiterId.isNotEmpty ? t.assignedWaiterId : liveBleTable.assignedWaiterId,
           );
         }
         return t.copyWith(
@@ -342,6 +371,26 @@ class ServiceRequestRepository {
           isUnlocked: isUnlocked,
         );
       }).where((t) => t.isUnlocked).toList();
+
+      for (final bleTable in _bleService.currentTables) {
+        final isUnlocked = bleTable.isUnlocked || _bleService.isTableUnlocked(bleTable.id);
+        final isAssigned = (bleTable.assignedWaiterId.isNotEmpty && bleTable.assignedWaiterId == waiterId) ||
+            bleTable.waiterName.contains('($waiterId)') ||
+            (bleTable.waiterName.isNotEmpty && (bleTable.waiterName == waiterId || bleTable.waiterName.contains(waiterId)));
+        if (isUnlocked && isAssigned && !merged.any((m) => m.id == bleTable.id || m.tableNumber.toString() == bleTable.tableNumber.toString())) {
+          merged.add(bleTable);
+        }
+      }
+
+      merged.sort((a, b) {
+        final aNum = int.tryParse(a.tableNumber.toString());
+        final bNum = int.tryParse(b.tableNumber.toString());
+        if (aNum != null && bNum != null) {
+          return aNum.compareTo(bNum);
+        }
+        return a.tableNumber.toString().compareTo(b.tableNumber.toString());
+      });
+      return merged;
     }
 
     controller = StreamController<List<TableModel>>(
@@ -411,20 +460,28 @@ class ServiceRequestRepository {
     required String waiterName,
     required List<String> tableIds,
   }) async {
-    await _dbService.assignWaiterToTables(
-      waiterId: waiterId,
-      waiterName: waiterName,
-      tableIds: tableIds,
-      managerPhone: managerPhone,
-    );
+    for (final tableId in tableIds) {
+      _bleService.assignWaiterLocally(tableId, waiterId, waiterName);
+    }
+    if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+      await _dbService.assignWaiterToTables(
+        waiterId: waiterId,
+        waiterName: waiterName,
+        tableIds: tableIds,
+        managerPhone: managerPhone,
+      );
+    }
   }
 
   // Remove waiter assignment from a table
   Future<void> removeWaiterFromTable(String tableId) async {
-    await _dbService.removeWaiterFromTable(
-      tableId,
-      managerPhone: managerPhone,
-    );
+    _bleService.assignWaiterLocally(tableId, '', '');
+    if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+      await _dbService.removeWaiterFromTable(
+        tableId,
+        managerPhone: managerPhone,
+      );
+    }
   }
 
   // Save/Edit waiter for this manager

@@ -105,6 +105,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: sentTime,
         requestSentAt: sentTime,
       );
@@ -146,6 +147,7 @@ void main() {
         flag: 1,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: sentTime,
         requestSentAt: sentTime,
         acceptedAt: sentTime + 2000,
@@ -181,6 +183,7 @@ void main() {
         flag: -1,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
 
@@ -214,6 +217,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: sentTime,
         requestSentAt: sentTime,
       );
@@ -254,6 +258,7 @@ void main() {
         flag: 0,
         assignedWaiterId: 'W001',
         waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
         createdAt: threeDaysAgo,
         // requestSentAt is null
       );

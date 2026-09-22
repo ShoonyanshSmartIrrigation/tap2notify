@@ -318,7 +318,7 @@ class GatewayWifiService {
 
     final int rawFlag = (device['flag'] as num?)?.toInt() ?? -1;
     final bool isOnline = device['online'] == true || device['isOnline'] == true;
-    final bool isHardwareLocked = (rawFlag == -2) || (device['unlocked'] == false);
+    final bool isHardwareLocked = (rawFlag == -2);
 
     if (isHardwareLocked) {
       _unlockedTableIds.remove(tableId);
@@ -328,7 +328,7 @@ class GatewayWifiService {
 
     final existing = _tables[tableId];
     final bool isUnlocked = !isHardwareLocked &&
-        ((existing?.isUnlocked ?? false) || _unlockedTableIds.contains(tableId));
+        ((existing?.isUnlocked ?? false) || _unlockedTableIds.contains(tableId) || device['unlocked'] == true);
 
     final finalFlag = isHardwareLocked ? -1 : rawFlag;
     final finalStatus = isHardwareLocked
@@ -352,12 +352,24 @@ class GatewayWifiService {
       status: finalStatus,
       flag: finalFlag,
       waiterName: existing?.waiterName ?? '',
+      assignedWaiterId: existing?.assignedWaiterId ?? '',
+      managerPhone: existing?.managerPhone ?? '',
+      managerUid: existing?.managerUid ?? '',
+      managerEmail: existing?.managerEmail,
       isDeviceOnline: isOnline,
       isUnlocked: isUnlocked,
-      unlockedAt: existing?.unlockedAt,
+      unlockedAt: isUnlocked ? (existing?.unlockedAt ?? DateTime.now().millisecondsSinceEpoch) : null,
       unlockedBy: existing?.unlockedBy,
       createdAt: existing?.createdAt ?? DateTime.now().millisecondsSinceEpoch,
       updatedAt: DateTime.now().millisecondsSinceEpoch,
+      acceptedAt: existing?.acceptedAt,
+      requestSentAt: finalFlag == 0
+          ? (existing?.flag == 0 && existing?.requestSentAt != null
+              ? existing!.requestSentAt
+              : (device['requestSentAt'] != null
+                  ? (device['requestSentAt'] as num).toInt()
+                  : (existing?.requestSentAt ?? DateTime.now().millisecondsSinceEpoch)))
+          : null,
     );
 
     _tables[tableId] = updatedTable;
@@ -612,6 +624,20 @@ class GatewayWifiService {
     // Send HTTP LOCK Command to Gateway
     await sendGatewayCommand(tableId: tableId, command: 'LOCK');
     _updateTableUnlockState(cleanTableId, false);
+  }
+
+  void assignWaiterLocally(String tableId, String waiterId, String waiterName) {
+    final cleanTableId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
+    final existing = _tables[cleanTableId];
+    if (existing != null) {
+      final updated = existing.copyWith(
+        assignedWaiterId: waiterId,
+        waiterName: waiterName,
+      );
+      _tables[cleanTableId] = updated;
+      _emitTables();
+      onDeviceDiscovered?.call(updated);
+    }
   }
 
   Future<void> acceptTableRequest({

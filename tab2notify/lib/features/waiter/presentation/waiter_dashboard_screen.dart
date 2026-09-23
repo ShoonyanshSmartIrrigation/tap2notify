@@ -411,52 +411,21 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           ],
         ),
         actions: [
-          // Wi-Fi Gateway Connectivity Status Pill
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              vertical: 10.0,
-              horizontal: 4.0,
+          IconButton(
+            tooltip: isConnected ? 'Gateway Live' : 'Wi-Fi Search',
+            icon: Icon(
+              isConnected
+                  ? Icons.wifi_rounded
+                  : Icons.wifi_find_rounded,
+              color: isConnected
+                  ? const Color.fromARGB(255, 49, 233, 58)
+                  : const Color(0xFF0284C7),
             ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () => _showGatewayInfoModal(
-                assignedTables,
-                isScanning,
-                connectionStatus,
-                wifiService.gatewayIp,
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color:
-                      (isConnected
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFF0284C7))
-                          .withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color:
-                        (isConnected
-                                ? const Color(0xFF2E7D32)
-                                : const Color(0xFF0284C7))
-                            .withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isConnected
-                          ? Icons.wifi_rounded
-                          : Icons.wifi_find_rounded,
-                      size: 14,
-                      color: isConnected
-                          ? const Color.fromARGB(255, 49, 233, 58)
-                          : const Color(0xFF0284C7),
-                    ),
-                  ],
-                ),
-              ),
+            onPressed: () => _showGatewayInfoModal(
+              assignedTables,
+              isScanning,
+              connectionStatus,
+              wifiService.gatewayIp,
             ),
           ),
           IconButton(

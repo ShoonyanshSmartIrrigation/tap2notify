@@ -353,10 +353,11 @@ void loop() {
   // -------------------------------------------------------------
   int reading = digitalRead(TOUCH_PIN);
 
-  // Detect state change from LOW to HIGH
-  if (reading == HIGH && lastTouchState == LOW) {
-    if (millis() - lastDebounceTime > 50) { // Fast 50ms debounce
+  // Detect ANY transition (LOW -> HIGH or HIGH -> LOW)
+  if (reading != lastTouchState) {
+    if (millis() - lastDebounceTime > 60) { // 60ms debounce
       lastDebounceTime = millis();
+      lastTouchState = reading;
 
       // STRICT LOCK CHECK: Ignore touch if device is locked
       if (!isDeviceUnlocked || currentState == STATE_LOCKED) {

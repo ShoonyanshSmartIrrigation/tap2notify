@@ -60,6 +60,7 @@ int currentChannel = DEFAULT_WIFI_CHANNEL;
 unsigned long acceptedTimestamp       = 0;
 int lastTouchState                    = LOW;
 unsigned long lastDebounceTime        = 0;
+const unsigned long DEBOUNCE_DELAY_MS = 60;
 unsigned long lastHeartbeatTime       = 0;
 unsigned long lastGatewayContactTime  = 0;
 unsigned long lastChannelScanTime     = 0;
@@ -360,7 +361,7 @@ void setup() {
   strip.setBrightness(60);
   applyCurrentStateVisuals();
 
-  // Initialize Touch State
+  // Read initial touch sensor baseline
   lastTouchState = digitalRead(TOUCH_PIN);
 
   // Initialize Wi-Fi in Station Mode for ESP-NOW
@@ -416,9 +417,13 @@ void loop() {
   // -------------------------------------------------------------
   int reading = digitalRead(TOUCH_PIN);
 
-  if (reading == HIGH && lastTouchState == LOW) {
-    if (millis() - lastDebounceTime > 50) { // Fast 50ms debounce
+  // Detect ANY transition (LOW -> HIGH or HIGH -> LOW)
+  // This ensures both latching/toggle modules (e.g. TTP223 toggle mode)
+  // and momentary switches trigger reliably on EVERY single touch.
+  if (reading != lastTouchState) {
+    if (millis() - lastDebounceTime > DEBOUNCE_DELAY_MS) {
       lastDebounceTime = millis();
+      lastTouchState = reading; // Update to new stable state
 
       // STRICT LOCK CHECK: Ignore touch if device is locked
       if (!isDeviceUnlocked || currentState == STATE_LOCKED) {
@@ -465,7 +470,6 @@ void loop() {
       }
     }
   }
-  lastTouchState = reading;
 
   // -------------------------------------------------------------
   // 2. Automatic Reset after 6 Seconds in ACCEPTED (Green) State

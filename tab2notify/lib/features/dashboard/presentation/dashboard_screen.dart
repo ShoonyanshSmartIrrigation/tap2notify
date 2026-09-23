@@ -75,13 +75,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: (isConnected ? const Color(0xFF2E7D32) : const Color(0xFF0284C7))
-                              .withValues(alpha: 0.15),
+                          color:
+                              (isConnected
+                                      ? const Color(0xFF2E7D32)
+                                      : const Color(0xFF0284C7))
+                                  .withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          isConnected ? Icons.wifi_rounded : Icons.wifi_find_rounded,
-                          color: isConnected ? const Color(0xFF2E7D32) : const Color(0xFF0284C7),
+                          isConnected
+                              ? Icons.wifi_rounded
+                              : Icons.wifi_find_rounded,
+                          color: isConnected
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFF0284C7),
                           size: 22,
                         ),
                       ),
@@ -156,7 +163,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         );
       },
-
     );
   }
 
@@ -167,12 +173,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: valueColor,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: valueColor,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
           ),
         ],
@@ -189,8 +201,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final connectionStatus =
         ref.watch(gatewayConnectionStatusStreamProvider).value ??
         wifiService.connectionStatus;
-    final isScanning =
-        ref.watch(gatewayScanningStreamProvider).value ?? false;
+    final isScanning = ref.watch(gatewayScanningStreamProvider).value ?? false;
     final isConnected = connectionStatus == GatewayConnectionStatus.connected;
 
     final tablesList = tablesAsync.value ?? [];
@@ -291,16 +302,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: (isConnected
-                          ? const Color(0xFF2E7D32)
-                          : const Color(0xFF0284C7))
-                      .withValues(alpha: 0.15),
+                  color:
+                      (isConnected
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFF0284C7))
+                          .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: (isConnected
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFF0284C7))
-                        .withValues(alpha: 0.4),
+                    color:
+                        (isConnected
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFF0284C7))
+                            .withValues(alpha: 0.4),
                   ),
                 ),
                 child: Row(

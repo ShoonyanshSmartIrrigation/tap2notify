@@ -305,9 +305,11 @@ class ServiceRequestRepository {
             t.isUnlocked ||
             _bleService.isTableUnlocked(t.id) ||
             (liveBleTable?.isUnlocked ?? false);
+        final effectiveOnline =
+            isBleOnline || (liveBleTable?.isDeviceOnline ?? false);
         if (liveBleTable != null) {
           return t.copyWith(
-            isDeviceOnline: isBleOnline,
+            isDeviceOnline: effectiveOnline,
             status: liveBleTable.status,
             flag: liveBleTable.flag,
             isUnlocked: isUnlocked,
@@ -319,7 +321,7 @@ class ServiceRequestRepository {
                 : liveBleTable.assignedWaiterId,
           );
         }
-        return t.copyWith(isDeviceOnline: isBleOnline, isUnlocked: isUnlocked);
+        return t.copyWith(isDeviceOnline: effectiveOnline, isUnlocked: isUnlocked);
       }).toList();
 
       for (final bleTable in _bleService.currentTables) {
@@ -413,20 +415,12 @@ class ServiceRequestRepository {
                 _bleService.isTableUnlocked(t.id) ||
                 (liveBleTable?.isUnlocked ?? false);
             final effectiveOnline =
-                isBleOnline ||
-                (liveBleTable?.isDeviceOnline ?? false) ||
-                t.isDeviceOnline;
+                isBleOnline || (liveBleTable?.isDeviceOnline ?? false);
             if (liveBleTable != null) {
-              final effectiveFlag = (liveBleTable.flag != -1)
-                  ? liveBleTable.flag
-                  : t.flag;
-              final effectiveStatus = (liveBleTable.flag != -1)
-                  ? liveBleTable.status
-                  : t.status;
               return t.copyWith(
                 isDeviceOnline: effectiveOnline,
-                status: effectiveStatus,
-                flag: effectiveFlag,
+                status: liveBleTable.status,
+                flag: liveBleTable.flag,
                 isUnlocked: isUnlocked,
                 waiterName: t.waiterName.isNotEmpty
                     ? t.waiterName

@@ -88,42 +88,51 @@ class GatewayWifiService {
     return list;
   }
 
+  String _cleanTableNum(dynamic rawId) {
+    if (rawId == null) return '1';
+    final str = rawId.toString().trim();
+    final stripped = str.toLowerCase().startsWith('table_')
+        ? str.substring(6)
+        : (str.toLowerCase().startsWith('table')
+            ? str.substring(5)
+            : str);
+    final clean = stripped.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
+    return clean.isNotEmpty ? clean : '1';
+  }
+
   bool isTableOnline(String tableId) {
-    if (_lastSeenTimes.containsKey(tableId)) {
-      if (DateTime.now().difference(_lastSeenTimes[tableId]!).inSeconds <= 20)
-        return true;
+    final cleanNum = _cleanTableNum(tableId);
+    final tableIdFull = 'table_$cleanNum';
+
+    final table = _tables[tableIdFull] ??
+        _tables[tableId] ??
+        _tables[cleanNum] ??
+        getLiveTable(tableId);
+    if (table != null) {
+      return table.isDeviceOnline;
     }
-    final rawId = tableId.startsWith('table_') ? tableId.substring(6) : tableId;
-    if (_lastSeenTimes.containsKey('table_$rawId')) {
-      if (DateTime.now()
-              .difference(_lastSeenTimes['table_$rawId']!)
-              .inSeconds <=
-          20)
-        return true;
-    }
-    if (_lastSeenTimes.containsKey(rawId)) {
-      if (DateTime.now().difference(_lastSeenTimes[rawId]!).inSeconds <= 20)
-        return true;
-    }
-    final existing =
-        _tables[tableId] ?? _tables['table_$rawId'] ?? _tables[rawId];
-    if (existing != null && existing.isDeviceOnline) {
-      return true;
+
+    final lastSeen = _lastSeenTimes[tableIdFull] ??
+        _lastSeenTimes[tableId] ??
+        _lastSeenTimes[cleanNum];
+    if (lastSeen != null) {
+      return DateTime.now().difference(lastSeen).inSeconds <= 15;
     }
     return false;
   }
 
   TableModel? getLiveTable(String tableId) {
+    final cleanNum = _cleanTableNum(tableId);
+    final tableIdFull = 'table_$cleanNum';
+    if (_tables.containsKey(tableIdFull)) return _tables[tableIdFull];
     if (_tables.containsKey(tableId)) return _tables[tableId];
-    final rawId = tableId.startsWith('table_') ? tableId.substring(6) : tableId;
-    if (_tables.containsKey('table_$rawId')) return _tables['table_$rawId'];
-    if (_tables.containsKey(rawId)) return _tables[rawId];
+    if (_tables.containsKey(cleanNum)) return _tables[cleanNum];
     return _tables.values.cast<TableModel?>().firstWhere(
       (t) =>
-          t?.tableNumber.toString() == tableId ||
-          t?.tableNumber.toString() == rawId ||
-          t?.id == tableId ||
-          t?.id == 'table_$rawId',
+          t != null &&
+          (_cleanTableNum(t.tableNumber) == cleanNum ||
+              _cleanTableNum(t.id) == cleanNum ||
+              t.deviceId == 'device_$cleanNum'),
       orElse: () => null,
     );
   }
@@ -425,12 +434,7 @@ class GatewayWifiService {
   void processDevicePayload(Map<dynamic, dynamic> device) {
     final rawId =
         device['id']?.toString() ?? device['tableNumber']?.toString() ?? '1';
-    final strippedId = rawId.toLowerCase().startsWith('table_')
-        ? rawId.substring(6)
-        : (rawId.toLowerCase().startsWith('table')
-              ? rawId.substring(5)
-              : rawId);
-    final cleanTableNum = strippedId.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
+    final cleanTableNum = _cleanTableNum(rawId);
     final tableId = 'table_$cleanTableNum';
 
     final int rawFlag = (device['flag'] as num?)?.toInt() ?? -1;
@@ -460,7 +464,11 @@ class GatewayWifiService {
         ? 'idle'
         : (rawFlag == 0 ? 'pending' : (rawFlag == 1 ? 'accepted' : 'idle'));
 
-    _lastSeenTimes[tableId] = DateTime.now();
+    if (isOnline) {
+      _lastSeenTimes[tableId] = DateTime.now();
+    } else {
+      _lastSeenTimes.remove(tableId);
+    }
 
     final bool stateChanged =
         existing == null ||
@@ -517,7 +525,7 @@ class GatewayWifiService {
     if (stateChanged) {
       _emitTables();
       debugPrint(
-        '[WIFI INSTANT] Table $cleanTableNum STATE CHANGED -> Flag: $finalFlag ($finalStatus, Unlocked: $isUnlocked)',
+        '[WIFI INSTANT] Table $cleanTableNum STATE CHANGED -> Flag: $finalFlag ($finalStatus, Online: $isOnline, Unlocked: $isUnlocked)',
       );
 
       if (finalFlag == 0 && isUnlocked) {
@@ -545,20 +553,20 @@ class GatewayWifiService {
 
   void _checkStaleDevices() {
     final now = DateTime.now();
-    final List<String> staleIds = [];
+    bool changed = false;
 
     _lastSeenTimes.forEach((tableId, lastSeen) {
       if (now.difference(lastSeen).inSeconds > 15) {
-        staleIds.add(tableId);
+        final table = _tables[tableId];
+        if (table != null && table.isDeviceOnline) {
+          _tables[tableId] = table.copyWith(isDeviceOnline: false);
+          changed = true;
+          debugPrint('[GATEWAY WIFI] Table $tableId is now OFFLINE (stale >15s)');
+        }
       }
     });
 
-    if (staleIds.isNotEmpty) {
-      for (final id in staleIds) {
-        _tables.remove(id);
-        _lastSeenTimes.remove(id);
-        onDeviceLost?.call(id);
-      }
+    if (changed) {
       _emitTables();
     }
   }
@@ -695,8 +703,8 @@ class GatewayWifiService {
     final payload = {
       'deviceId': tableNum.isNotEmpty ? tableNum : cleanTableId,
       'command': command,
-      if (password != null) 'password': password,
-      if (waiterName != null) 'waiterName': waiterName,
+      'password': ?password,
+      'waiterName': ?waiterName,
     };
 
     try {

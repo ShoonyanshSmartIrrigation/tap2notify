@@ -344,103 +344,238 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     }
 
     return Scaffold(
+      drawer: _buildWaiterDrawer(
+        context: context,
+        theme: theme,
+        isDark: isDark,
+        waiterName: waiterName,
+        waiterId: waiterId,
+        assignedTables: assignedTables,
+        pendingTables: pendingTables,
+        acceptedTables: acceptedTables,
+        idleTables: idleTables,
+        isConnected: isConnected,
+        isScanning: isScanning,
+        connectionStatus: connectionStatus,
+        gatewayIp: wifiService.gatewayIp,
+      ),
       appBar: AppBar(
-        title: Row(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeInOut,
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(
-                      alpha: isDark ? 0.25 : 0.15,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: 62,
+        backgroundColor: isDark ? const Color(0xFF141218) : Colors.white,
+        automaticallyImplyLeading: false,
+        titleSpacing: 16,
+        title: Builder(
+          builder: (drawerCtx) => InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Scaffold.of(drawerCtx).openDrawer();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Row(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeInOut,
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF1E1B26)
+                              : const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.3,
+                            ),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: isDark ? 0.25 : 0.15,
+                              ),
+                              blurRadius: 6,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 350),
+                            child: Image.asset(
+                              isDark
+                                  ? 'assets/images/app_logo.png'
+                                  : 'assets/images/app_logo_white.png',
+                              key: ValueKey(isDark),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Icon(
+                                    Icons.restaurant_rounded,
+                                    color: theme.colorScheme.primary,
+                                    size: 22,
+                                  ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (pendingTables.isNotEmpty)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE53935),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF141218)
+                                    : Colors.white,
+                                width: 1.5,
+                              ),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 17,
+                              minHeight: 17,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${pendingTables.length}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.0,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                waiterName,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                              color: isDark
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 1),
+                        Row(
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: isConnected
+                                    ? const Color.fromARGB(255, 49, 233, 58)
+                                    : const Color(0xFFE53935),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'ID: $waiterId • ${assignedTables.length} Tables',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 350),
-                  child: Image.asset(
-                    isDark
-                        ? 'assets/images/app_logo.png'
-                        : 'assets/images/app_logo_white.png',
-                    key: ValueKey(isDark),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Icon(
-                      Icons.notifications_active_rounded,
-                      color: theme.colorScheme.primary,
-                      size: 24,
-                    ),
+            ),
+          ),
+        ),
+        actions: [
+          // Wi-Fi Gateway Connectivity Status Box
+          Padding(
+            padding: const EdgeInsets.only(right: 14.0),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                HapticFeedback.lightImpact();
+                _showGatewayInfoModal(
+                  assignedTables,
+                  isScanning,
+                  connectionStatus,
+                  wifiService.gatewayIp,
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      (isConnected
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE53935))
+                          .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color:
+                        (isConnected
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFFE53935))
+                            .withValues(alpha: 0.35),
                   ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isConnected
+                          ? Icons.wifi_rounded
+                          : Icons.wifi_find_rounded,
+                      size: 18,
+                      color: isConnected
+                          ? const Color.fromARGB(255, 49, 233, 58)
+                          : const Color(0xFFE53935),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    waiterName,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    'ID: $waiterId • ${assignedTables.length} Tables',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: isConnected ? 'Gateway Live' : 'Wi-Fi Search',
-            icon: Icon(
-              isConnected
-                  ? Icons.wifi_rounded
-                  : Icons.wifi_find_rounded,
-              color: isConnected
-                  ? const Color.fromARGB(255, 49, 233, 58)
-                  : const Color(0xFF0284C7),
-            ),
-            onPressed: () => _showGatewayInfoModal(
-              assignedTables,
-              isScanning,
-              connectionStatus,
-              wifiService.gatewayIp,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Toggle Theme',
-            icon: Icon(
-              theme.brightness == Brightness.dark
-                  ? Icons.light_mode
-                  : Icons.dark_mode,
-            ),
-            onPressed: () => ref.read(themeModeProvider.notifier).toggleTheme(),
-          ),
-          IconButton(
-            tooltip: 'Sign Out',
-            icon: const Icon(Icons.logout_rounded, color: Color(0xFFE53935)),
-            onPressed: _handleSignOut,
           ),
         ],
       ),
@@ -718,7 +853,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                             : Icons.wifi_find_rounded,
                         color: isConnected
                             ? const Color(0xFF2E7D32)
-                            : const Color(0xFF0284C7),
+                            : const Color(0xFFE53935),
                         size: 24,
                       ),
                       const SizedBox(width: 8),
@@ -777,15 +912,549 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: valueColor,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: valueColor,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildWaiterDrawer({
+    required BuildContext context,
+    required ThemeData theme,
+    required bool isDark,
+    required String waiterName,
+    required String waiterId,
+    required List<TableModel> assignedTables,
+    required List<TableModel> pendingTables,
+    required List<TableModel> acceptedTables,
+    required List<TableModel> idleTables,
+    required bool isConnected,
+    required bool isScanning,
+    required GatewayConnectionStatus connectionStatus,
+    required String gatewayIp,
+  }) {
+    return Drawer(
+      backgroundColor: isDark
+          ? const Color(0xFF141218)
+          : const Color(0xFFFBFBFB),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          children: [
+            // 1. Drawer Header Profile Box
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isDark
+                      ? [const Color(0xFF261D1A), const Color(0xFF1E1B26)]
+                      : [const Color(0xFFFFF3E0), Colors.white],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Avatar Circle
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFFEA580C,
+                          ).withValues(alpha: 0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          waiterName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.15,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'ID: $waiterId',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF2E7D32,
+                                ).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    size: 6,
+                                    color: Color(0xFF2E7D32),
+                                  ),
+                                  SizedBox(width: 3),
+                                  Text(
+                                    'On Duty',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2E7D32),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // 2. Floor Status Box
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Text(
+                'FLOOR OVERVIEW',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildDrawerStatTile(
+                          title: 'Pending',
+                          count: pendingTables.length,
+                          color: const Color(0xFFE53935),
+                          icon: Icons.notifications_active_rounded,
+                          isDark: isDark,
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() => _selectedFilter = 'pending');
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildDrawerStatTile(
+                          title: 'Accepted',
+                          count: acceptedTables.length,
+                          color: const Color(0xFF2E7D32),
+                          icon: Icons.check_circle_rounded,
+                          isDark: isDark,
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() => _selectedFilter = 'accepted');
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildDrawerStatTile(
+                          title: 'Idle Tables',
+                          count: idleTables.length,
+                          color: const Color(0xFFFF9800),
+                          icon: Icons.pause_circle_rounded,
+                          isDark: isDark,
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() => _selectedFilter = 'idle');
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildDrawerStatTile(
+                          title: 'All Assigned',
+                          count: assignedTables.length,
+                          color: const Color(0xFF0284C7),
+                          icon: Icons.table_restaurant_rounded,
+                          isDark: isDark,
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() => _selectedFilter = 'all');
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 4. Quick Actions / Preferences
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Text(
+                'PREFERENCES',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+              child: Column(
+                children: [
+                  ListTile(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(16),
+                      ),
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        isDark
+                            ? Icons.dark_mode_rounded
+                            : Icons.light_mode_rounded,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    title: const Text(
+                      'Dark Mode',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    trailing: Switch.adaptive(
+                      value: isDark,
+                      activeTrackColor: theme.colorScheme.primary,
+                      onChanged: (_) {
+                        ref.read(themeModeProvider.notifier).toggleTheme();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 3. Wi-Fi Gateway Telemetry Box
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Text(
+                'GATEWAY TELEMETRY',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color:
+                              (isConnected
+                                      ? const Color(0xFF2E7D32)
+                                      : const Color(0xFFE53935))
+                                  .withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isConnected
+                              ? Icons.wifi_rounded
+                              : Icons.wifi_find_rounded,
+                          size: 18,
+                          color: isConnected
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE53935),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isConnected
+                                  ? 'Gateway Connected'
+                                  : 'Searching Gateway...',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              gatewayIp.isNotEmpty
+                                  ? 'IP: $gatewayIp:80'
+                                  : 'Auto-discovery active',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        side: BorderSide(
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.3,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.analytics_outlined, size: 16),
+                      label: const Text(
+                        'Open Diagnostics',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showGatewayInfoModal(
+                          assignedTables,
+                          isScanning,
+                          connectionStatus,
+                          gatewayIp,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 5. Drawer Footer: Sign Out Button
+            const SizedBox(height: 14),
+            InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () {
+                Navigator.pop(context);
+                _handleSignOut();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 11,
+                  horizontal: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE53935).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFFE53935).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.logout_rounded,
+                      color: Color(0xFFE53935),
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Sign Out',
+                      style: TextStyle(
+                        color: Color(0xFFE53935),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerStatTile({
+    required String title,
+    required int count,
+    required Color color,
+    required IconData icon,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(icon, size: 16, color: color),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.grey[300] : Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

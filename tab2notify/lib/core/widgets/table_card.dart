@@ -5,12 +5,14 @@ class TableCard extends StatelessWidget {
   final TableModel table;
   final bool isManagerView;
   final VoidCallback? onUnlock;
+  final VoidCallback? onTap;
 
   const TableCard({
     super.key,
     required this.table,
     this.isManagerView = false,
     this.onUnlock,
+    this.onTap,
   });
 
   @override
@@ -59,26 +61,31 @@ class TableCard extends StatelessWidget {
       statusIcon = Icons.radio_button_unchecked_rounded;
     }
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      decoration: BoxDecoration(
-        color: cardBg,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: borderColor,
-          width: isPending ? 2.0 : (isAccepted ? 1.8 : 1.2),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: statusColor.withValues(
-              alpha: isPending ? 0.35 : (isAccepted ? 0.25 : 0.08),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: borderColor,
+              width: isPending ? 2.0 : (isAccepted ? 1.8 : 1.2),
             ),
-            blurRadius: isPending || isAccepted ? 8 : 4,
-            offset: const Offset(0, 2),
+            boxShadow: [
+              BoxShadow(
+                color: statusColor.withValues(
+                  alpha: isPending ? 0.35 : (isAccepted ? 0.25 : 0.08),
+                ),
+                blurRadius: isPending || isAccepted ? 8 : 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Stack(
+          child: Stack(
         children: [
           // Top Left: Auth Status Dot / Badge in Manager View
           if (isManagerView)
@@ -322,6 +329,8 @@ class TableCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ),
+  ),
+);
   }
 }

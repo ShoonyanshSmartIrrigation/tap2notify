@@ -91,11 +91,17 @@ class GatewayWifiService {
   String _cleanTableNum(dynamic rawId) {
     if (rawId == null) return '1';
     final str = rawId.toString().trim();
-    final stripped = str.toLowerCase().startsWith('table_')
-        ? str.substring(6)
-        : (str.toLowerCase().startsWith('table')
-            ? str.substring(5)
-            : str);
+    final lower = str.toLowerCase();
+    String stripped = str;
+    if (lower.startsWith('table_')) {
+      stripped = str.substring(6);
+    } else if (lower.startsWith('table')) {
+      stripped = str.substring(5);
+    } else if (lower.startsWith('device_')) {
+      stripped = str.substring(7);
+    } else if (lower.startsWith('device')) {
+      stripped = str.substring(6);
+    }
     final clean = stripped.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
     return clean.isNotEmpty ? clean : '1';
   }
@@ -437,7 +443,35 @@ class GatewayWifiService {
     final cleanTableNum = _cleanTableNum(rawId);
     final tableId = 'table_$cleanTableNum';
 
-    final int rawFlag = (device['flag'] as num?)?.toInt() ?? -1;
+    int rawFlag = -1;
+    if (device['flag'] != null) {
+      if (device['flag'] is num) {
+        rawFlag = (device['flag'] as num).toInt();
+      } else {
+        final fStr = device['flag'].toString().trim().toLowerCase();
+        if (fStr == '0' || fStr == 'pending' || fStr == 'new_request' || fStr == 'calling') {
+          rawFlag = 0;
+        } else if (fStr == '1' || fStr == 'accepted' || fStr == 'in_progress' || fStr == 'serving') {
+          rawFlag = 1;
+        } else if (fStr == '-2' || fStr == 'locked') {
+          rawFlag = -2;
+        } else {
+          rawFlag = -1;
+        }
+      }
+    } else if (device['status'] != null) {
+      final sStr = device['status'].toString().trim().toLowerCase();
+      if (sStr == 'pending' || sStr == 'new_request' || sStr == 'calling') {
+        rawFlag = 0;
+      } else if (sStr == 'accepted' || sStr == 'in_progress' || sStr == 'serving') {
+        rawFlag = 1;
+      } else if (sStr == 'locked') {
+        rawFlag = -2;
+      } else {
+        rawFlag = -1;
+      }
+    }
+
     final bool isOnline =
         device['online'] == true || device['isOnline'] == true;
     final bool isHardwareLocked = (rawFlag == -2);
@@ -463,6 +497,8 @@ class GatewayWifiService {
     final finalStatus = isHardwareLocked
         ? 'idle'
         : (rawFlag == 0 ? 'pending' : (rawFlag == 1 ? 'accepted' : 'idle'));
+
+    final int now = DateTime.now().millisecondsSinceEpoch;
 
     if (isOnline) {
       _lastSeenTimes[tableId] = DateTime.now();
@@ -490,6 +526,20 @@ class GatewayWifiService {
         : (device['waiterName']?.toString() ??
               (assignedWaiterId.isNotEmpty ? assignedWaiterId : ''));
 
+    final int? reqSentAt = finalFlag == 0
+        ? (existing?.flag == 0 && existing?.requestSentAt != null
+            ? existing!.requestSentAt
+            : (device['requestSentAt'] != null
+                ? (device['requestSentAt'] as num).toInt()
+                : (device['request_sent_at'] != null
+                    ? (device['request_sent_at'] as num).toInt()
+                    : now)))
+        : (finalFlag == 1 ? (existing?.requestSentAt ?? device['requestSentAt'] as int?) : null);
+
+    final int? accAt = finalFlag == 1
+        ? (existing?.acceptedAt ?? (device['acceptedAt'] as num?)?.toInt() ?? now)
+        : null;
+
     final updatedTable = TableModel(
       id: tableId,
       tableNumber: parsedNum,
@@ -504,20 +554,13 @@ class GatewayWifiService {
       isDeviceOnline: isOnline,
       isUnlocked: isUnlocked,
       unlockedAt: isUnlocked
-          ? (existing?.unlockedAt ?? DateTime.now().millisecondsSinceEpoch)
+          ? (existing?.unlockedAt ?? now)
           : null,
       unlockedBy: existing?.unlockedBy,
-      createdAt: existing?.createdAt ?? DateTime.now().millisecondsSinceEpoch,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-      acceptedAt: existing?.acceptedAt,
-      requestSentAt: finalFlag == 0
-          ? (existing?.flag == 0 && existing?.requestSentAt != null
-                ? existing!.requestSentAt
-                : (device['requestSentAt'] != null
-                      ? (device['requestSentAt'] as num).toInt()
-                      : (existing?.requestSentAt ??
-                            DateTime.now().millisecondsSinceEpoch)))
-          : null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      acceptedAt: accAt,
+      requestSentAt: reqSentAt,
     );
 
     _tables[tableId] = updatedTable;
@@ -556,12 +599,12 @@ class GatewayWifiService {
     bool changed = false;
 
     _lastSeenTimes.forEach((tableId, lastSeen) {
-      if (now.difference(lastSeen).inSeconds > 15) {
+      if (now.difference(lastSeen).inSeconds > 30) {
         final table = _tables[tableId];
         if (table != null && table.isDeviceOnline) {
           _tables[tableId] = table.copyWith(isDeviceOnline: false);
           changed = true;
-          debugPrint('[GATEWAY WIFI] Table $tableId is now OFFLINE (stale >15s)');
+          debugPrint('[GATEWAY WIFI] Table $tableId is now OFFLINE (stale >30s)');
         }
       }
     });
@@ -867,18 +910,32 @@ class GatewayWifiService {
     required String waiterName,
     String? managerUid,
   }) async {
-    final current = _tables[tableId];
-    if (current != null) {
-      final updated = current.copyWith(
-        flag: 1,
-        status: 'accepted',
-        waiterName: waiterName,
-        acceptedAt: DateTime.now().millisecondsSinceEpoch,
-      );
-      _tables[tableId] = updated;
-      _emitTables();
-      onDeviceDiscovered?.call(updated);
-    }
+    final cleanNum = _cleanTableNum(tableId);
+    final fullTableId = 'table_$cleanNum';
+    final parsedNum = int.tryParse(cleanNum) ?? cleanNum;
+    final current = _tables[fullTableId] ??
+        _tables[tableId] ??
+        _tables[cleanNum] ??
+        getLiveTable(tableId);
+    final int now = DateTime.now().millisecondsSinceEpoch;
+
+    final updated = (current ??
+            TableModel(
+              id: fullTableId,
+              tableNumber: parsedNum,
+              deviceId: 'device_$cleanNum',
+              createdAt: now,
+            ))
+        .copyWith(
+      flag: 1,
+      status: 'accepted',
+      waiterName: waiterName,
+      acceptedAt: now,
+      updatedAt: now,
+    );
+    _tables[fullTableId] = updated;
+    _emitTables();
+    onDeviceDiscovered?.call(updated);
 
     // Forward ACCEPT to Gateway
     await sendGatewayCommand(
@@ -889,26 +946,50 @@ class GatewayWifiService {
   }
 
   Future<void> resetTableStatus(String tableId) async {
-    final current = _tables[tableId];
-    if (current != null) {
-      final updated = current.copyWith(
-        flag: -1,
-        status: 'idle',
-        waiterName: '',
-      );
-      _tables[tableId] = updated;
-      _emitTables();
-      onDeviceDiscovered?.call(updated);
-    }
+    final cleanNum = _cleanTableNum(tableId);
+    final fullTableId = 'table_$cleanNum';
+    final parsedNum = int.tryParse(cleanNum) ?? cleanNum;
+    final current = _tables[fullTableId] ??
+        _tables[tableId] ??
+        _tables[cleanNum] ??
+        getLiveTable(tableId);
+    final int now = DateTime.now().millisecondsSinceEpoch;
+
+    final updated = (current ??
+            TableModel(
+              id: fullTableId,
+              tableNumber: parsedNum,
+              deviceId: 'device_$cleanNum',
+              createdAt: now,
+            ))
+        .copyWith(
+      flag: -1,
+      status: 'idle',
+      waiterName: '',
+      acceptedAt: null,
+      requestSentAt: null,
+      updatedAt: now,
+    );
+    _tables[fullTableId] = updated;
+    _emitTables();
+    onDeviceDiscovered?.call(updated);
 
     // Forward RESET to Gateway
     await sendGatewayCommand(tableId: tableId, command: 'RESET');
   }
 
   Future<void> resetAllTables() async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
     final updatedMap = <String, TableModel>{};
     _tables.forEach((key, table) {
-      final updated = table.copyWith(flag: -1, status: 'idle', waiterName: '');
+      final updated = table.copyWith(
+        flag: -1,
+        status: 'idle',
+        waiterName: '',
+        acceptedAt: null,
+        requestSentAt: null,
+        updatedAt: now,
+      );
       updatedMap[key] = updated;
       onDeviceDiscovered?.call(updated);
     });
@@ -924,30 +1005,61 @@ class GatewayWifiService {
     String tableId, {
     dynamic tableNumber,
   }) async {
-    final current = _tables[tableId];
-    final num = tableNumber ?? (current?.tableNumber ?? 1);
+    final cleanNum = _cleanTableNum(tableId);
+    final fullTableId = 'table_$cleanNum';
+    final current = _tables[fullTableId] ??
+        _tables[tableId] ??
+        _tables[cleanNum] ??
+        getLiveTable(tableId);
+    final num = tableNumber ??
+        (current?.tableNumber ?? int.tryParse(cleanNum) ?? cleanNum);
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final updated = TableModel(
-      id: tableId,
+      id: fullTableId,
       tableNumber: num,
-      deviceId: 'device_$num',
+      deviceId: 'device_$cleanNum',
       status: 'pending',
       flag: 0,
-      waiterName: '',
+      waiterName: current?.waiterName ?? '',
+      assignedWaiterId: current?.assignedWaiterId ?? '',
       isDeviceOnline: true,
-      isUnlocked: current?.isUnlocked ?? _unlockedTableIds.contains(tableId),
+      isUnlocked: current?.isUnlocked ?? _unlockedTableIds.contains(fullTableId),
       unlockedAt: current?.unlockedAt,
       unlockedBy: current?.unlockedBy,
-      createdAt: now,
+      createdAt: current?.createdAt ?? now,
       updatedAt: now,
+      requestSentAt: now,
     );
-    _tables[tableId] = updated;
+    _tables[fullTableId] = updated;
     _emitTables();
     onDeviceDiscovered?.call(updated);
 
     // Forward TRIGGER to Gateway
     await sendGatewayCommand(tableId: tableId, command: 'TRIGGER');
+  }
+
+  /// Syncs an incoming table state from Firebase Realtime Database into local Gateway cache
+  void syncTableFromCloud(TableModel cloudTable) {
+    final cleanNum = _cleanTableNum(cloudTable.tableNumber ?? cloudTable.id);
+    final tableId = 'table_$cleanNum';
+    final existing = _tables[tableId];
+
+    final int cloudUpdated = cloudTable.updatedAt ?? cloudTable.createdAt;
+    final int localUpdated = existing?.updatedAt ?? existing?.createdAt ?? 0;
+
+    if (existing == null || cloudUpdated >= localUpdated) {
+      _tables[tableId] = (existing ?? cloudTable).copyWith(
+        flag: cloudTable.flag,
+        status: cloudTable.status,
+        waiterName: cloudTable.waiterName.isNotEmpty ? cloudTable.waiterName : (existing?.waiterName ?? ''),
+        assignedWaiterId: cloudTable.assignedWaiterId.isNotEmpty ? cloudTable.assignedWaiterId : (existing?.assignedWaiterId ?? ''),
+        isUnlocked: cloudTable.isUnlocked || (existing?.isUnlocked ?? false),
+        updatedAt: cloudUpdated,
+        acceptedAt: cloudTable.acceptedAt ?? existing?.acceptedAt,
+        requestSentAt: cloudTable.requestSentAt ?? existing?.requestSentAt,
+      );
+    }
   }
 
   Future<void> refreshDevices() async {

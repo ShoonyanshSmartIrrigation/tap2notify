@@ -443,7 +443,7 @@ class _WifiGatewaySetupDialogState extends State<WifiGatewaySetupDialog> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _scannedNetworks.length,
-                  separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.withValues(alpha: 0.1)),
+                  separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey.withValues(alpha: 0.1)),
                   itemBuilder: (context, index) {
                     final net = _scannedNetworks[index];
                     final ssid = net['ssid']?.toString() ?? '';

@@ -406,7 +406,6 @@ void loop() {
       }
     }
   }
-  lastTouchState = reading;
 
   // -------------------------------------------------------------
   // Automatic Reset after 6 Seconds in ACCEPTED (Green) State

@@ -112,7 +112,8 @@ class ServiceRequestRepository {
           (tables) {
             _cachedTables = tables;
             for (final table in tables) {
-              if (table.flag == 0 || table.status == 'pending') {
+              _bleService.syncTableFromCloud(table);
+              if (table.isPending) {
                 _triggerRequestNotification(
                   tableId: table.id,
                   tableNumber: table.tableNumber,
@@ -144,11 +145,15 @@ class ServiceRequestRepository {
     for (final t in _bleService.currentTables) {
       if (allActiveTables.containsKey(t.id)) {
         final existing = allActiveTables[t.id]!;
+        final int dbTime = existing.updatedAt ?? existing.createdAt;
+        final int bleTime = t.updatedAt ?? t.createdAt;
+        final bool useBle = bleTime > dbTime;
+
         allActiveTables[t.id] = existing.copyWith(
-          flag: t.flag,
-          status: t.status,
+          flag: useBle ? t.flag : existing.flag,
+          status: useBle ? t.status : existing.status,
           isUnlocked: t.isUnlocked || existing.isUnlocked,
-          isDeviceOnline: t.isDeviceOnline,
+          isDeviceOnline: t.isDeviceOnline || existing.isDeviceOnline,
           requestSentAt: t.requestSentAt ?? existing.requestSentAt,
         );
       } else {
@@ -299,20 +304,41 @@ class ServiceRequestRepository {
         return _bleService.currentTables;
       }
       final merged = lastDbTables.map((t) {
-        final isBleOnline = _bleService.isTableOnline(t.id);
-        final liveBleTable = _bleService.getLiveBleTable(t.id);
+        final isBleOnline = _bleService.isTableOnline(t.id) ||
+            _bleService.isTableOnline(t.tableNumber.toString());
+        final liveBleTable = _bleService.getLiveBleTable(t.id) ??
+            _bleService.getLiveBleTable(t.tableNumber.toString());
         final isUnlocked =
             t.isUnlocked ||
             _bleService.isTableUnlocked(t.id) ||
-            (liveBleTable?.isUnlocked ?? false);
+            _bleService.isTableUnlocked(t.tableNumber.toString()) ||
+            (liveBleTable?.isUnlocked ?? false) ||
+            t.isAssigned;
         final effectiveOnline =
-            isBleOnline || (liveBleTable?.isDeviceOnline ?? false);
+            isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+
         if (liveBleTable != null) {
+          final int dbTime = t.updatedAt ?? t.createdAt;
+          final int bleTime = liveBleTable.updatedAt ?? liveBleTable.createdAt;
+          final bool useBle = bleTime > dbTime;
+          final int resolvedFlag = useBle ? liveBleTable.flag : t.flag;
+          final String resolvedStatus = useBle ? liveBleTable.status : t.status;
+
+          final int? reqSentAt = resolvedFlag == 0
+              ? (liveBleTable.requestSentAt ?? t.requestSentAt ?? dbTime)
+              : (resolvedFlag == 1 ? (liveBleTable.requestSentAt ?? t.requestSentAt) : null);
+
+          final int? accAt = resolvedFlag == 1
+              ? (liveBleTable.acceptedAt ?? t.acceptedAt ?? (useBle ? bleTime : dbTime))
+              : null;
+
           return t.copyWith(
             isDeviceOnline: effectiveOnline,
-            status: liveBleTable.status,
-            flag: liveBleTable.flag,
+            status: resolvedStatus,
+            flag: resolvedFlag,
             isUnlocked: isUnlocked,
+            requestSentAt: reqSentAt,
+            acceptedAt: accAt,
             waiterName: t.waiterName.isNotEmpty
                 ? t.waiterName
                 : liveBleTable.waiterName,
@@ -355,6 +381,9 @@ class ServiceRequestRepository {
             .listen(
               (dbList) {
                 lastDbTables = dbList;
+                for (final t in dbList) {
+                  _bleService.syncTableFromCloud(t);
+                }
                 Future(() {
                   if (!controller.isClosed) {
                     controller.add(computeMerged());
@@ -395,7 +424,9 @@ class ServiceRequestRepository {
     List<TableModel> computeMerged() {
       if (lastDbTables.isEmpty) {
         return _bleService.currentTables.where((t) {
-          final isUnlocked = t.isUnlocked || _bleService.isTableUnlocked(t.id);
+          final isUnlocked = t.isUnlocked ||
+              _bleService.isTableUnlocked(t.id) ||
+              _bleService.isTableUnlocked(t.tableNumber.toString());
           return isUnlocked &&
               ((t.assignedWaiterId.isNotEmpty &&
                       t.assignedWaiterId == waiterId) ||
@@ -406,22 +437,46 @@ class ServiceRequestRepository {
         }).toList();
       }
       final merged = lastDbTables
-          .where((t) => t.isUnlocked || _bleService.isTableUnlocked(t.id))
+          .where((t) =>
+              t.isUnlocked ||
+              _bleService.isTableUnlocked(t.id) ||
+              _bleService.isTableUnlocked(t.tableNumber.toString()))
           .map((t) {
-            final isBleOnline = _bleService.isTableOnline(t.id);
-            final liveBleTable = _bleService.getLiveBleTable(t.id);
+            final isBleOnline = _bleService.isTableOnline(t.id) ||
+                _bleService.isTableOnline(t.tableNumber.toString());
+            final liveBleTable = _bleService.getLiveBleTable(t.id) ??
+                _bleService.getLiveBleTable(t.tableNumber.toString());
             final isUnlocked =
                 t.isUnlocked ||
                 _bleService.isTableUnlocked(t.id) ||
-                (liveBleTable?.isUnlocked ?? false);
+                _bleService.isTableUnlocked(t.tableNumber.toString()) ||
+                (liveBleTable?.isUnlocked ?? false) ||
+                t.isAssigned;
             final effectiveOnline =
-                isBleOnline || (liveBleTable?.isDeviceOnline ?? false);
+                isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+
             if (liveBleTable != null) {
+              final int dbTime = t.updatedAt ?? t.createdAt;
+              final int bleTime = liveBleTable.updatedAt ?? liveBleTable.createdAt;
+              final bool useBle = bleTime > dbTime;
+              final int resolvedFlag = useBle ? liveBleTable.flag : t.flag;
+              final String resolvedStatus = useBle ? liveBleTable.status : t.status;
+
+              final int? reqSentAt = resolvedFlag == 0
+                  ? (liveBleTable.requestSentAt ?? t.requestSentAt ?? dbTime)
+                  : (resolvedFlag == 1 ? (liveBleTable.requestSentAt ?? t.requestSentAt) : null);
+
+              final int? accAt = resolvedFlag == 1
+                  ? (liveBleTable.acceptedAt ?? t.acceptedAt ?? (useBle ? bleTime : dbTime))
+                  : null;
+
               return t.copyWith(
                 isDeviceOnline: effectiveOnline,
-                status: liveBleTable.status,
-                flag: liveBleTable.flag,
+                status: resolvedStatus,
+                flag: resolvedFlag,
                 isUnlocked: isUnlocked,
+                requestSentAt: reqSentAt,
+                acceptedAt: accAt,
                 waiterName: t.waiterName.isNotEmpty
                     ? t.waiterName
                     : liveBleTable.waiterName,
@@ -435,12 +490,17 @@ class ServiceRequestRepository {
               isUnlocked: isUnlocked,
             );
           })
-          .where((t) => t.isUnlocked || _bleService.isTableUnlocked(t.id))
+          .where((t) =>
+              t.isUnlocked ||
+              _bleService.isTableUnlocked(t.id) ||
+              _bleService.isTableUnlocked(t.tableNumber.toString()))
           .toList();
 
       for (final bleTable in _bleService.currentTables) {
         final isUnlocked =
-            bleTable.isUnlocked || _bleService.isTableUnlocked(bleTable.id);
+            bleTable.isUnlocked ||
+            _bleService.isTableUnlocked(bleTable.id) ||
+            _bleService.isTableUnlocked(bleTable.tableNumber.toString());
         final isAssigned =
             (bleTable.assignedWaiterId.isNotEmpty &&
                 bleTable.assignedWaiterId == waiterId) ||
@@ -484,6 +544,7 @@ class ServiceRequestRepository {
                 lastDbTables = dbList;
                 for (final t in dbList) {
                   _bleService.assignWaiterLocally(t.id, waiterId, t.waiterName);
+                  _bleService.syncTableFromCloud(t);
                 }
                 Future(() {
                   if (!controller.isClosed) {

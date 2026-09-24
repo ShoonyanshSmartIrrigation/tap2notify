@@ -199,21 +199,27 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
   T2N_Packet* pkt = (T2N_Packet*)incomingData;
   if (pkt->magic != 0x54) return; // Ignore invalid magic byte
 
-  // Filter messages: Only process messages addressed to THIS table or broadcast ("0" or "ALL")
+  // Update last gateway contact timestamp on ANY valid gateway packet
+  lastGatewayContactTime = millis();
+  preferences.putInt("channel", currentChannel);
+
+  // Filter messages: Only process commands addressed to THIS table or broadcast ("0" or "ALL")
   if (strcmp(pkt->deviceId, TABLE_NUMBER) != 0 && 
       strcmp(pkt->deviceId, "0") != 0 && 
       strcasecmp(pkt->deviceId, "ALL") != 0) {
     return; // Packet addressed to another C3 device
   }
 
-  // Update last gateway contact and persist current channel
-  lastGatewayContactTime = millis();
-  preferences.putInt("channel", currentChannel);
-
   Serial.printf("\n[ESP-NOW RX (CH %d)] Command Type: 0x%02X for Table %s (Payload: '%s')\n", 
                 currentChannel, pkt->msgType, pkt->deviceId, pkt->payload);
 
   switch (pkt->msgType) {
+    case MSG_RESP_STATUS: {
+      // Gateway PONG keep-alive received
+      // Channel confirmed & locked
+      break;
+    }
+
     case MSG_CMD_AUTH: {
       String enteredPassword = String(pkt->payload);
       enteredPassword.trim();
@@ -318,9 +324,9 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
 // ==========================================
 void checkChannelHunting() {
   unsigned long now = millis();
-  // If no contact from Gateway for >15 seconds, scan channels 1..13
-  if (now - lastGatewayContactTime > 15000) {
-    if (now - lastChannelScanTime > 3000) {
+  // If no contact from Gateway for >25 seconds, scan channels 1..13 to re-acquire Gateway
+  if (now - lastGatewayContactTime > 25000) {
+    if (now - lastChannelScanTime > 1500) {
       lastChannelScanTime = now;
       currentChannel = (currentChannel % 13) + 1;
       esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
@@ -484,9 +490,9 @@ void loop() {
   }
 
   // -------------------------------------------------------------
-  // 3. Periodic Heartbeat Telemetry to Gateway (Every 3 Seconds)
+  // 3. Periodic Heartbeat Telemetry to Gateway (Every 2.5 Seconds)
   // -------------------------------------------------------------
-  if (millis() - lastHeartbeatTime >= 3000) {
+  if (millis() - lastHeartbeatTime >= 2500) {
     lastHeartbeatTime = millis();
     sendPacketToGateway(MSG_HEARTBEAT, "PING");
   }

@@ -22,7 +22,7 @@ class OverviewTabView extends StatelessWidget {
 
     final pendingList = unlockedTables.where((t) => t.isPending).toList();
     final acceptedList = unlockedTables.where((t) => t.isAccepted).toList();
-    final idleList = unlockedTables.where((t) => !t.isPending && !t.isAccepted).toList();
+    final idleList = unlockedTables.where((t) => t.isIdle).toList();
 
     final totalCount = unlockedTables.length;
     final pendingCount = pendingList.length;

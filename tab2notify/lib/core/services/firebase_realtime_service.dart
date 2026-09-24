@@ -649,38 +649,54 @@ class FirebaseRealtimeService {
     final resolvedUid = managerUid ?? _currentAuthUid;
     final resolvedEmail = managerEmail ?? _currentAuthEmail;
     final int now = DateTime.now().millisecondsSinceEpoch;
-    final int tNum = tableNumber ?? (int.tryParse(tableId.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1);
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final int tNum = tableNumber ?? (int.tryParse(cleanDigits) ?? 1);
+    final String normTableId = 'table_$tNum';
     
-    // Get existing table assignment
-    final snapshot = await _tablesRef(resolvedPhone).child(tableId).get();
-    if (!snapshot.exists || snapshot.value is! Map) {
-      return;
+    // Check both tableId and normTableId in RTDB
+    var targetId = tableId;
+    var snapshot = await _tablesRef(resolvedPhone).child(targetId).get();
+    if (!snapshot.exists) {
+      targetId = normTableId;
+      snapshot = await _tablesRef(resolvedPhone).child(targetId).get();
     }
-    final map = snapshot.value as Map;
-    final bool isUnlocked = map['is_unlocked'] == true || map['unlocked'] == true;
-    if (!isUnlocked) {
-      debugPrint('[RTDB TRIGGER REJECTED] Table $tableId is LOCKED. Cannot trigger service request.');
-      return;
-    }
-    final String wName = map['assigned_waiter_name']?.toString() ?? map['waiter_name']?.toString() ?? '';
-    final String wId = map['assigned_waiter_id']?.toString() ?? '';
+
+    final Map existingData = (snapshot.exists && snapshot.value is Map)
+        ? (snapshot.value as Map)
+        : {};
+
+    final bool isUnlocked = existingData['is_unlocked'] == true ||
+        existingData['unlocked'] == true ||
+        (existingData['assigned_waiter_id'] != null &&
+            existingData['assigned_waiter_id'].toString().isNotEmpty) ||
+        (existingData['waiter_name'] != null &&
+            existingData['waiter_name'].toString().isNotEmpty);
+
+    final String wName = existingData['assigned_waiter_name']?.toString() ??
+        existingData['waiter_name']?.toString() ??
+        '';
+    final String wId = existingData['assigned_waiter_id']?.toString() ?? '';
 
     final Map<String, dynamic> updates = {
-      'id': tableId,
+      'id': targetId,
       'table_number': tNum,
-      'device_id': map['device_id'] ?? 'device_$tNum',
+      'device_id': existingData['device_id'] ?? 'device_$tNum',
       'flag': 0,
       'status': 'pending',
+      'is_unlocked': isUnlocked,
+      'assigned_waiter_id': wId,
+      'assigned_waiter_name': wName,
+      'waiter_name': wName,
       'manager_phone': resolvedPhone,
       'manager_uid': resolvedUid,
       'manager_email': resolvedEmail,
       'updated_at': now,
-      'created_at': map['created_at'] ?? now,
+      'created_at': existingData['created_at'] ?? now,
       'request_sent_at': now,
     };
-    await _tablesRef(resolvedPhone).child(tableId).update(updates);
-    await _requestsRef(resolvedPhone).child(tableId).set({
-      'requestId': tableId,
+    await _tablesRef(resolvedPhone).child(targetId).update(updates);
+    await _requestsRef(resolvedPhone).child(targetId).set({
+      'requestId': targetId,
       'roomNumber': '101',
       'tableNumber': 'T$tNum',
       'assignedWaiterId': wId,
@@ -803,8 +819,13 @@ class FirebaseRealtimeService {
     final isTableUnlocked = existingData['is_unlocked'] == true ||
         existingData['unlocked'] == true ||
         (existingData['assigned_waiter_id'] != null && existingData['assigned_waiter_id'].toString().isNotEmpty);
-    final int effectiveFlag = isTableUnlocked ? flag : -1;
-    final String effectiveStatus = isTableUnlocked ? status : 'idle';
+    
+    final int effectiveFlag = flag;
+    final String effectiveStatus = (flag == 0)
+        ? 'pending'
+        : (flag == 1
+            ? 'accepted'
+            : (flag == -1 || flag == -2 ? 'idle' : status));
 
     // Guard: Do not write to RTDB if status, flag, online state, and unlocked state are unchanged
     final bool currentUnlocked = existingData['is_unlocked'] == true || existingData['unlocked'] == true;
@@ -835,10 +856,17 @@ class FirebaseRealtimeService {
       'created_at': existingData['created_at'] ?? now,
       'updated_at': now,
     };
-    if (effectiveFlag == 0 && isTableUnlocked) {
+    if (effectiveFlag == 0) {
       final existingSentAt = existingData['request_sent_at'] ?? existingData['requestSentAt'];
       updates['request_sent_at'] = (existingData['flag'] == 0 && existingSentAt != null) ? existingSentAt : now;
+    } else if (effectiveFlag == 1) {
+      final existingAccAt = existingData['accepted_at'] ?? existingData['acceptedAt'];
+      updates['accepted_at'] = (existingData['flag'] == 1 && existingAccAt != null) ? existingAccAt : now;
+    } else {
+      updates['request_sent_at'] = null;
+      updates['accepted_at'] = null;
     }
+
     await _tablesRef(resolvedPhone).child(tableId).update(updates);
     if (effectiveFlag == 0 && isTableUnlocked) {
       final int sentAt = updates['request_sent_at'] as int? ?? now;
@@ -861,7 +889,7 @@ class FirebaseRealtimeService {
         'requestSentAt': sentAt,
         'request_sent_at': sentAt,
       });
-    } else if (flag == -1) {
+    } else if (effectiveFlag == -1) {
       // Ensure pending requests are completed / marked idle in /serviceRequests
       await _requestsRef(resolvedPhone).child(tableId).update({
         'status': 'idle',

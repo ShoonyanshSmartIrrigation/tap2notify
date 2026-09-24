@@ -48,7 +48,7 @@
 
 #define DEFAULT_WIFI_CHANNEL    1
 #define MAX_DEVICES             64
-#define HEARTBEAT_TIMEOUT_MS    15000
+#define HEARTBEAT_TIMEOUT_MS    30000
 #define UDP_DISCOVERY_PORT      8888
 #define HTTP_PORT               80
 
@@ -113,6 +113,16 @@ static uint16_t globalSeqCounter = 0;
 // Last pushed event string for client streaming
 String lastEventString = "";
 unsigned long lastEventTimestamp = 0;
+
+// Helper to normalize table identifiers ("table_1" -> "1", "device_1" -> "1")
+String cleanTableId(const char* id) {
+  if (!id) return "";
+  String s = String(id);
+  s.trim();
+  if (s.startsWith("table_")) s = s.substring(6);
+  else if (s.startsWith("device_")) s = s.substring(7);
+  return s;
+}
 
 // Forward Declarations
 void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* payload);
@@ -226,8 +236,13 @@ void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 // --- Device Registry Management ---
 // ==========================================
 int findDeviceIndex(const char* deviceId) {
+  if (!deviceId || strlen(deviceId) == 0) return -1;
+  String searchClean = cleanTableId(deviceId);
   for (int i = 0; i < registeredDeviceCount; i++) {
     if (strcmp(deviceRegistry[i].deviceId, deviceId) == 0) {
+      return i;
+    }
+    if (cleanTableId(deviceRegistry[i].deviceId).equalsIgnoreCase(searchClean)) {
       return i;
     }
   }
@@ -260,6 +275,19 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
 
     Serial.printf("[REGISTRY] NEW C3 Device Registered: Table %s (MAC: %02X:%02X:%02X:%02X:%02X:%02X)\n",
                   deviceId, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  } else {
+    // Update MAC address if changed
+    if (memcmp(deviceRegistry[idx].mac, mac, 6) != 0) {
+      memcpy(deviceRegistry[idx].mac, mac, 6);
+      if (!esp_now_is_peer_exist(mac)) {
+        esp_now_peer_info_t peerInfo;
+        memset(&peerInfo, 0, sizeof(peerInfo));
+        memcpy(peerInfo.peer_addr, mac, 6);
+        peerInfo.channel = 0;
+        peerInfo.encrypt = false;
+        esp_now_add_peer(&peerInfo);
+      }
+    }
   }
 
   bool stateChanged = isNew || 
@@ -296,7 +324,7 @@ void checkDeviceHeartbeats() {
   for (int i = 0; i < registeredDeviceCount; i++) {
     if (deviceRegistry[i].isOnline && (now - deviceRegistry[i].lastSeen > HEARTBEAT_TIMEOUT_MS)) {
       deviceRegistry[i].isOnline = false;
-      Serial.printf("[GATEWAY TIMEOUT] Table %s is OFFLINE (>15s inactive)\n", deviceRegistry[i].deviceId);
+      Serial.printf("[GATEWAY TIMEOUT] Table %s is OFFLINE (>30s inactive)\n", deviceRegistry[i].deviceId);
 
       String offlineEvent = "{\"event\":\"device_offline\",\"deviceId\":\"" + String(deviceRegistry[i].deviceId) + 
                             "\",\"tableNumber\":" + String(deviceRegistry[i].deviceId) +
@@ -321,6 +349,18 @@ void onEspNowDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, 
   if (pkt->magic != 0x54) return; // Ignore invalid magic byte
 
   registerOrUpdateDevice(pkt->deviceId, src_addr, pkt->flag, pkt->isUnlocked == 1, pkt->seqNumber);
+
+  // Send immediate ACK / PONG back to C3 node to keep channel sync & prevent false channel hunting
+  T2N_Packet ackPkt;
+  memset(&ackPkt, 0, sizeof(ackPkt));
+  ackPkt.magic = 0x54;
+  ackPkt.msgType = MSG_RESP_STATUS;
+  strncpy(ackPkt.deviceId, pkt->deviceId, sizeof(ackPkt.deviceId) - 1);
+  ackPkt.flag = pkt->flag;
+  ackPkt.isUnlocked = pkt->isUnlocked;
+  ackPkt.seqNumber = pkt->seqNumber;
+  snprintf(ackPkt.payload, sizeof(ackPkt.payload), "PONG_CH%d", WiFi.channel());
+  esp_now_send(src_addr, (uint8_t*)&ackPkt, sizeof(ackPkt));
 
   // If this is a response to an App command (e.g. AUTH_OK, AUTH_FAIL, LOCKED, SETPWD_OK)
   if (pkt->msgType == MSG_RESP_OK || pkt->msgType == MSG_RESP_FAIL) {

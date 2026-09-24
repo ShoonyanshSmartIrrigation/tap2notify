@@ -273,6 +273,104 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     );
   }
 
+  void _showIdleDialog(TableModel table, String waiterName, String waiterId) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9800).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.radio_button_unchecked_rounded,
+                  color: Color(0xFFFF9800),
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Table ${table.tableNumber}',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Table is Idle & Available 🟠',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+          content: Text(
+            'Assigned Staff: $waiterName\nTap below if assistance is requested at this table.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dialogContext);
+
+                final repo = ref.read(waiterServiceRequestRepositoryProvider);
+                await repo.triggerTableRequest(
+                  table.id,
+                  tableNumber: table.tableNumber,
+                );
+
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '🔴 Service request triggered for Table ${table.tableNumber}',
+                      ),
+                      backgroundColor: const Color(0xFFE53935),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.notifications_active_rounded, size: 18),
+              label: const Text(
+                'CALL SERVICE',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _handleSignOut() async {
     final waiterNotifier = ref.read(currentLoggedWaiterProvider.notifier);
     try {
@@ -779,7 +877,19 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                   ),
                   delegate: SliverChildBuilderDelegate((context, index) {
                     final table = displayList[index];
-                    return TableCard(table: table);
+                    return TableCard(
+                      table: table,
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        if (table.isPending) {
+                          _showAcceptDialog(table, waiterName, waiterId);
+                        } else if (table.isAccepted) {
+                          _showCompleteDialog(table);
+                        } else {
+                          _showIdleDialog(table, waiterName, waiterId);
+                        }
+                      },
+                    );
                   }, childCount: displayList.length),
                 ),
               ),

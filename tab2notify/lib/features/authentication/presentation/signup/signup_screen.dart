@@ -82,7 +82,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
@@ -95,10 +95,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         'Manager Registration',
                         style: theme.textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
+                          fontSize: 26,
                         ),
                       ),
 
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 20),
                       AppTextField(
                         label: 'Full Name',
                         hint: 'Enter your full name',
@@ -204,12 +205,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         onPressed: _handleSignup,
                       ),
                       const SizedBox(height: 20),
-                      Center(
-                        child: TextButton(
-                          onPressed: () => context.go('/manager-login'),
-                          child: const Text('Back to Manager Login'),
-                        ),
-                      ),
                     ],
                   ),
                 ),

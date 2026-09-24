@@ -24,19 +24,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
-        await ref.read(authRepositoryProvider).signIn(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
+        await ref
+            .read(authRepositoryProvider)
+            .signIn(
+              email: _emailController.text.trim(),
+              password: _passwordController.text,
+            );
 
         // RBAC Role Verification: Enforce that the account is an authorized manager
-        final userProfile = await ref.read(authRepositoryProvider).getCurrentUserProfile();
+        final userProfile = await ref
+            .read(authRepositoryProvider)
+            .getCurrentUserProfile();
         if (userProfile == null || userProfile.role != 'manager') {
           await ref.read(authRepositoryProvider).signOut();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Access Denied: Account lacks Manager permissions.'),
+                content: Text(
+                  'Access Denied: Account lacks Manager permissions.',
+                ),
                 backgroundColor: Color(0xFFE53935),
               ),
             );
@@ -45,7 +51,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         }
 
         // Register manager device FCM token with session isolation
-        final managerPhone = userProfile.phone.isNotEmpty ? userProfile.phone : userProfile.uid;
+        final managerPhone = userProfile.phone.isNotEmpty
+            ? userProfile.phone
+            : userProfile.uid;
         await FCMService().syncManagerSession(managerPhone, userProfile.uid);
 
         if (mounted) {
@@ -92,7 +100,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24.0,
+              vertical: 16.0,
+            ),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
@@ -107,7 +118,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           width: 80,
                           height: 80,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.15,
+                            ),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -130,7 +143,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         'Authorized credentials required for administrative operations',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.6,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 36),
@@ -143,9 +158,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         textInputAction: TextInputAction.next,
                         autofillHints: const [AutofillHints.email],
                         validator: (val) {
-                          if (val == null || val.trim().isEmpty) return 'Email is required';
-                          final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                          if (!emailRegex.hasMatch(val.trim())) return 'Enter a valid email address';
+                          if (val == null || val.trim().isEmpty)
+                            return 'Email is required';
+                          final emailRegex = RegExp(
+                            r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                          );
+                          if (!emailRegex.hasMatch(val.trim()))
+                            return 'Enter a valid email address';
                           return null;
                         },
                       ),
@@ -160,8 +179,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         autofillHints: const [AutofillHints.password],
                         onFieldSubmitted: (_) => _handleLogin(),
                         validator: (val) {
-                          if (val == null || val.isEmpty) return 'Password is required';
-                          if (val.length < 6) return 'Password must be at least 6 characters';
+                          if (val == null || val.isEmpty)
+                            return 'Password is required';
+                          if (val.length < 6)
+                            return 'Password must be at least 6 characters';
                           return null;
                         },
                       ),
@@ -192,7 +213,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           Text(
                             'Need a new manager account? ',
                             style: TextStyle(
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.7,
+                              ),
                               fontSize: 13.5,
                             ),
                           ),
@@ -211,14 +234,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      Center(
-                        child: TextButton.icon(
-                          onPressed: () => context.go('/login'),
-                          icon: const Icon(Icons.arrow_back, size: 16),
-                          label: const Text('Back to Staff Floor Portal'),
-                        ),
-                      ),
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),

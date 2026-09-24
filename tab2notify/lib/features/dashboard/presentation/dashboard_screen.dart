@@ -9,7 +9,6 @@ import '../../overview/view/overview_tab_view.dart';
 import '../../setting/view/settings_tab_view.dart';
 import 'views/tables_tab_view.dart';
 import 'widgets/table_setup_dialog.dart';
-import 'widgets/table_unlock_dialog.dart';
 import 'widgets/assign_waiter_modal.dart';
 import 'widgets/waiter_management_sheet.dart';
 import 'widgets/wifi_gateway_setup_dialog.dart';
@@ -193,185 +192,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  void _handleTableTap(TableModel table) {
-    if (!table.isUnlocked) {
-      TableUnlockDialog.show(context, table);
-      return;
-    }
-
-    final repo = ref.read(serviceRequestRepositoryProvider);
-
-    if (table.isPending) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE53935).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.notifications_active_rounded, color: Color(0xFFE53935), size: 28),
-              ),
-              const SizedBox(width: 12),
-              Text('Table ${table.tableNumber} Calling', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ],
-          ),
-          content: Text(
-            'Assigned Staff: ${table.waiterName.isNotEmpty ? table.waiterName : "Unassigned"}\nStatus: Customer Requested Assistance 🔴',
-            style: const TextStyle(fontSize: 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            ),
-            OutlinedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await repo.resetTableStatus(table.id);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Table ${table.tableNumber} reset to Idle.')),
-                  );
-                }
-              },
-              child: const Text('RESET TO IDLE'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D32),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await repo.acceptTableRequest(
-                  tableId: table.id,
-                  waiterName: table.waiterName.isNotEmpty ? table.waiterName : 'Manager',
-                  waiterId: table.assignedWaiterId,
-                );
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('🟢 Table ${table.tableNumber} request accepted!'),
-                      backgroundColor: const Color(0xFF2E7D32),
-                    ),
-                  );
-                }
-              },
-              child: const Text('ACCEPT REQUEST'),
-            ),
-          ],
-        ),
-      );
-    } else if (table.isAccepted) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 28),
-              ),
-              const SizedBox(width: 12),
-              Text('Table ${table.tableNumber} In Service', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ],
-          ),
-          content: Text(
-            'Serving Staff: ${table.waiterName.isNotEmpty ? table.waiterName : "Manager"}\nStatus: Accepted / In Progress 🟢',
-            style: const TextStyle(fontSize: 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D32),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await repo.resetTableStatus(table.id);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('✓ Table ${table.tableNumber} marked as Completed & Ready.')),
-                  );
-                }
-              },
-              child: const Text('MARK COMPLETED (IDLE)'),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Idle table
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF9800).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.radio_button_unchecked_rounded, color: Color(0xFFFF9800), size: 28),
-              ),
-              const SizedBox(width: 12),
-              Text('Table ${table.tableNumber} Available', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ],
-          ),
-          content: Text(
-            'Assigned Staff: ${table.waiterName.isNotEmpty ? table.waiterName : "Unassigned"}\nStatus: Idle & Ready 🟠',
-            style: const TextStyle(fontSize: 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE53935),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await repo.triggerTableRequest(
-                  table.id,
-                  tableNumber: table.tableNumber,
-                );
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('🔴 Service request triggered for Table ${table.tableNumber}'),
-                      backgroundColor: const Color(0xFFE53935),
-                    ),
-                  );
-                }
-              },
-              icon: const Icon(Icons.notifications_active_rounded, size: 18),
-              label: const Text('TRIGGER PENDING'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -543,7 +363,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             onManageWaiters: () => WaiterManagementSheet.show(context),
             onAssignWaiters: () =>
                 AssignWaiterModal.show(context, allTables: tablesList),
-            onTableTap: _handleTableTap,
             isScanning: isScanning,
             connectionStatus: connectionStatus,
             onGatewayInfoTap: () => _showGatewayInfoModal(

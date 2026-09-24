@@ -22,7 +22,6 @@ class TablesTabView extends StatelessWidget {
   final VoidCallback onConfigureTables;
   final VoidCallback onManageWaiters;
   final VoidCallback onAssignWaiters;
-  final void Function(TableModel table)? onTableTap;
 
   const TablesTabView({
     super.key,
@@ -41,7 +40,6 @@ class TablesTabView extends StatelessWidget {
     required this.onConfigureTables,
     required this.onManageWaiters,
     required this.onAssignWaiters,
-    this.onTableTap,
   });
 
   @override
@@ -491,7 +489,6 @@ class TablesTabView extends StatelessWidget {
                     table: table,
                     isManagerView: true,
                     onUnlock: () => TableUnlockDialog.show(context, table),
-                    onTap: onTableTap != null ? () => onTableTap!(table) : null,
                   );
                 },
                 childCount: displayList.length,

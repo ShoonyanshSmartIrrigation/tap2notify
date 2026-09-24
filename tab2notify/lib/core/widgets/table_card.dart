@@ -130,27 +130,30 @@ class TableCard extends StatelessWidget {
           Positioned(
             top: 8,
             right: 8,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: table.isDeviceOnline
-                    ? const Color.fromARGB(255, 25, 202, 34)
-                    : const Color(0xFFE53935),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isDark ? Colors.black45 : Colors.white,
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (table.isDeviceOnline
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFE53935))
-                        .withValues(alpha: 0.8),
-                    blurRadius: 4,
+            child: Tooltip(
+              message: table.isDeviceOnline ? 'Device Online' : 'Device Offline',
+              child: Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: table.isDeviceOnline
+                      ? const Color(0xFF22C55E)
+                      : const Color(0xFFEF4444),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDark ? Colors.black54 : Colors.white,
+                    width: 1.2,
                   ),
-                ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: (table.isDeviceOnline
+                              ? const Color(0xFF22C55E)
+                              : const Color(0xFFEF4444))
+                          .withValues(alpha: 0.6),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

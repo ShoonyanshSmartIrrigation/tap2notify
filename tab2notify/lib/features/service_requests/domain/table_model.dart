@@ -126,7 +126,15 @@ class TableModel {
 
     final bool online = (map['device_online'] == true) ||
         (map['online'] == true) ||
-        (map['is_online'] == true);
+        (map['is_online'] == true) ||
+        (map['deviceOnline'] == true) ||
+        (map['isOnline'] == true) ||
+        (map['device_online'] == 1) ||
+        (map['online'] == 1) ||
+        (map['device_online']?.toString().toLowerCase() == 'true') ||
+        (map['online']?.toString().toLowerCase() == 'true') ||
+        (map['is_online']?.toString().toLowerCase() == 'true') ||
+        (map['isOnline']?.toString().toLowerCase() == 'true');
 
     final bool unlocked = (map['is_unlocked'] == true) ||
         (map['isUnlocked'] == true) ||

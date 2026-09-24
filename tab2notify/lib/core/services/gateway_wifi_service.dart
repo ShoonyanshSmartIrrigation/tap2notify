@@ -115,6 +115,12 @@ class GatewayWifiService {
         _tables[cleanNum] ??
         getLiveTable(tableId);
     if (table != null) {
+      final lastSeen = _lastSeenTimes[tableIdFull] ??
+          _lastSeenTimes[tableId] ??
+          _lastSeenTimes[cleanNum];
+      if (lastSeen != null && DateTime.now().difference(lastSeen).inSeconds > 30) {
+        return false;
+      }
       return table.isDeviceOnline;
     }
 
@@ -122,7 +128,7 @@ class GatewayWifiService {
         _lastSeenTimes[tableId] ??
         _lastSeenTimes[cleanNum];
     if (lastSeen != null) {
-      return DateTime.now().difference(lastSeen).inSeconds <= 15;
+      return DateTime.now().difference(lastSeen).inSeconds <= 30;
     }
     return false;
   }
@@ -472,8 +478,19 @@ class GatewayWifiService {
       }
     }
 
-    final bool isOnline =
-        device['online'] == true || device['isOnline'] == true;
+    bool parseBool(dynamic val) {
+      if (val == null) return false;
+      if (val is bool) return val;
+      if (val is num) return val == 1;
+      final s = val.toString().trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'yes' || s == 'online';
+    }
+
+    final bool isOnline = parseBool(device['online']) ||
+        parseBool(device['isOnline']) ||
+        parseBool(device['device_online']) ||
+        parseBool(device['deviceOnline']) ||
+        parseBool(device['is_online']);
     final bool isHardwareLocked = (rawFlag == -2);
 
     if (isHardwareLocked) {
@@ -602,9 +619,11 @@ class GatewayWifiService {
       if (now.difference(lastSeen).inSeconds > 30) {
         final table = _tables[tableId];
         if (table != null && table.isDeviceOnline) {
-          _tables[tableId] = table.copyWith(isDeviceOnline: false);
+          final offlineTable = table.copyWith(isDeviceOnline: false);
+          _tables[tableId] = offlineTable;
           changed = true;
           debugPrint('[GATEWAY WIFI] Table $tableId is now OFFLINE (stale >30s)');
+          onDeviceDiscovered?.call(offlineTable);
         }
       }
     });

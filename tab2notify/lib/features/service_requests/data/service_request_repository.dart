@@ -149,11 +149,15 @@ class ServiceRequestRepository {
         final int bleTime = t.updatedAt ?? t.createdAt;
         final bool useBle = bleTime > dbTime;
 
+        final bool isOnlineResolved = _bleService.connectionStatus == GatewayConnectionStatus.connected
+            ? (t.isDeviceOnline || _bleService.isTableOnline(t.id))
+            : (t.isDeviceOnline || existing.isDeviceOnline);
+
         allActiveTables[t.id] = existing.copyWith(
           flag: useBle ? t.flag : existing.flag,
           status: useBle ? t.status : existing.status,
           isUnlocked: t.isUnlocked || existing.isUnlocked,
-          isDeviceOnline: t.isDeviceOnline || existing.isDeviceOnline,
+          isDeviceOnline: isOnlineResolved,
           requestSentAt: t.requestSentAt ?? existing.requestSentAt,
         );
       } else {
@@ -314,8 +318,14 @@ class ServiceRequestRepository {
             _bleService.isTableUnlocked(t.tableNumber.toString()) ||
             (liveBleTable?.isUnlocked ?? false) ||
             t.isAssigned;
-        final effectiveOnline =
-            isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+        final bool effectiveOnline;
+        if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
+          effectiveOnline = liveBleTable != null
+              ? liveBleTable.isDeviceOnline
+              : isBleOnline;
+        } else {
+          effectiveOnline = isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+        }
 
         if (liveBleTable != null) {
           final int dbTime = t.updatedAt ?? t.createdAt;
@@ -452,8 +462,14 @@ class ServiceRequestRepository {
                 _bleService.isTableUnlocked(t.tableNumber.toString()) ||
                 (liveBleTable?.isUnlocked ?? false) ||
                 t.isAssigned;
-            final effectiveOnline =
-                isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+            final bool effectiveOnline;
+            if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
+              effectiveOnline = liveBleTable != null
+                  ? liveBleTable.isDeviceOnline
+                  : isBleOnline;
+            } else {
+              effectiveOnline = isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+            }
 
             if (liveBleTable != null) {
               final int dbTime = t.updatedAt ?? t.createdAt;

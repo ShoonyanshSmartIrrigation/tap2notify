@@ -316,8 +316,7 @@ class ServiceRequestRepository {
             t.isUnlocked ||
             _bleService.isTableUnlocked(t.id) ||
             _bleService.isTableUnlocked(t.tableNumber.toString()) ||
-            (liveBleTable?.isUnlocked ?? false) ||
-            t.isAssigned;
+            (liveBleTable?.isUnlocked ?? false);
         final bool effectiveOnline;
         if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
           effectiveOnline = liveBleTable != null
@@ -460,8 +459,7 @@ class ServiceRequestRepository {
                 t.isUnlocked ||
                 _bleService.isTableUnlocked(t.id) ||
                 _bleService.isTableUnlocked(t.tableNumber.toString()) ||
-                (liveBleTable?.isUnlocked ?? false) ||
-                t.isAssigned;
+                (liveBleTable?.isUnlocked ?? false);
             final bool effectiveOnline;
             if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
               effectiveOnline = liveBleTable != null

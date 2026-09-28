@@ -266,8 +266,8 @@ class FirebaseRealtimeService {
           'waiter_name': existing['waiter_name'] ?? existing['assigned_waiter_name'] ?? '',
           'assigned_waiter_id': existing['assigned_waiter_id'] ?? '',
           'assigned_waiter_name': existing['assigned_waiter_name'] ?? existing['waiter_name'] ?? '',
-          'is_unlocked': existing['is_unlocked'] == true || existing['unlocked'] == true || (existing['assigned_waiter_id'] != null && existing['assigned_waiter_id'].toString().isNotEmpty),
-          'unlocked_at': existing['unlocked_at'] ?? (existing['is_unlocked'] == true ? now : null),
+          'is_unlocked': existing['is_unlocked'] == true || existing['unlocked'] == true,
+          'unlocked_at': existing['unlocked_at'],
           'unlocked_by': existing['unlocked_by'],
           'manager_phone': resolvedPhone,
           'manager_uid': resolvedUid,
@@ -314,8 +314,6 @@ class FirebaseRealtimeService {
       updates['$tableId/assigned_waiter_id'] = waiterId;
       updates['$tableId/assigned_waiter_name'] = waiterName;
       updates['$tableId/waiter_name'] = waiterName;
-      updates['$tableId/is_unlocked'] = true;
-      updates['$tableId/unlocked_at'] = now;
       updates['$tableId/updated_at'] = now;
     }
 
@@ -666,11 +664,7 @@ class FirebaseRealtimeService {
         : {};
 
     final bool isUnlocked = existingData['is_unlocked'] == true ||
-        existingData['unlocked'] == true ||
-        (existingData['assigned_waiter_id'] != null &&
-            existingData['assigned_waiter_id'].toString().isNotEmpty) ||
-        (existingData['waiter_name'] != null &&
-            existingData['waiter_name'].toString().isNotEmpty);
+        existingData['unlocked'] == true;
 
     final String wName = existingData['assigned_waiter_name']?.toString() ??
         existingData['waiter_name']?.toString() ??
@@ -817,8 +811,7 @@ class FirebaseRealtimeService {
     }
     final existingData = tableSnap.value as Map;
     final isTableUnlocked = existingData['is_unlocked'] == true ||
-        existingData['unlocked'] == true ||
-        (existingData['assigned_waiter_id'] != null && existingData['assigned_waiter_id'].toString().isNotEmpty);
+        existingData['unlocked'] == true;
     
     final int effectiveFlag = flag;
     final String effectiveStatus = (flag == 0)

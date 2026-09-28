@@ -500,15 +500,11 @@ class GatewayWifiService {
     }
 
     final existing = _tables[tableId];
-    final bool hasAssignedWaiter =
-        (existing?.assignedWaiterId.isNotEmpty ?? false) ||
-        (device['assigned_waiter_id']?.toString().isNotEmpty ?? false);
     final bool isUnlocked =
         !isHardwareLocked &&
         ((existing?.isUnlocked ?? false) ||
             _unlockedTableIds.contains(tableId) ||
-            device['unlocked'] == true ||
-            hasAssignedWaiter);
+            device['unlocked'] == true);
 
     final finalFlag = isHardwareLocked ? -1 : rawFlag;
     final finalStatus = isHardwareLocked
@@ -883,37 +879,25 @@ class GatewayWifiService {
     if (existing != null) {
       final bool alreadyAssigned =
           existing.assignedWaiterId == waiterId &&
-          existing.waiterName == waiterName &&
-          (waiterId.isEmpty ||
-              (existing.isUnlocked &&
-                  _unlockedTableIds.contains(cleanTableId)));
+          existing.waiterName == waiterName;
       if (alreadyAssigned) {
         return;
       }
       final updated = existing.copyWith(
         assignedWaiterId: waiterId,
         waiterName: waiterName,
-        isUnlocked: waiterId.isNotEmpty ? true : existing.isUnlocked,
-        unlockedAt: waiterId.isNotEmpty
-            ? (existing.unlockedAt ?? DateTime.now().millisecondsSinceEpoch)
-            : existing.unlockedAt,
       );
-      if (waiterId.isNotEmpty) {
-        _unlockedTableIds.add(cleanTableId);
-      }
       _tables[cleanTableId] = updated;
       _emitTables();
       onDeviceDiscovered?.call(updated);
     } else if (waiterId.isNotEmpty) {
-      _unlockedTableIds.add(cleanTableId);
       final newTable = TableModel(
         id: cleanTableId,
         tableNumber: tableNum,
         deviceId: 'device_$stripped',
         assignedWaiterId: waiterId,
         waiterName: waiterName,
-        isUnlocked: true,
-        unlockedAt: DateTime.now().millisecondsSinceEpoch,
+        isUnlocked: false,
         status: 'idle',
         flag: -1,
         createdAt: DateTime.now().millisecondsSinceEpoch,

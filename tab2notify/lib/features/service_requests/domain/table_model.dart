@@ -138,8 +138,7 @@ class TableModel {
 
     final bool unlocked = (map['is_unlocked'] == true) ||
         (map['isUnlocked'] == true) ||
-        (map['unlocked'] == true) ||
-        (map['assigned_waiter_id'] != null && map['assigned_waiter_id'].toString().isNotEmpty);
+        (map['unlocked'] == true);
 
     final String wName = map['assigned_waiter_name']?.toString() ??
         map['waiter_name']?.toString() ??

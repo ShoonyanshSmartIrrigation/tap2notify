@@ -6,18 +6,23 @@ import '../../../service_requests/domain/table_model.dart';
 import '../../../service_requests/presentation/service_request_providers.dart';
 
 class TableUnlockDialog extends ConsumerStatefulWidget {
-  final TableModel table;
+  final TableModel? table;
+  final String? initialDeviceId;
 
   const TableUnlockDialog({
     super.key,
-    required this.table,
+    this.table,
+    this.initialDeviceId,
   });
 
-  static Future<bool?> show(BuildContext context, TableModel table) {
+  static Future<bool?> show(BuildContext context, [TableModel? table, String? initialDeviceId]) {
     return showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      builder: (ctx) => TableUnlockDialog(table: table),
+      builder: (ctx) => TableUnlockDialog(
+        table: table,
+        initialDeviceId: initialDeviceId,
+      ),
     );
   }
 
@@ -27,6 +32,7 @@ class TableUnlockDialog extends ConsumerStatefulWidget {
 
 class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
   final _formKey = GlobalKey<FormState>();
+  late TextEditingController _deviceIdController;
   late TextEditingController _passwordController;
   bool _obscurePassword = true;
   bool _isLoading = false;
@@ -35,22 +41,39 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
   @override
   void initState() {
     super.initState();
+    String initialId = '1';
+    if (widget.table != null) {
+      initialId = widget.table!.tableNumber.toString();
+    } else if (widget.initialDeviceId != null && widget.initialDeviceId!.isNotEmpty) {
+      initialId = widget.initialDeviceId!;
+    }
+    _deviceIdController = TextEditingController(text: initialId);
     _passwordController = TextEditingController();
   }
 
   @override
   void dispose() {
+    _deviceIdController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleUnlock() async {
+  Future<void> _handleVerify() async {
     if (_isLoading) return;
     setState(() {
       _errorMessage = null;
     });
 
+    final deviceId = _deviceIdController.text.trim();
     final password = _passwordController.text.trim();
+
+    if (deviceId.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter a valid Device ID.';
+      });
+      return;
+    }
+
     if (password.isEmpty) {
       setState(() {
         _errorMessage = 'Please enter the device password.';
@@ -62,8 +85,8 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
 
     try {
       final repo = ref.read(serviceRequestRepositoryProvider);
-      final success = await repo.verifyAndUnlockTable(
-        tableId: widget.table.id,
+      final success = await repo.verifyDeviceOwnership(
+        deviceId: deviceId,
         password: password,
       );
 
@@ -79,11 +102,11 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const Icon(Icons.verified_rounded, color: Colors.white, size: 20),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Table ${widget.table.tableNumber} Unlocked & Authorized successfully!',
+                    'Device $deviceId verified & admitted to system successfully!',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -102,7 +125,8 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
 
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Invalid password. Authorization failed.';
+          _errorMessage =
+              'Device ownership verification failed: Invalid password. Device unauthorized and cannot be admitted to the system.';
         });
       }
     } catch (e) {
@@ -142,21 +166,21 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                     height: 56,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFEA580C), Color(0xFFFB923C)],
+                        colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFEA580C).withValues(alpha: 0.35),
+                          color: const Color(0xFF2E7D32).withValues(alpha: 0.35),
                           blurRadius: 10,
                           offset: const Offset(0, 3),
                         ),
                       ],
                     ),
                     child: const Icon(
-                      Icons.lock_rounded,
+                      Icons.verified_user_rounded,
                       color: Colors.white,
                       size: 28,
                     ),
@@ -166,7 +190,7 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
 
                 // Title
                 Text(
-                  'Unlock Table ${widget.table.tableNumber}',
+                  'Verify Device Ownership',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
@@ -177,76 +201,35 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
 
                 // Description
                 Text(
-                  'Enter the firmware password configured on device ${widget.table.deviceId} to authorize manager access and assign staff.',
+                  'A device is admitted to the system only when both the Device ID and Password match the stored credentials.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
                     fontSize: 12.5,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
 
-                // Device Info Card
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isDark
+                // Device ID Field
+                TextFormField(
+                  controller: _deviceIdController,
+                  keyboardType: TextInputType.text,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: 'Device ID / Table Number',
+                    hintText: 'e.g. 1, 2, table_1',
+                    prefixIcon: const Icon(Icons.memory_rounded),
+                    filled: true,
+                    fillColor: isDark
                         ? Colors.white.withValues(alpha: 0.05)
-                        : Colors.black.withValues(alpha: 0.04),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : Colors.black.withValues(alpha: 0.08),
+                        : Colors.black.withValues(alpha: 0.03),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.memory_rounded,
-                            size: 16,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            widget.table.deviceId,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE53935).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.lock_outline_rounded,
-                              size: 10,
-                              color: Color(0xFFE53935),
-                            ),
-                            SizedBox(width: 3),
-                            Text(
-                              'LOCKED',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFE53935),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -258,10 +241,10 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                   autofocus: true,
                   keyboardType: TextInputType.visiblePassword,
                   textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _handleUnlock(),
+                  onFieldSubmitted: (_) => _handleVerify(),
                   decoration: InputDecoration(
                     labelText: 'Device Password',
-                    hintText: 'Enter device password',
+                    hintText: 'Enter registered device password',
                     prefixIcon: const Icon(Icons.key_rounded),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -291,9 +274,9 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
 
                 // Error Message Display
                 if (_errorMessage != null) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFE53935).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
@@ -302,20 +285,22 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                       ),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Icon(
                           Icons.error_outline_rounded,
                           color: Color(0xFFE53935),
-                          size: 16,
+                          size: 18,
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             _errorMessage!,
                             style: const TextStyle(
                               color: Color(0xFFE53935),
                               fontWeight: FontWeight.bold,
-                              fontSize: 11.5,
+                              fontSize: 12,
+                              height: 1.3,
                             ),
                           ),
                         ),
@@ -323,7 +308,7 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 // Action Buttons
                 Row(
@@ -332,7 +317,7 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                       child: TextButton(
                         onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
                         style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -350,9 +335,9 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                     Expanded(
                       flex: 2,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleUnlock,
+                        onPressed: _isLoading ? null : _handleVerify,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.primary,
+                          backgroundColor: const Color(0xFF2E7D32),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
@@ -372,13 +357,13 @@ class _TableUnlockDialogState extends ConsumerState<TableUnlockDialog> {
                             : const Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.lock_open_rounded, size: 16),
+                                  Icon(Icons.verified_user_rounded, size: 16),
                                   SizedBox(width: 6),
                                   Text(
-                                    'UNLOCK DEVICE',
+                                    'VERIFY & ADMIT',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 13,
+                                      fontSize: 12.5,
                                       letterSpacing: 0.3,
                                     ),
                                   ),

@@ -80,6 +80,43 @@ class TablesTabView extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
+                      // Verify Device Ownership
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => TableUnlockDialog.show(context),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.verified_user_rounded,
+                                    color: Color(0xFF2E7D32),
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Verify Device',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(width: 1, height: 32, color: Colors.grey.withValues(alpha: 0.2)),
+
                       // Configure Total Tables
                       Expanded(
                         child: InkWell(
@@ -466,6 +503,25 @@ class TablesTabView extends StatelessWidget {
                         color: Colors.grey.withValues(alpha: 0.7),
                       ),
                     ),
+                    if (tablesList.isEmpty) ...[
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () => TableUnlockDialog.show(context),
+                        icon: const Icon(Icons.verified_user_rounded, size: 18),
+                        label: const Text('Verify Device Ownership'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7D32),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

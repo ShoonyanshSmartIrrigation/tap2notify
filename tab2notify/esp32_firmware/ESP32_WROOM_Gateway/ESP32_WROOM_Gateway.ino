@@ -83,6 +83,7 @@ struct DeviceNode {
   uint8_t       mac[6];
   int8_t        flag;         // -2: LOCKED, -1: IDLE, 0: PENDING, 1: ACCEPTED
   bool          isUnlocked;
+  bool          isVerified;   // Device ownership verified via Device ID + Password
   bool          isOnline;
   unsigned long lastSeen;
   uint16_t      lastSeq;
@@ -124,8 +125,19 @@ String cleanTableId(const char* id) {
   return s;
 }
 
+// Synchronous command tracking between HTTP API and ESP-NOW
+struct PendingCommandSync {
+  volatile bool waiting;
+  char targetDeviceId[16];
+  volatile bool received;
+  volatile bool success;
+  char result[32];
+};
+PendingCommandSync g_pendingSync = {false, {0}, false, false, {0}};
+
 // Forward Declarations
 void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* payload);
+bool executeCommandWithSyncWait(const char* devId, MessageType msgType, const char* payload, unsigned long timeoutMs = 1200);
 void broadcastEventToApp(const char* eventJson);
 void connectToRouter();
 void startFallbackSoftAP();
@@ -246,6 +258,25 @@ int findDeviceIndex(const char* deviceId) {
       return i;
     }
   }
+
+  // Fallback: match by numeric digits (e.g. "Shoon2" matches table "2" and vice versa)
+  String searchDigits = "";
+  for (unsigned int c = 0; c < searchClean.length(); c++) {
+    if (isDigit(searchClean[c])) searchDigits += searchClean[c];
+  }
+  if (searchDigits.length() > 0) {
+    for (int i = 0; i < registeredDeviceCount; i++) {
+      String regClean = cleanTableId(deviceRegistry[i].deviceId);
+      String regDigits = "";
+      for (unsigned int c = 0; c < regClean.length(); c++) {
+        if (isDigit(regClean[c])) regDigits += regClean[c];
+      }
+      if (regDigits.length() > 0 && regDigits == searchDigits) {
+        return i;
+      }
+    }
+  }
+
   return -1;
 }
 
@@ -262,6 +293,7 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
     isNew = true;
     strncpy(deviceRegistry[idx].deviceId, deviceId, sizeof(deviceRegistry[idx].deviceId) - 1);
     memcpy(deviceRegistry[idx].mac, mac, 6);
+    deviceRegistry[idx].isVerified = false; // Must be verified before admission/communication
 
     // Register individual peer in ESP-NOW if not already registered
     if (!esp_now_is_peer_exist(mac)) {
@@ -273,7 +305,7 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
       esp_now_add_peer(&peerInfo);
     }
 
-    Serial.printf("[REGISTRY] NEW C3 Device Registered: Table %s (MAC: %02X:%02X:%02X:%02X:%02X:%02X)\n",
+    Serial.printf("[REGISTRY] Discovered C3 Device (Pending Verification): Table %s (MAC: %02X:%02X:%02X:%02X:%02X:%02X)\n",
                   deviceId, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   } else {
     // Update MAC address if changed
@@ -302,15 +334,16 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
   deviceRegistry[idx].lastSeq    = seq;
 
   if (stateChanged) {
-    Serial.printf("[GATEWAY] Table %s Status Update -> Flag: %d, Unlocked: %d, Online: YES\n",
-                  deviceId, flag, isUnlocked ? 1 : 0);
+    Serial.printf("[GATEWAY] Table %s Status Update -> Flag: %d, Unlocked: %d, Online: YES, Verified: %s\n",
+                  deviceId, flag, isUnlocked ? 1 : 0, deviceRegistry[idx].isVerified ? "YES" : "NO");
 
     // Construct JSON event and push to App
     String eventJson = "{\"event\":\"state_change\",\"deviceId\":\"" + String(deviceId) + 
-                       "\",\"tableNumber\":" + String(deviceId) +
+                       "\",\"tableNumber\":\"" + String(deviceId) + "\"" +
                        ",\"flag\":" + String(flag) + 
-                       ",\"status\":\"" + (flag == 0 ? "pending" : (flag == 1 ? "accepted" : "idle")) + "\"" +
+                       ",\"status\":\"" + (flag == 0 ? "pending" : (flag == 1 ? "accepted" : (flag == -2 ? "locked" : "idle"))) + "\"" +
                        ",\"isUnlocked\":" + (isUnlocked ? "true" : "false") + 
+                       ",\"isVerified\":" + (deviceRegistry[idx].isVerified ? "true" : "false") + 
                        ",\"isOnline\":true,\"seq\":" + String(seq) + "}";
     broadcastEventToApp(eventJson.c_str());
   }
@@ -327,7 +360,7 @@ void checkDeviceHeartbeats() {
       Serial.printf("[GATEWAY TIMEOUT] Table %s is OFFLINE (>30s inactive)\n", deviceRegistry[i].deviceId);
 
       String offlineEvent = "{\"event\":\"device_offline\",\"deviceId\":\"" + String(deviceRegistry[i].deviceId) + 
-                            "\",\"tableNumber\":" + String(deviceRegistry[i].deviceId) +
+                            "\",\"tableNumber\":\"" + String(deviceRegistry[i].deviceId) + "\"" +
                             ",\"isOnline\":false}";
       broadcastEventToApp(offlineEvent.c_str());
     }
@@ -369,6 +402,20 @@ void onEspNowDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, 
                       ",\"result\":\"" + String(pkt->payload) + "\"}";
     broadcastEventToApp(respJson.c_str());
     Serial.printf("[GATEWAY FORWARD -> APP] Response: %s\n", respJson.c_str());
+
+    // Synchronize with HTTP API call if waiting
+    String cleanIncoming = cleanTableId(pkt->deviceId);
+    String cleanPending = cleanTableId(g_pendingSync.targetDeviceId);
+    if (g_pendingSync.waiting && 
+        (cleanIncoming.equalsIgnoreCase(cleanPending) ||
+         cleanPending == "0" ||
+         cleanPending.equalsIgnoreCase("ALL"))) {
+      g_pendingSync.received = true;
+      g_pendingSync.success = (pkt->msgType == MSG_RESP_OK);
+      strncpy(g_pendingSync.result, pkt->payload, sizeof(g_pendingSync.result) - 1);
+      g_pendingSync.result[sizeof(g_pendingSync.result) - 1] = '\0';
+      g_pendingSync.waiting = false;
+    }
   }
 }
 
@@ -380,7 +427,8 @@ void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* p
   memset(&pkt, 0, sizeof(pkt));
   pkt.magic = 0x54;
   pkt.msgType = (uint8_t)type;
-  strncpy(pkt.deviceId, targetDeviceId, sizeof(pkt.deviceId) - 1);
+  String cleanTarget = cleanTableId(targetDeviceId);
+  strncpy(pkt.deviceId, cleanTarget.length() > 0 ? cleanTarget.c_str() : targetDeviceId, sizeof(pkt.deviceId) - 1);
   pkt.seqNumber = ++globalSeqCounter;
   if (payload != NULL) {
     strncpy(pkt.payload, payload, sizeof(pkt.payload) - 1);
@@ -397,6 +445,27 @@ void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* p
   esp_err_t res = esp_now_send(targetMac, (uint8_t*)&pkt, sizeof(pkt));
   Serial.printf("[GATEWAY -> C3 TX] Target: Table %s | Cmd: 0x%02X | Payload: '%s' | Status: %s\n",
                 targetDeviceId, type, payload ? payload : "", res == ESP_OK ? "OK" : "FAIL");
+}
+
+bool executeCommandWithSyncWait(const char* devId, MessageType msgType, const char* payload, unsigned long timeoutMs) {
+  g_pendingSync.waiting = true;
+  String cleanDev = cleanTableId(devId);
+  strncpy(g_pendingSync.targetDeviceId, cleanDev.c_str(), sizeof(g_pendingSync.targetDeviceId) - 1);
+  g_pendingSync.targetDeviceId[sizeof(g_pendingSync.targetDeviceId) - 1] = '\0';
+  g_pendingSync.received = false;
+  g_pendingSync.success = false;
+  memset(g_pendingSync.result, 0, sizeof(g_pendingSync.result));
+
+  sendCommandToC3(devId, msgType, payload);
+
+  unsigned long start = millis();
+  while (g_pendingSync.waiting && (millis() - start < timeoutMs)) {
+    delay(10);
+  }
+
+  bool gotResponse = g_pendingSync.received;
+  g_pendingSync.waiting = false;
+  return gotResponse;
 }
 
 void initEspNow() {
@@ -553,18 +622,21 @@ void setupHttpRoutes() {
   server.on("/api/status", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
   server.on("/api/events", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
 
-  // 1. GET /api/devices: Return full array of registered C3 tables
+  // 1. GET /api/devices: Return array of C3 tables
   server.on("/api/devices", HTTP_GET, [enableCORS]() {
     enableCORS();
     String json = "[";
+    int count = 0;
     for (int i = 0; i < registeredDeviceCount; i++) {
-      if (i > 0) json += ",";
+      if (count > 0) json += ",";
+      count++;
       json += "{\"id\":\"" + String(deviceRegistry[i].deviceId) + 
-              "\",\"tableNumber\":" + String(deviceRegistry[i].deviceId) +
+              "\",\"tableNumber\":\"" + String(deviceRegistry[i].deviceId) + "\"" +
               ",\"flag\":" + String(deviceRegistry[i].flag) + 
-              ",\"status\":\"" + (deviceRegistry[i].flag == 0 ? "pending" : (deviceRegistry[i].flag == 1 ? "accepted" : "idle")) + "\"" +
+              ",\"status\":\"" + (deviceRegistry[i].flag == 0 ? "pending" : (deviceRegistry[i].flag == 1 ? "accepted" : (deviceRegistry[i].flag == -2 ? "locked" : "idle"))) + "\"" +
               ",\"online\":" + (deviceRegistry[i].isOnline ? "true" : "false") + 
-              ",\"unlocked\":" + (deviceRegistry[i].isUnlocked ? "true" : "false") + "}";
+              ",\"unlocked\":" + (deviceRegistry[i].isUnlocked ? "true" : "false") + 
+              ",\"verified\":" + (deviceRegistry[i].isVerified ? "true" : "false") + "}";
     }
     json += "]";
     server.send(200, "application/json", json);
@@ -596,25 +668,75 @@ void setupHttpRoutes() {
 
     Serial.printf("[HTTP API CMD] Target Table: %s | Command: %s\n", devId, cmd);
 
+    // Admission Control: Operational commands (non-AUTH) require verified device ownership
+    int devIdx = findDeviceIndex(devId);
+    if (strcasecmp(cmd, "AUTH") != 0 && (devIdx == -1 || !deviceRegistry[devIdx].isVerified)) {
+      server.send(403, "application/json", 
+        "{\"success\":false,\"error\":\"Unauthorized: Device ownership must be verified before communication.\"}");
+      return;
+    }
+
     if (strcasecmp(cmd, "AUTH") == 0) {
-      sendCommandToC3(devId, MSG_CMD_AUTH, pwd);
-      server.send(200, "application/json", "{\"status\":\"sent\",\"command\":\"AUTH\"}");
+      bool responded = executeCommandWithSyncWait(devId, MSG_CMD_AUTH, pwd, 1200);
+      if (responded) {
+        if (g_pendingSync.success) {
+          int idx = findDeviceIndex(devId);
+          if (idx != -1) {
+            deviceRegistry[idx].isVerified = true;
+            deviceRegistry[idx].isUnlocked = true;
+            if (deviceRegistry[idx].flag == -2) {
+              deviceRegistry[idx].flag = -1;
+            }
+          }
+          server.send(200, "application/json", 
+            "{\"success\":true,\"status\":\"success\",\"command\":\"AUTH\",\"result\":\"" + String(g_pendingSync.result) + "\",\"unlocked\":true,\"verified\":true}");
+        } else {
+          int idx = findDeviceIndex(devId);
+          if (idx != -1) {
+            deviceRegistry[idx].isVerified = false;
+            deviceRegistry[idx].isUnlocked = false;
+            deviceRegistry[idx].flag = -2;
+          }
+          server.send(401, "application/json", 
+            "{\"success\":false,\"status\":\"failed\",\"command\":\"AUTH\",\"result\":\"" + String(g_pendingSync.result) + "\",\"unlocked\":false,\"verified\":false,\"error\":\"Invalid password\"}");
+        }
+      } else {
+        server.send(504, "application/json", 
+          "{\"success\":false,\"status\":\"timeout\",\"command\":\"AUTH\",\"result\":\"NO_RESPONSE\",\"unlocked\":false,\"verified\":false,\"error\":\"Device not responding\"}");
+      }
+    } else if (strcasecmp(cmd, "SETPWD") == 0) {
+      bool responded = executeCommandWithSyncWait(devId, MSG_CMD_SETPWD, pwd, 1200);
+      if (responded) {
+        if (g_pendingSync.success) {
+          server.send(200, "application/json", 
+            "{\"success\":true,\"status\":\"success\",\"command\":\"SETPWD\",\"result\":\"" + String(g_pendingSync.result) + "\"}");
+        } else {
+          server.send(400, "application/json", 
+            "{\"success\":false,\"status\":\"failed\",\"command\":\"SETPWD\",\"result\":\"" + String(g_pendingSync.result) + "\",\"error\":\"Password update failed\"}");
+        }
+      } else {
+        server.send(504, "application/json", 
+          "{\"success\":false,\"status\":\"timeout\",\"command\":\"SETPWD\",\"error\":\"Device not responding\"}");
+      }
     } else if (strcasecmp(cmd, "LOCK") == 0) {
+      int idx = findDeviceIndex(devId);
+      if (idx != -1) {
+        deviceRegistry[idx].isVerified = false;
+        deviceRegistry[idx].isUnlocked = false;
+        deviceRegistry[idx].flag = -2;
+      }
       sendCommandToC3(devId, MSG_CMD_LOCK, "");
-      server.send(200, "application/json", "{\"status\":\"sent\",\"command\":\"LOCK\"}");
+      server.send(200, "application/json", "{\"success\":true,\"status\":\"success\",\"command\":\"LOCK\",\"unlocked\":false,\"verified\":false}");
     } else if (strcasecmp(cmd, "RESET") == 0 || strcasecmp(cmd, "IDLE") == 0) {
       sendCommandToC3(devId, MSG_CMD_RESET, "");
-      server.send(200, "application/json", "{\"status\":\"sent\",\"command\":\"RESET\"}");
+      server.send(200, "application/json", "{\"success\":true,\"status\":\"success\",\"command\":\"RESET\"}");
     } else if (strcasecmp(cmd, "ACCEPT") == 0) {
       const char* waiter = doc["waiterName"] | "Staff";
       sendCommandToC3(devId, MSG_CMD_ACCEPT, waiter);
-      server.send(200, "application/json", "{\"status\":\"sent\",\"command\":\"ACCEPT\"}");
+      server.send(200, "application/json", "{\"success\":true,\"status\":\"success\",\"command\":\"ACCEPT\"}");
     } else if (strcasecmp(cmd, "TRIGGER") == 0 || strcasecmp(cmd, "CALL") == 0) {
       sendCommandToC3(devId, MSG_CMD_TRIGGER, "");
-      server.send(200, "application/json", "{\"status\":\"sent\",\"command\":\"TRIGGER\"}");
-    } else if (strcasecmp(cmd, "SETPWD") == 0) {
-      sendCommandToC3(devId, MSG_CMD_SETPWD, pwd);
-      server.send(200, "application/json", "{\"status\":\"sent\",\"command\":\"SETPWD\"}");
+      server.send(200, "application/json", "{\"success\":true,\"status\":\"success\",\"command\":\"TRIGGER\"}");
     } else {
       server.send(400, "application/json", "{\"error\":\"Unknown command\"}");
     }

@@ -31,9 +31,9 @@
 // --- Device & Hardware Configuration ---
 // ==========================================
 // Configurable per-device identifier (e.g. "1", "2", "3", "10", "A1")
-#define TABLE_NUMBER            "1"
-#define DEVICE_ID               "C3_001"
-#define DEFAULT_PASSWORD        "1234"
+#define TABLE_NUMBER            "2"
+#define DEVICE_ID               "Shoon2"
+#define DEFAULT_PASSWORD        "12345"
 #define DEFAULT_WIFI_CHANNEL    1
 
 const int TOUCH_PIN  = 1;    // Touch / Button -> GPIO 1
@@ -173,6 +173,8 @@ void sendPacketToGateway(MessageType type, const char* payloadStr = "") {
   pkt.seqNumber = packetSequence;
   if (payloadStr != NULL && strlen(payloadStr) > 0) {
     strncpy(pkt.payload, payloadStr, sizeof(pkt.payload) - 1);
+  } else {
+    strncpy(pkt.payload, DEVICE_ID, sizeof(pkt.payload) - 1);
   }
 
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&pkt, sizeof(pkt));
@@ -183,6 +185,16 @@ void sendPacketToGateway(MessageType type, const char* payloadStr = "") {
   } else {
     Serial.printf("[ESP-NOW TX ERROR (CH %d)] Failed to send packet (Code: %d)\n", currentChannel, result);
   }
+}
+
+// Helper to normalize table identifiers ("table_1" -> "1", "device_1" -> "1")
+String cleanTableId(const char* id) {
+  if (!id) return "";
+  String s = String(id);
+  s.trim();
+  if (s.startsWith("table_")) s = s.substring(6);
+  else if (s.startsWith("device_")) s = s.substring(7);
+  return s;
 }
 
 // ==========================================
@@ -203,10 +215,31 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
   lastGatewayContactTime = millis();
   preferences.putInt("channel", currentChannel);
 
-  // Filter messages: Only process commands addressed to THIS table or broadcast ("0" or "ALL")
-  if (strcmp(pkt->deviceId, TABLE_NUMBER) != 0 && 
-      strcmp(pkt->deviceId, "0") != 0 && 
-      strcasecmp(pkt->deviceId, "ALL") != 0) {
+  // Filter messages: Only process commands addressed to THIS table, THIS device ID, or broadcast ("0" or "ALL")
+  String cleanPktId = cleanTableId(pkt->deviceId);
+  String cleanMyTable = cleanTableId(TABLE_NUMBER);
+  String cleanMyDevId = cleanTableId(DEVICE_ID);
+
+  String pktDigits = "";
+  for (unsigned int c = 0; c < cleanPktId.length(); c++) {
+    if (isDigit(cleanPktId[c])) pktDigits += cleanPktId[c];
+  }
+  String myDigits = "";
+  for (unsigned int c = 0; c < cleanMyTable.length(); c++) {
+    if (isDigit(cleanMyTable[c])) myDigits += cleanMyTable[c];
+  }
+
+  bool matchesMe = cleanPktId.equalsIgnoreCase(cleanMyTable) ||
+                   cleanPktId.equalsIgnoreCase(cleanMyDevId) ||
+                   strcmp(pkt->deviceId, TABLE_NUMBER) == 0 ||
+                   strcmp(pkt->deviceId, DEVICE_ID) == 0 ||
+                   (pktDigits.length() > 0 && myDigits.length() > 0 && pktDigits == myDigits) ||
+                   cleanPktId == "0" ||
+                   cleanPktId.equalsIgnoreCase("ALL") ||
+                   strcmp(pkt->deviceId, "0") == 0 ||
+                   strcasecmp(pkt->deviceId, "ALL") == 0;
+
+  if (!matchesMe) {
     return; // Packet addressed to another C3 device
   }
 
@@ -233,13 +266,15 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
         preferences.putBool("unlocked", true);
         currentState = STATE_IDLE;
         
+        // Immediate response back to Gateway so HTTP request returns in <5ms
+        sendPacketToGateway(MSG_RESP_OK, "AUTH_OK");
+
         // Brief Green LED confirmation flash
         setAllLeds(0, 255, 0);
         delay(80);
         setAllLeds(0, 0, 0);
 
         triggerNonBlockingBeep(80, 2, 40); // 2 short beeps
-        sendPacketToGateway(MSG_RESP_OK, "AUTH_OK");
       } else {
         Serial.printf("[AUTH FAILED] Table %s incorrect password ('%s').\n", TABLE_NUMBER, enteredPassword.c_str());
         isDeviceUnlocked = false;
@@ -247,8 +282,10 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
         currentState = STATE_LOCKED;
         setAllLeds(0, 0, 0);
 
-        triggerNonBlockingBeep(250, 1); // 1 long error buzz
+        // Immediate failure response back to Gateway
         sendPacketToGateway(MSG_RESP_FAIL, "AUTH_FAIL");
+
+        triggerNonBlockingBeep(250, 1); // 1 long error buzz
       }
       break;
     }

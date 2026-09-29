@@ -316,8 +316,7 @@ class ServiceRequestRepository {
             t.isUnlocked ||
             _bleService.isTableUnlocked(t.id) ||
             _bleService.isTableUnlocked(t.tableNumber.toString()) ||
-            (liveBleTable?.isUnlocked ?? false) ||
-            t.isAssigned;
+            (liveBleTable?.isUnlocked ?? false);
         final bool effectiveOnline;
         if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
           effectiveOnline = liveBleTable != null
@@ -460,8 +459,7 @@ class ServiceRequestRepository {
                 t.isUnlocked ||
                 _bleService.isTableUnlocked(t.id) ||
                 _bleService.isTableUnlocked(t.tableNumber.toString()) ||
-                (liveBleTable?.isUnlocked ?? false) ||
-                t.isAssigned;
+                (liveBleTable?.isUnlocked ?? false);
             final bool effectiveOnline;
             if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
               effectiveOnline = liveBleTable != null
@@ -702,13 +700,16 @@ class ServiceRequestRepository {
     await _bleService.triggerTableRequest(tableId, tableNumber: tableNumber);
   }
 
-  // Authorize & Unlock a Table with Firmware Password (Manager Only)
-  Future<bool> verifyAndUnlockTable({
-    required String tableId,
+  /// Verify Device Ownership: Validates both Device ID and Password against device hardware and stored credentials.
+  /// If valid, admits device into the system and marks it authorized.
+  Future<bool> verifyDeviceOwnership({
+    required String deviceId,
     required String password,
   }) async {
-    final verified = await _bleService.verifyDevicePassword(
-      tableId: tableId,
+    final cleanId = _bleService.cleanTableNum(deviceId);
+    final tableId = 'table_$cleanId';
+    final verified = await _bleService.verifyDeviceOwnership(
+      deviceId: cleanId,
       password: password,
     );
     if (verified) {
@@ -719,10 +720,20 @@ class ServiceRequestRepository {
           managerUid: managerUid,
         );
       }
-      await _bleService.unlockTableLocally(tableId);
       return true;
     }
     return false;
+  }
+
+  // Authorize & Unlock a Table with Device Password (Manager Only)
+  Future<bool> verifyAndUnlockTable({
+    required String tableId,
+    required String password,
+  }) async {
+    return verifyDeviceOwnership(
+      deviceId: tableId,
+      password: password,
+    );
   }
 
   // Lock a Table (Manager Only)

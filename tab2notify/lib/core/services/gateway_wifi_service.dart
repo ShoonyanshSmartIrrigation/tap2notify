@@ -38,6 +38,85 @@ class GatewayWifiService {
   final Map<String, DateTime> _lastSeenTimes = {};
   final Set<String> _unlockedTableIds = {};
 
+  // Device Ownership Credentials & Verification Tracking (Dynamic, persisted)
+  static const String _prefKeyDeviceCredentials = 'gateway_device_credentials';
+  final Map<String, String> _storedCredentials = {};
+  final Set<String> _verifiedDeviceIds = {};
+  final Set<String> _unauthorizedDeviceIds = {};
+  final Set<String> _verifyingDeviceIds = {};
+
+  Set<String> get verifiedDeviceIds => Set.unmodifiable(_verifiedDeviceIds);
+  bool isDeviceOwnershipVerified(String deviceId) {
+    final clean = _cleanTableNum(deviceId);
+    final numPart = _extractNumericId(clean);
+    return _verifiedDeviceIds.contains(clean) ||
+        (numPart != null && _verifiedDeviceIds.contains(numPart));
+  }
+
+  bool isDeviceRegistered(String deviceId) {
+    final clean = _cleanTableNum(deviceId);
+    final numPart = _extractNumericId(clean);
+    return _storedCredentials.containsKey(clean) ||
+        (numPart != null && _storedCredentials.containsKey(numPart));
+  }
+
+  String? getStoredPassword(String deviceId) {
+    final clean = _cleanTableNum(deviceId);
+    final numPart = _extractNumericId(clean);
+    return _storedCredentials[clean] ??
+        (numPart != null ? _storedCredentials[numPart] : null);
+  }
+
+  void registerStoredCredential(String deviceId, String password) {
+    final clean = _cleanTableNum(deviceId);
+    final numPart = _extractNumericId(clean);
+    final trimmed = password.trim();
+    _storedCredentials[clean] = trimmed;
+    if (numPart != null) {
+      _storedCredentials[numPart] = trimmed;
+    }
+    _saveStoredCredentials();
+  }
+
+  Future<void> _loadStoredCredentials() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_prefKeyDeviceCredentials);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final dynamic decoded = jsonDecode(jsonStr);
+        if (decoded is Map) {
+          decoded.forEach((key, value) {
+            if (value != null) {
+              _storedCredentials[key.toString()] = value.toString();
+            }
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveStoredCredentials() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefKeyDeviceCredentials,
+        jsonEncode(_storedCredentials),
+      );
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  void markDeviceVerifiedForTesting(String deviceId) {
+    final clean = _cleanTableNum(deviceId);
+    final numPart = _extractNumericId(clean);
+    _verifiedDeviceIds.add(clean);
+    _unauthorizedDeviceIds.remove(clean);
+    if (numPart != null) {
+      _verifiedDeviceIds.add(numPart);
+      _unauthorizedDeviceIds.remove(numPart);
+    }
+  }
+
   /// Optional custom/device password validator callback (e.g. for unit tests)
   Future<bool> Function(String tableId, String password)?
   devicePasswordValidator;
@@ -75,8 +154,23 @@ class GatewayWifiService {
   RawDatagramSocket? _udpSocket;
   http.Client? _httpClient;
 
+  @visibleForTesting
+  set httpClient(http.Client? client) => _httpClient = client;
+
   List<TableModel> get currentTables {
-    final list = _tables.values.where((t) => isTableOnline(t.id)).toList();
+    final list = _tables.values
+        .where((t) {
+          if (!isTableOnline(t.id)) return false;
+          final cleanNum = _cleanTableNum(t.tableNumber);
+          final cleanId = _cleanTableNum(t.id);
+          final cleanDevId = _cleanTableNum(t.deviceId);
+          final numPart = _extractNumericId(cleanNum) ?? _extractNumericId(cleanId) ?? _extractNumericId(cleanDevId);
+          return _verifiedDeviceIds.contains(cleanNum) ||
+                 _verifiedDeviceIds.contains(cleanId) ||
+                 _verifiedDeviceIds.contains(cleanDevId) ||
+                 (numPart != null && _verifiedDeviceIds.contains(numPart));
+        })
+        .toList();
     list.sort((a, b) {
       final aNum = int.tryParse(a.tableNumber.toString());
       final bNum = int.tryParse(b.tableNumber.toString());
@@ -86,6 +180,14 @@ class GatewayWifiService {
       return a.tableNumber.toString().compareTo(b.tableNumber.toString());
     });
     return list;
+  }
+
+  String cleanTableNum(dynamic rawId) => _cleanTableNum(rawId);
+
+  String? _extractNumericId(String? id) {
+    if (id == null) return null;
+    final match = RegExp(r'\d+').firstMatch(id);
+    return match?.group(0);
   }
 
   String _cleanTableNum(dynamic rawId) {
@@ -108,7 +210,8 @@ class GatewayWifiService {
 
   bool isTableOnline(String tableId) {
     final cleanNum = _cleanTableNum(tableId);
-    final tableIdFull = 'table_$cleanNum';
+    final numId = _extractNumericId(cleanNum);
+    final tableIdFull = 'table_${numId ?? cleanNum}';
 
     final table = _tables[tableIdFull] ??
         _tables[tableId] ??
@@ -135,16 +238,22 @@ class GatewayWifiService {
 
   TableModel? getLiveTable(String tableId) {
     final cleanNum = _cleanTableNum(tableId);
-    final tableIdFull = 'table_$cleanNum';
+    final numId = _extractNumericId(cleanNum);
+    final tableIdFull = 'table_${numId ?? cleanNum}';
     if (_tables.containsKey(tableIdFull)) return _tables[tableIdFull];
     if (_tables.containsKey(tableId)) return _tables[tableId];
     if (_tables.containsKey(cleanNum)) return _tables[cleanNum];
+    if (numId != null && _tables.containsKey('table_$numId')) return _tables['table_$numId'];
+    if (numId != null && _tables.containsKey(numId)) return _tables[numId];
     return _tables.values.cast<TableModel?>().firstWhere(
       (t) =>
           t != null &&
           (_cleanTableNum(t.tableNumber) == cleanNum ||
               _cleanTableNum(t.id) == cleanNum ||
-              t.deviceId == 'device_$cleanNum'),
+              (numId != null && _cleanTableNum(t.tableNumber) == numId) ||
+              (numId != null && _cleanTableNum(t.id) == numId) ||
+              t.deviceId == 'device_$cleanNum' ||
+              (numId != null && t.deviceId == 'device_$numId')),
       orElse: () => null,
     );
   }
@@ -175,6 +284,7 @@ class GatewayWifiService {
         debugPrint('[GATEWAY WIFI] Loaded cached Gateway IP: $_gatewayIp');
       }
     } catch (_) {}
+    await _loadStoredCredentials();
   }
 
   Future<void> _saveCachedGatewayIp(String ip) async {
@@ -447,7 +557,62 @@ class GatewayWifiService {
     final rawId =
         device['id']?.toString() ?? device['tableNumber']?.toString() ?? '1';
     final cleanTableNum = _cleanTableNum(rawId);
-    final tableId = 'table_$cleanTableNum';
+    final numId = _extractNumericId(cleanTableNum);
+    final tableId = 'table_${numId ?? cleanTableNum}';
+
+    // -------------------------------------------------------------
+    // DEVICE OWNERSHIP VERIFICATION CHECK (Admission Control)
+    // -------------------------------------------------------------
+    // Each device has a registered Device ID and Password. A device
+    // must be considered valid and shown in the app ONLY when both
+    // the Device ID and Password match the stored credentials.
+    // If either the ID or Password is incorrect, the device must be
+    // treated as unauthorized, must not be connected, and must not
+    // appear as an active/available device in the app.
+    // Ensure this verification happens before any device registration,
+    // connection, assignment, or communication process.
+    // -------------------------------------------------------------
+    final isVerified = _verifiedDeviceIds.contains(cleanTableNum) ||
+        (numId != null && _verifiedDeviceIds.contains(numId));
+
+    if (!isVerified) {
+      if (_unauthorizedDeviceIds.contains(cleanTableNum) ||
+          (numId != null && _unauthorizedDeviceIds.contains(numId))) {
+        return;
+      }
+
+      final storedPassword = _storedCredentials[cleanTableNum] ??
+          (numId != null ? _storedCredentials[numId] : null);
+
+      if (storedPassword == null) {
+        _unauthorizedDeviceIds.add(cleanTableNum);
+        if (numId != null) _unauthorizedDeviceIds.add(numId);
+        debugPrint(
+          '[DEVICE OWNERSHIP] Device $cleanTableNum is not in registered system credentials. Rejected as unauthorized.',
+        );
+        return;
+      }
+
+      // Automatically verify against physical device in background using stored credentials
+      final verifyKey = numId ?? cleanTableNum;
+      if (!_verifyingDeviceIds.contains(verifyKey)) {
+        _verifyingDeviceIds.add(verifyKey);
+        verifyDeviceOwnership(
+          deviceId: verifyKey,
+          password: storedPassword,
+        ).then((verified) {
+          _verifyingDeviceIds.remove(verifyKey);
+          if (verified) {
+            processDevicePayload(device);
+          }
+        }).catchError((_) {
+          _verifyingDeviceIds.remove(verifyKey);
+        });
+      }
+
+      // While unverified, suppress from active/available devices in the app
+      return;
+    }
 
     int rawFlag = -1;
     if (device['flag'] != null) {
@@ -478,37 +643,42 @@ class GatewayWifiService {
       }
     }
 
-    bool parseBool(dynamic val) {
-      if (val == null) return false;
+    bool? parseExplicitBool(dynamic val) {
+      if (val == null) return null;
       if (val is bool) return val;
       if (val is num) return val == 1;
       final s = val.toString().trim().toLowerCase();
-      return s == 'true' || s == '1' || s == 'yes' || s == 'online';
+      if (s == 'true' || s == '1' || s == 'yes') return true;
+      if (s == 'false' || s == '0' || s == 'no') return false;
+      return null;
     }
+
+    bool parseBool(dynamic val) => parseExplicitBool(val) ?? false;
 
     final bool isOnline = parseBool(device['online']) ||
         parseBool(device['isOnline']) ||
         parseBool(device['device_online']) ||
         parseBool(device['deviceOnline']) ||
         parseBool(device['is_online']);
-    final bool isHardwareLocked = (rawFlag == -2);
 
-    if (isHardwareLocked) {
+    final bool? explicitUnlocked = parseExplicitBool(device['unlocked']) ??
+        parseExplicitBool(device['isUnlocked']) ??
+        parseExplicitBool(device['is_unlocked']);
+
+    final bool isHardwareLocked = (rawFlag == -2);
+    final bool isExplicitlyLocked = (explicitUnlocked == false) || isHardwareLocked;
+
+    if (isExplicitlyLocked) {
       _unlockedTableIds.remove(tableId);
-    } else if (device['unlocked'] == true) {
+    } else if (explicitUnlocked == true) {
       _unlockedTableIds.add(tableId);
     }
 
     final existing = _tables[tableId];
-    final bool hasAssignedWaiter =
-        (existing?.assignedWaiterId.isNotEmpty ?? false) ||
-        (device['assigned_waiter_id']?.toString().isNotEmpty ?? false);
-    final bool isUnlocked =
-        !isHardwareLocked &&
-        ((existing?.isUnlocked ?? false) ||
+    final bool isUnlocked = !isExplicitlyLocked &&
+        (explicitUnlocked == true ||
             _unlockedTableIds.contains(tableId) ||
-            device['unlocked'] == true ||
-            hasAssignedWaiter);
+            (existing?.isUnlocked ?? false));
 
     final finalFlag = isHardwareLocked ? -1 : rawFlag;
     final finalStatus = isHardwareLocked
@@ -530,7 +700,7 @@ class GatewayWifiService {
         existing.isUnlocked != isUnlocked ||
         existing.isDeviceOnline != isOnline;
 
-    final dynamic parsedNum = int.tryParse(cleanTableNum) ?? cleanTableNum;
+    final dynamic parsedNum = int.tryParse(numId ?? cleanTableNum) ?? int.tryParse(cleanTableNum) ?? cleanTableNum;
 
     final String assignedWaiterId =
         (existing?.assignedWaiterId.isNotEmpty ?? false)
@@ -599,14 +769,34 @@ class GatewayWifiService {
   }
 
   @visibleForTesting
-  void processDevicePayloadForTesting(Map<dynamic, dynamic> device) =>
-      processDevicePayload(device);
+  void processDevicePayloadForTesting(
+    Map<dynamic, dynamic> device, {
+    bool markVerified = true,
+  }) {
+    if (markVerified) {
+      final rawId =
+          device['id']?.toString() ?? device['tableNumber']?.toString() ?? '1';
+      final clean = _cleanTableNum(rawId);
+      final numPart = _extractNumericId(clean);
+      _verifiedDeviceIds.add(clean);
+      if (numPart != null) _verifiedDeviceIds.add(numPart);
+      _unauthorizedDeviceIds.remove(clean);
+      if (numPart != null) _unauthorizedDeviceIds.remove(numPart);
+    }
+    processDevicePayload(device);
+  }
 
   @visibleForTesting
   void resetForTesting() {
     _tables.clear();
     _lastSeenTimes.clear();
     _unlockedTableIds.clear();
+    _verifiedDeviceIds.clear();
+    _unauthorizedDeviceIds.clear();
+    _verifyingDeviceIds.clear();
+    _storedCredentials.clear();
+    devicePasswordValidator = null;
+    httpClient = null;
     onDeviceDiscovered = null;
     onDeviceLost = null;
   }
@@ -758,12 +948,25 @@ class GatewayWifiService {
     final cleanTableId = tableId.startsWith('table_')
         ? tableId
         : 'table_$tableId';
-    final tableNum = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final cleanNum = _cleanTableNum(tableId);
+    final numPart = _extractNumericId(cleanNum) ?? _extractNumericId(tableId);
+    final tableNum = numPart ?? cleanNum;
+
+    // Admission Control: Operational commands (non-AUTH) require verified device ownership
+    final isVerified = _verifiedDeviceIds.contains(cleanNum) ||
+        (numPart != null && _verifiedDeviceIds.contains(numPart));
+    if (command != 'AUTH' && !isVerified) {
+      debugPrint(
+        '[DEVICE OWNERSHIP] Blocked command $command to unauthorized/unverified device $cleanNum.',
+      );
+      return false;
+    }
+
     final client = _httpClient ?? http.Client();
     final url = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/command');
 
     final payload = {
-      'deviceId': tableNum.isNotEmpty ? tableNum : cleanTableId,
+      'deviceId': (numPart != null && numPart.isNotEmpty) ? numPart : cleanNum,
       'command': command,
       'password': ?password,
       'waiterName': ?waiterName,
@@ -776,13 +979,69 @@ class GatewayWifiService {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
+        try {
+          final dynamic data = jsonDecode(response.body);
+          if (data is Map) {
+            // Explicit error / rejection from Gateway or device
+            if (data['success'] == false ||
+                data['status'] == 'failed' ||
+                data['status'] == 'timeout' ||
+                data['result'] == 'AUTH_FAIL' ||
+                data['result'] == 'SETPWD_FAIL' ||
+                data['unlocked'] == false ||
+                data['isUnlocked'] == false) {
+              debugPrint(
+                '[GATEWAY WIFI] Command $command failed on Table $tableNum: ${data['error'] ?? data['result']}',
+              );
+              return false;
+            }
+
+            // Explicit positive confirmation from Gateway firmware
+            if (data['result'] == 'AUTH_OK' ||
+                data['unlocked'] == true ||
+                data['isUnlocked'] == true) {
+              debugPrint(
+                '[GATEWAY WIFI] Command $command succeeded on Table $tableNum (unlocked: true)',
+              );
+              return true;
+            }
+
+            // Other non-AUTH commands (e.g. TRIGGER, ACCEPT, RESET) that return success
+            if (command != 'AUTH' &&
+                (data['success'] == true || data['status'] == 'success')) {
+              debugPrint(
+                '[GATEWAY WIFI] Command $command succeeded on Table $tableNum',
+              );
+              return true;
+            }
+
+            // Older Gateway firmware returning {"status":"sent"}
+            if (command == 'AUTH' && data['status'] == 'sent') {
+              return await _pollForAuthConfirmation(tableNum, cleanTableId);
+            }
+          }
+        } catch (_) {}
+
+        // For AUTH command, NEVER default to true without explicit authorization confirmation!
+        if (command == 'AUTH') {
+          debugPrint(
+            '[GATEWAY WIFI] AUTH command on Table $tableNum lacked explicit unlock confirmation. Rejecting.',
+          );
+          return false;
+        }
+
         debugPrint(
           '[GATEWAY WIFI] Command $command sent successfully to Table $tableNum',
         );
         return true;
+      } else {
+        debugPrint(
+          '[GATEWAY WIFI] Command $command failed with HTTP ${response.statusCode}: ${response.body}',
+        );
+        return false;
       }
     } catch (e) {
       debugPrint('[GATEWAY WIFI] Send command error: $e');
@@ -791,14 +1050,72 @@ class GatewayWifiService {
     return false;
   }
 
-  // Authorize / Unlock Table via Wi-Fi Gateway
-  Future<bool> verifyDevicePassword({
-    required String tableId,
+  // Poll Gateway events/devices as fallback for older asynchronous gateway firmware
+  Future<bool> _pollForAuthConfirmation(
+    String tableNum,
+    String cleanTableId,
+  ) async {
+    final client = _httpClient ?? http.Client();
+    final eventsUrl = Uri.parse('http://$_gatewayIp:$_gatewayPort/api/events');
+    final devicesUrl =
+        Uri.parse('http://$_gatewayIp:$_gatewayPort/api/devices');
+
+    for (int i = 0; i < 4; i++) {
+      await Future.delayed(const Duration(milliseconds: 350));
+      try {
+        final evRes =
+            await client.get(eventsUrl).timeout(const Duration(seconds: 1));
+        if (evRes.statusCode == 200) {
+          final dynamic evData = jsonDecode(evRes.body);
+          if (evData is Map &&
+              (evData['deviceId']?.toString() == tableNum ||
+                  evData['tableNumber']?.toString() == tableNum)) {
+            if (evData['status'] == 'failed' ||
+                evData['result'] == 'AUTH_FAIL' ||
+                evData['isUnlocked'] == false ||
+                evData['unlocked'] == false) {
+              return false;
+            }
+            if (evData['status'] == 'success' ||
+                evData['result'] == 'AUTH_OK' ||
+                evData['isUnlocked'] == true ||
+                evData['unlocked'] == true) {
+              return true;
+            }
+          }
+        }
+
+        final devRes =
+            await client.get(devicesUrl).timeout(const Duration(seconds: 1));
+        if (devRes.statusCode == 200) {
+          final dynamic devData = jsonDecode(devRes.body);
+          if (devData is List) {
+            for (final d in devData) {
+              if (d is Map &&
+                  (d['id']?.toString() == tableNum ||
+                      d['tableNumber']?.toString() == tableNum)) {
+                // Only return true when device transitioned to unlocked
+                if (d['unlocked'] == true && d['flag'] != -2) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  /// Device Ownership Verification: Checks Device ID and Password against device hardware and stored credentials.
+  /// If either ID or Password is incorrect, device is treated as unauthorized and cannot connect or appear in the app.
+  Future<bool> verifyDeviceOwnership({
+    required String deviceId,
     required String password,
   }) async {
-    final cleanTableId = tableId.startsWith('table_')
-        ? tableId
-        : 'table_$tableId';
+    final cleanId = _cleanTableNum(deviceId);
+    final numId = _extractNumericId(cleanId);
+    final cleanTableId = 'table_${numId ?? cleanId}';
     final trimmedPassword = password.trim();
     if (trimmedPassword.isEmpty) return false;
 
@@ -809,27 +1126,111 @@ class GatewayWifiService {
         trimmedPassword,
       );
       if (isValid) {
+        _storedCredentials[cleanId] = trimmedPassword;
+        if (numId != null) _storedCredentials[numId] = trimmedPassword;
+        _verifiedDeviceIds.add(cleanId);
+        if (numId != null) _verifiedDeviceIds.add(numId);
+        _unauthorizedDeviceIds.remove(cleanId);
+        if (numId != null) _unauthorizedDeviceIds.remove(numId);
         _unlockedTableIds.add(cleanTableId);
         _updateTableUnlockState(cleanTableId, true);
         return true;
       }
+      _verifiedDeviceIds.remove(cleanId);
+      if (numId != null) _verifiedDeviceIds.remove(numId);
+      _unauthorizedDeviceIds.add(cleanId);
+      if (numId != null) _unauthorizedDeviceIds.add(numId);
+      _unlockedTableIds.remove(cleanTableId);
+      _updateTableUnlockState(cleanTableId, false);
+      _tables.remove(cleanTableId);
+      _emitTables();
       return false;
     }
 
+    // Check against stored credentials:
+    // If device ID is registered in system credentials, check if password matches
+    final expected = _storedCredentials[cleanId] ??
+        (numId != null ? _storedCredentials[numId] : null);
+
+    if (expected != null && expected.isNotEmpty && expected != trimmedPassword) {
+      // In offline/unit-test mode without reachable hardware:
+      if (_connectionStatus != GatewayConnectionStatus.connected && _httpClient == null) {
+        _verifiedDeviceIds.remove(cleanId);
+        if (numId != null) _verifiedDeviceIds.remove(numId);
+        _unauthorizedDeviceIds.add(cleanId);
+        if (numId != null) _unauthorizedDeviceIds.add(numId);
+        _unlockedTableIds.remove(cleanTableId);
+        _updateTableUnlockState(cleanTableId, false);
+        _tables.remove(cleanTableId);
+        _emitTables();
+        debugPrint(
+          '[DEVICE OWNERSHIP] Device $cleanId password does not match stored credentials. Verification failed.',
+        );
+        return false;
+      }
+    }
+
     // 1. Send HTTP REST AUTH Command to Wi-Fi Gateway
+    final targetDev = numId ?? cleanId;
     final success = await sendGatewayCommand(
-      tableId: tableId,
+      tableId: targetDev,
       command: 'AUTH',
       password: trimmedPassword,
     );
 
     if (success) {
+      _storedCredentials[cleanId] = trimmedPassword;
+      if (numId != null) _storedCredentials[numId] = trimmedPassword;
+      _verifiedDeviceIds.add(cleanId);
+      if (numId != null) _verifiedDeviceIds.add(numId);
+      _unauthorizedDeviceIds.remove(cleanId);
+      if (numId != null) _unauthorizedDeviceIds.remove(numId);
       _unlockedTableIds.add(cleanTableId);
       _updateTableUnlockState(cleanTableId, true);
+      fetchGatewayDevices();
+      debugPrint(
+        '[DEVICE OWNERSHIP] Device $cleanId ownership successfully VERIFIED.',
+      );
       return true;
+    } else {
+      _verifiedDeviceIds.remove(cleanId);
+      if (numId != null) _verifiedDeviceIds.remove(numId);
+      _unauthorizedDeviceIds.add(cleanId);
+      if (numId != null) _unauthorizedDeviceIds.add(numId);
+      _unlockedTableIds.remove(cleanTableId);
+      _updateTableUnlockState(cleanTableId, false);
+      _tables.remove(cleanTableId);
+      _emitTables();
+      debugPrint(
+        '[DEVICE OWNERSHIP] Device $cleanId ownership verification FAILED. Device treated as unauthorized.',
+      );
+      return false;
     }
+  }
 
-    return false;
+  // Authorize / Unlock Table via Wi-Fi Gateway (delegates to verifyDeviceOwnership)
+  Future<bool> verifyDevicePassword({
+    required String tableId,
+    required String password,
+  }) async {
+    return verifyDeviceOwnership(
+      deviceId: _cleanTableNum(tableId),
+      password: password,
+    );
+  }
+
+  Future<void> revokeDeviceOwnership(String deviceId) async {
+    final cleanId = _cleanTableNum(deviceId);
+    final numId = _extractNumericId(cleanId);
+    final cleanTableId = 'table_${numId ?? cleanId}';
+    _verifiedDeviceIds.remove(cleanId);
+    if (numId != null) _verifiedDeviceIds.remove(numId);
+    _unauthorizedDeviceIds.add(cleanId);
+    if (numId != null) _unauthorizedDeviceIds.add(numId);
+    _unlockedTableIds.remove(cleanTableId);
+    _tables.remove(cleanTableId);
+    _emitTables();
+    await sendGatewayCommand(tableId: numId ?? cleanId, command: 'LOCK');
   }
 
   void _updateTableUnlockState(String tableId, bool unlocked) {
@@ -1073,7 +1474,7 @@ class GatewayWifiService {
         status: cloudTable.status,
         waiterName: cloudTable.waiterName.isNotEmpty ? cloudTable.waiterName : (existing?.waiterName ?? ''),
         assignedWaiterId: cloudTable.assignedWaiterId.isNotEmpty ? cloudTable.assignedWaiterId : (existing?.assignedWaiterId ?? ''),
-        isUnlocked: cloudTable.isUnlocked || (existing?.isUnlocked ?? false),
+        isUnlocked: cloudTable.isUnlocked,
         updatedAt: cloudUpdated,
         acceptedAt: cloudTable.acceptedAt ?? existing?.acceptedAt,
         requestSentAt: cloudTable.requestSentAt ?? existing?.requestSentAt,

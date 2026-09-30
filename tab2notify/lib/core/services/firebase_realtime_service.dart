@@ -538,11 +538,72 @@ class FirebaseRealtimeService {
     });
   }
 
+  /// Fetch a registered table/device record by ID, table number, or device ID.
+  /// Returns the record data if registered, or null if not found.
+  Future<Map<String, dynamic>?> fetchRegisteredTable(
+    String identifier, {
+    String? managerPhone,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone);
+    final ref = _tablesRef(resolvedPhone);
+    final clean = identifier.trim();
+    if (clean.isEmpty) return null;
+
+    final cleanDigits = clean.replaceAll(RegExp(r'[^0-9]'), '');
+    final normTableId = cleanDigits.isNotEmpty ? 'table_$cleanDigits' : clean;
+
+    // 1. Direct child lookup by exact ID
+    var snap = await ref.child(clean).get();
+    if (snap.exists && snap.value is Map) {
+      return (snap.value as Map).map((k, v) => MapEntry(k.toString(), v));
+    }
+
+    // 2. Direct child lookup by normTableId ('table_X')
+    if (normTableId != clean) {
+      snap = await ref.child(normTableId).get();
+      if (snap.exists && snap.value is Map) {
+        return (snap.value as Map).map((k, v) => MapEntry(k.toString(), v));
+      }
+    }
+
+    // 3. Child lookup by cleanDigits
+    if (cleanDigits.isNotEmpty && cleanDigits != clean && cleanDigits != normTableId) {
+      snap = await ref.child(cleanDigits).get();
+      if (snap.exists && snap.value is Map) {
+        return (snap.value as Map).map((k, v) => MapEntry(k.toString(), v));
+      }
+    }
+
+    // 4. Search across all tables in node for table_number or device_id match
+    final allSnap = await ref.get();
+    if (allSnap.exists && allSnap.value is Map) {
+      final allTables = allSnap.value as Map;
+      for (final entry in allTables.entries) {
+        final val = entry.value;
+        if (val is Map) {
+          final tNum = val['table_number']?.toString();
+          final dId = val['device_id']?.toString();
+          final tId = val['id']?.toString() ?? entry.key.toString();
+
+          if (tNum == clean ||
+              tNum == cleanDigits ||
+              dId?.toLowerCase() == clean.toLowerCase() ||
+              tId.toLowerCase() == clean.toLowerCase()) {
+            return val.map((k, v) => MapEntry(k.toString(), v));
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
   // Manager Unlocks and Authorizes Table with Password
   Future<void> unlockTable(
     String tableId, {
     String? managerPhone,
     String? managerUid,
+    String? password,
   }) async {
     final resolvedPhone = _resolvePhone(managerPhone);
     final resolvedUid = managerUid ?? _currentAuthUid;
@@ -561,12 +622,17 @@ class FirebaseRealtimeService {
       snap = await _tablesRef(resolvedPhone).child(targetId).get();
     }
 
-    await _tablesRef(resolvedPhone).child(targetId).update({
+    final Map<String, dynamic> updates = {
       'is_unlocked': true,
       'unlocked_at': now,
       'unlocked_by': resolvedUid,
       'updated_at': now,
-    });
+    };
+    if (password != null && password.trim().isNotEmpty) {
+      updates['device_password'] = password.trim();
+    }
+
+    await _tablesRef(resolvedPhone).child(targetId).update(updates);
   }
 
   // Manager Locks Table

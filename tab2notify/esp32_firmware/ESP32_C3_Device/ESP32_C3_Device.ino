@@ -258,9 +258,7 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
       enteredPassword.trim();
 
       bool isCorrect = (enteredPassword == devicePassword) ||
-                       (enteredPassword == String(DEFAULT_PASSWORD)) ||
-                       (enteredPassword == "1234") ||
-                       (enteredPassword == "12345");
+                       (enteredPassword == String(DEFAULT_PASSWORD));
 
       if (isCorrect) {
         Serial.printf("[AUTH SUCCESS] Table %s authorized successfully. Unlocking device.\n", TABLE_NUMBER);

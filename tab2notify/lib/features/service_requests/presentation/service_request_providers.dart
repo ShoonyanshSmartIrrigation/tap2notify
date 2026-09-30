@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/device_credential_service.dart';
 import '../../../core/services/gateway_wifi_service.dart';
 import '../../../core/services/shared_preferences_provider.dart';
 import '../../authentication/presentation/auth_providers.dart';
@@ -21,6 +22,7 @@ final bleServiceProvider = gatewayWifiServiceProvider;
 final serviceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepository>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
+  final credentialService = ref.watch(deviceCredentialServiceProvider);
   final authUser = ref.watch(authStateProvider).value;
   final profileAsync = ref.watch(currentUserProfileProvider);
 
@@ -34,6 +36,7 @@ final serviceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepo
   final repo = ServiceRequestRepository(
     bleService,
     dbService,
+    credentialService: credentialService,
     managerPhone: managerPhone,
     managerUid: managerUid,
     managerEmail: managerEmail,
@@ -47,11 +50,13 @@ final serviceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepo
 final waiterServiceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepository>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
+  final credentialService = ref.watch(deviceCredentialServiceProvider);
   final currentWaiter = ref.watch(currentLoggedWaiterProvider);
 
   final repo = ServiceRequestRepository(
     bleService,
     dbService,
+    credentialService: credentialService,
     managerPhone: currentWaiter?.managerPhone ?? '',
     managerUid: currentWaiter?.managerUid ?? '',
     managerEmail: currentWaiter?.managerEmail,

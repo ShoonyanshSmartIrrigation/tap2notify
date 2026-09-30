@@ -38,20 +38,8 @@ class GatewayWifiService {
   final Map<String, DateTime> _lastSeenTimes = {};
   final Set<String> _unlockedTableIds = {};
 
-  // Device Ownership Credentials & Verification Tracking
-  final Map<String, String> _storedCredentials = {
-    '1': '1234',
-    '2': '12345',
-    'Shoon2': '12345',
-    '3': '1234',
-    '4': '1234',
-    '5': '1234',
-    '6': '1234',
-    '7': '1234',
-    '8': '1234',
-    '9': '1234',
-    '10': '1234',
-  };
+  // Dynamic Device Ownership Credentials & Verification Tracking (Populated at runtime)
+  final Map<String, String> _storedCredentials = {};
   final Set<String> _verifiedDeviceIds = {};
   final Set<String> _unauthorizedDeviceIds = {};
   final Set<String> _verifyingDeviceIds = {};
@@ -73,7 +61,9 @@ class GatewayWifiService {
     final clean = _cleanTableNum(deviceId);
     final numPart = _extractNumericId(clean);
     return _storedCredentials.containsKey(clean) ||
-        (numPart != null && _storedCredentials.containsKey(numPart));
+        (numPart != null && _storedCredentials.containsKey(numPart)) ||
+        _tables.containsKey('table_$clean') ||
+        (numPart != null && _tables.containsKey('table_$numPart'));
   }
 
   String? getStoredPassword(String deviceId) {
@@ -94,15 +84,15 @@ class GatewayWifiService {
   }
 
   @visibleForTesting
-  void markDeviceVerifiedForTesting(String deviceId) {
+  void markDeviceVerifiedForTesting(String deviceId, [String password = '1234']) {
     final clean = _cleanTableNum(deviceId);
     final numPart = _extractNumericId(clean);
     _verifiedDeviceIds.add(clean);
     if (numPart != null) _verifiedDeviceIds.add(numPart);
     _unauthorizedDeviceIds.remove(clean);
     if (numPart != null) _unauthorizedDeviceIds.remove(numPart);
-    _storedCredentials.putIfAbsent(clean, () => '1234');
-    if (numPart != null) _storedCredentials.putIfAbsent(numPart, () => '1234');
+    _storedCredentials[clean] = password;
+    if (numPart != null) _storedCredentials[numPart] = password;
   }
 
   /// Optional custom/device password validator callback (e.g. for unit tests)
@@ -233,6 +223,7 @@ class GatewayWifiService {
 
   // Alias for backward compatibility
   TableModel? getLiveBleTable(String tableId) => getLiveTable(tableId);
+  TableModel? findTable(String tableId) => getLiveTable(tableId);
 
   void _emitTables() {
     _tablesController.add(currentTables);
@@ -771,8 +762,12 @@ class GatewayWifiService {
       if (numPart != null) _verifiedDeviceIds.add(numPart);
       _unauthorizedDeviceIds.remove(clean);
       if (numPart != null) _unauthorizedDeviceIds.remove(numPart);
-      _storedCredentials.putIfAbsent(clean, () => '1234');
-      if (numPart != null) _storedCredentials.putIfAbsent(numPart, () => '1234');
+      final devPwd = device['device_password']?.toString() ??
+          device['password']?.toString();
+      if (devPwd != null && devPwd.isNotEmpty) {
+        _storedCredentials[clean] = devPwd;
+        if (numPart != null) _storedCredentials[numPart] = devPwd;
+      }
     }
     processDevicePayload(device);
   }
@@ -786,18 +781,6 @@ class GatewayWifiService {
     _unauthorizedDeviceIds.clear();
     _verifyingDeviceIds.clear();
     _storedCredentials.clear();
-    _storedCredentials.addAll({
-      '1': '1234',
-      '2': '1234',
-      '3': '1234',
-      '4': '1234',
-      '5': '1234',
-      '6': '1234',
-      '7': '1234',
-      '8': '1234',
-      '9': '1234',
-      '10': '1234',
-    });
     devicePasswordValidator = null;
     httpClient = null;
     onDeviceDiscovered = null;
@@ -1175,38 +1158,33 @@ class GatewayWifiService {
       return false;
     }
 
-    // Check against stored credentials:
-    // If device ID is registered in system credentials, its password must match!
+    // Check against dynamically stored credentials:
+    // If device ID is already registered in system credentials, its password must match!
     final expected = _storedCredentials[cleanId] ??
         (numPart != null ? _storedCredentials[numPart] : null);
     if (expected != null &&
         expected.isNotEmpty &&
         expected != trimmedPassword) {
-      // Allow dual default (1234 / 12345) for Table 2 / Shoon2
-      final bool isTable2Dual = (cleanId == '2' || cleanId == 'Shoon2' || numPart == '2') &&
-          (trimmedPassword == '1234' || trimmedPassword == '12345');
-      if (!isTable2Dual) {
-        _verifiedDeviceIds.remove(cleanId);
-        _unauthorizedDeviceIds.add(cleanId);
-        if (numPart != null) {
-          _verifiedDeviceIds.remove(numPart);
-          _unauthorizedDeviceIds.add(numPart);
-        }
-        _unlockedTableIds.remove(cleanTableId);
-        if (numPart != null) {
-          _unlockedTableIds.remove('table_$numPart');
-        }
-        _updateTableUnlockState(cleanTableId, false);
-        _tables.remove(cleanTableId);
-        if (numPart != null) {
-          _tables.remove('table_$numPart');
-        }
-        _emitTables();
-        debugPrint(
-          '[DEVICE OWNERSHIP] Device $cleanId password does not match stored credentials. Verification failed.',
-        );
-        return false;
+      _verifiedDeviceIds.remove(cleanId);
+      _unauthorizedDeviceIds.add(cleanId);
+      if (numPart != null) {
+        _verifiedDeviceIds.remove(numPart);
+        _unauthorizedDeviceIds.add(numPart);
       }
+      _unlockedTableIds.remove(cleanTableId);
+      if (numPart != null) {
+        _unlockedTableIds.remove('table_$numPart');
+      }
+      _updateTableUnlockState(cleanTableId, false);
+      _tables.remove(cleanTableId);
+      if (numPart != null) {
+        _tables.remove('table_$numPart');
+      }
+      _emitTables();
+      debugPrint(
+        '[DEVICE OWNERSHIP] Device $cleanId password does not match stored credentials. Verification failed.',
+      );
+      return false;
     }
 
     // 1. Send HTTP REST AUTH Command to Wi-Fi Gateway
@@ -1297,6 +1275,14 @@ class GatewayWifiService {
       if (current != null) {
         final updated = current.copyWith(
           isUnlocked: unlocked,
+          status: unlocked
+              ? (current.flag == 0
+                  ? 'pending'
+                  : (current.flag == 1 ? 'accepted' : 'idle'))
+              : 'locked',
+          flag: unlocked
+              ? (current.flag == -2 ? -1 : current.flag)
+              : -2,
           unlockedAt: unlocked ? DateTime.now().millisecondsSinceEpoch : null,
         );
         _tables[key] = updated;
@@ -1305,18 +1291,18 @@ class GatewayWifiService {
       }
     }
 
-    if (!anyUpdated && unlocked) {
+    if (!anyUpdated) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final parsedNum = int.tryParse(numPart ?? '') ?? int.tryParse(cleanNum) ?? cleanNum;
       final newTable = TableModel(
         id: numTableId ?? cleanTableId,
         tableNumber: parsedNum,
         deviceId: 'device_$cleanNum',
-        status: 'idle',
-        flag: -1,
+        status: unlocked ? 'idle' : 'locked',
+        flag: unlocked ? -1 : -2,
         isDeviceOnline: true,
-        isUnlocked: true,
-        unlockedAt: now,
+        isUnlocked: unlocked,
+        unlockedAt: unlocked ? now : null,
         createdAt: now,
         updatedAt: now,
       );

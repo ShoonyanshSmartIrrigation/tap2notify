@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../../core/services/ble_service.dart';
+import '../../../core/services/device_credential_service.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../../core/services/firebase_realtime_service.dart';
 import '../../../core/services/notification_audio_service.dart';
@@ -10,6 +11,7 @@ import '../domain/table_model.dart';
 class ServiceRequestRepository {
   final BleService _bleService;
   final FirebaseRealtimeService _dbService;
+  final DeviceCredentialService? _credentialService;
   final String managerPhone;
   final String managerUid;
   final String? managerEmail;
@@ -25,11 +27,20 @@ class ServiceRequestRepository {
   ServiceRequestRepository(
     this._bleService,
     this._dbService, {
+    DeviceCredentialService? credentialService,
     this.managerPhone = '',
     this.managerUid = '',
     this.managerEmail,
     this.currentWaiterId = '',
-  }) {
+  }) : _credentialService = credentialService {
+    // Pre-populate dynamic in-memory credentials from secure local storage for this manager
+    if (_credentialService != null) {
+      final savedCreds = _credentialService!.getAllCredentials(managerPhone: managerPhone);
+      savedCreds.forEach((devId, pwd) {
+        _bleService.registerStoredCredential(devId, pwd);
+      });
+    }
+
     // Forward BLE physical device discoveries to Firebase Realtime Database asynchronously
     _bleService.onDeviceDiscovered = (TableModel bleTable) {
       debugPrint(
@@ -728,37 +739,122 @@ class ServiceRequestRepository {
     await _bleService.triggerTableRequest(tableId, tableNumber: tableNumber);
   }
 
-  /// Verify Device Ownership: Validates both Device ID and Password against device hardware and stored credentials.
+  /// Verify Device Ownership: Validates both Device ID and Password against
+  /// actual configured data sources (Firebase Realtime Database & Gateway hardware).
   /// If valid, admits device into the system and marks it authorized.
   Future<bool> verifyDeviceOwnership({
     required String deviceId,
     required String password,
   }) async {
-    final cleanId = _bleService.cleanTableNum(deviceId);
+    final cleanInput = deviceId.trim();
+    final trimmedPassword = password.trim();
+
+    if (cleanInput.isEmpty) {
+      throw Exception('Device ID / Table Number cannot be empty.');
+    }
+    if (trimmedPassword.isEmpty) {
+      throw Exception('Password cannot be empty.');
+    }
+
+    final cleanId = _bleService.cleanTableNum(cleanInput);
+    final cleanDigits = cleanInput.replaceAll(RegExp(r'[^0-9]'), '');
     final tableId = 'table_$cleanId';
-    final cleanDigits = deviceId.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // ------------------------------------------------------------------
+    // Step 2: Fetch Device Details from actual configured data source
+    // ------------------------------------------------------------------
+    Map<String, dynamic>? registeredRecord;
+    try {
+      registeredRecord = await _dbService.fetchRegisteredTable(
+        cleanInput,
+        managerPhone: managerPhone,
+      );
+    } catch (e) {
+      debugPrint('[AUTH] Cloud table lookup note: $e');
+    }
+
+    // Also check if device is registered/known in the Wi-Fi Gateway live device registry
+    final liveTable = _bleService.getLiveTable(cleanId) ??
+        (cleanDigits.isNotEmpty ? _bleService.getLiveTable(cleanDigits) : null);
+    final isKnownOnGateway = liveTable != null || _bleService.isDeviceRegistered(cleanId);
+
+    // If device does not exist in any configured data source
+    if (registeredRecord == null && !isKnownOnGateway) {
+      if (_bleService.devicePasswordValidator == null) {
+        throw Exception(
+          'Device / Table "$cleanInput" is not registered in the system. Please configure the table first.',
+        );
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Step 3: Compare Credentials & Validate Authentication
+    // ------------------------------------------------------------------
+    if (registeredRecord != null) {
+      final storedCredential = (registeredRecord['device_password'] ??
+              registeredRecord['password'])
+          ?.toString()
+          .trim();
+
+      if (storedCredential != null &&
+          storedCredential.isNotEmpty &&
+          storedCredential != trimmedPassword) {
+        throw Exception(
+          'Authentication failed for Table/Device "$cleanInput": Incorrect password.',
+        );
+      }
+    }
+
+    // Challenge the physical device / Gateway via AUTH command
     final verified = await _bleService.verifyDeviceOwnership(
       deviceId: cleanId,
-      password: password,
+      password: trimmedPassword,
     );
-    if (verified) {
-      if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+
+    // ------------------------------------------------------------------
+    // Step 4 & 5: Process Authentication Result
+    // ------------------------------------------------------------------
+    if (!verified) {
+      throw Exception(
+        'Authentication failed for Table/Device "$cleanInput": Invalid password. Access rejected.',
+      );
+    }
+
+    // Persist verified credential dynamically in local secure store
+    if (_credentialService != null) {
+      await _credentialService!.saveCredential(
+        cleanId,
+        trimmedPassword,
+        managerPhone: managerPhone,
+      );
+      if (cleanDigits.isNotEmpty && cleanDigits != cleanId) {
+        await _credentialService!.saveCredential(
+          cleanDigits,
+          trimmedPassword,
+          managerPhone: managerPhone,
+        );
+      }
+    }
+
+    // Mark table as unlocked in Firebase Realtime Database
+    if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+      await _dbService.unlockTable(
+        tableId,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+        password: trimmedPassword,
+      );
+      if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
         await _dbService.unlockTable(
-          tableId,
+          'table_$cleanDigits',
           managerPhone: managerPhone,
           managerUid: managerUid,
+          password: trimmedPassword,
         );
-        if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
-          await _dbService.unlockTable(
-            'table_$cleanDigits',
-            managerPhone: managerPhone,
-            managerUid: managerUid,
-          );
-        }
       }
-      return true;
     }
-    return false;
+
+    return true;
   }
 
   // Authorize & Unlock a Table with Device Password (Manager Only)
@@ -775,6 +871,7 @@ class ServiceRequestRepository {
   // Lock a Table (Manager Only)
   Future<void> lockTable(String tableId) async {
     final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final cleanId = _bleService.cleanTableNum(tableId);
     if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
       await _dbService.lockTable(tableId, managerPhone: managerPhone);
       if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
@@ -787,6 +884,12 @@ class ServiceRequestRepository {
     await _bleService.lockTableLocally(tableId);
     if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
       await _bleService.lockTableLocally('table_$cleanDigits');
+    }
+    if (_credentialService != null) {
+      await _credentialService!.removeCredential(cleanId, managerPhone: managerPhone);
+      if (cleanDigits.isNotEmpty && cleanDigits != cleanId) {
+        await _credentialService!.removeCredential(cleanDigits, managerPhone: managerPhone);
+      }
     }
   }
 

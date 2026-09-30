@@ -42,10 +42,19 @@ class MockFirebaseRealtimeService extends FirebaseRealtimeService {
   }
 
   @override
+  Future<Map<String, dynamic>?> fetchRegisteredTable(
+    String identifier, {
+    String? managerPhone,
+  }) async {
+    return null;
+  }
+
+  @override
   Future<void> unlockTable(
     String tableId, {
     String? managerPhone,
     String? managerUid,
+    String? password,
   }) async {
     // Mock implementation
   }

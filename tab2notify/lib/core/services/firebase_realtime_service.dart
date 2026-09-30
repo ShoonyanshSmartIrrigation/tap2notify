@@ -547,8 +547,21 @@ class FirebaseRealtimeService {
     final resolvedPhone = _resolvePhone(managerPhone);
     final resolvedUid = managerUid ?? _currentAuthUid;
     final int now = DateTime.now().millisecondsSinceEpoch;
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final normTableId = cleanDigits.isNotEmpty ? 'table_$cleanDigits' : tableId;
 
-    await _tablesRef(resolvedPhone).child(tableId).update({
+    var targetId = tableId;
+    var snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    if (!snap.exists) {
+      targetId = normTableId;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
+    if (!snap.exists && cleanDigits.isNotEmpty) {
+      targetId = cleanDigits;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
+
+    await _tablesRef(resolvedPhone).child(targetId).update({
       'is_unlocked': true,
       'unlocked_at': now,
       'unlocked_by': resolvedUid,
@@ -560,10 +573,23 @@ class FirebaseRealtimeService {
   Future<void> lockTable(String tableId, {String? managerPhone}) async {
     final resolvedPhone = _resolvePhone(managerPhone);
     final int now = DateTime.now().millisecondsSinceEpoch;
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final normTableId = cleanDigits.isNotEmpty ? 'table_$cleanDigits' : tableId;
+
+    var targetId = tableId;
+    var snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    if (!snap.exists) {
+      targetId = normTableId;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
+    if (!snap.exists && cleanDigits.isNotEmpty) {
+      targetId = cleanDigits;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
 
     await _tablesRef(
       resolvedPhone,
-    ).child(tableId).update({'is_unlocked': false, 'updated_at': now});
+    ).child(targetId).update({'is_unlocked': false, 'updated_at': now});
   }
 
   // No-op in production: Tables are configured dynamically by manager or BLE discovery
@@ -588,7 +614,19 @@ class FirebaseRealtimeService {
     String? managerUid,
   }) async {
     final resolvedPhone = _resolvePhone(managerPhone);
-    final snap = await _tablesRef(resolvedPhone).child(tableId).get();
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final normTableId = cleanDigits.isNotEmpty ? 'table_$cleanDigits' : tableId;
+
+    var targetId = tableId;
+    var snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    if (!snap.exists) {
+      targetId = normTableId;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
+    if (!snap.exists && cleanDigits.isNotEmpty) {
+      targetId = cleanDigits;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
     if (!snap.exists || snap.value is! Map) return;
 
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -606,9 +644,9 @@ class FirebaseRealtimeService {
     if (managerUid != null && managerUid.isNotEmpty) {
       tableUpdates['accepted_by'] = managerUid;
     }
-    await _tablesRef(resolvedPhone).child(tableId).update(tableUpdates);
+    await _tablesRef(resolvedPhone).child(targetId).update(tableUpdates);
 
-    await _requestsRef(resolvedPhone).child(tableId).update({
+    await _requestsRef(resolvedPhone).child(targetId).update({
       'status': 'accepted',
       'acceptedBy': waiterName,
       'assignedWaiterId': waiterId ?? '',
@@ -620,7 +658,19 @@ class FirebaseRealtimeService {
   // Complete / Reset a Table back to Idle state (flag = -1)
   Future<void> resetTableStatus(String tableId, {String? managerPhone}) async {
     final resolvedPhone = _resolvePhone(managerPhone);
-    final snap = await _tablesRef(resolvedPhone).child(tableId).get();
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    final normTableId = cleanDigits.isNotEmpty ? 'table_$cleanDigits' : tableId;
+
+    var targetId = tableId;
+    var snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    if (!snap.exists) {
+      targetId = normTableId;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
+    if (!snap.exists && cleanDigits.isNotEmpty) {
+      targetId = cleanDigits;
+      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    }
     if (!snap.exists || snap.value is! Map) return;
 
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -629,10 +679,10 @@ class FirebaseRealtimeService {
       'status': 'idle',
       'updated_at': now,
     };
-    await _tablesRef(resolvedPhone).child(tableId).update(updates);
+    await _tablesRef(resolvedPhone).child(targetId).update(updates);
     await _requestsRef(
       resolvedPhone,
-    ).child(tableId).update({'status': 'idle', 'updatedAt': now});
+    ).child(targetId).update({'status': 'idle', 'updatedAt': now});
   }
 
   // Reset ALL tables for this manager back to Idle state
@@ -656,7 +706,7 @@ class FirebaseRealtimeService {
   // Trigger a Table Request (Customer / ESP32 Pressed Button, flag = 0)
   Future<void> triggerTableRequest(
     String tableId, {
-    int? tableNumber,
+    dynamic tableNumber,
     String? managerPhone,
     String? managerUid,
     String? managerEmail,
@@ -666,7 +716,8 @@ class FirebaseRealtimeService {
     final resolvedEmail = managerEmail ?? _currentAuthEmail;
     final int now = DateTime.now().millisecondsSinceEpoch;
     final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
-    final int tNum = tableNumber ?? (int.tryParse(cleanDigits) ?? 1);
+    final int tNum = int.tryParse(tableNumber?.toString() ?? cleanDigits) ??
+        (int.tryParse(cleanDigits) ?? 1);
     final String normTableId = 'table_$tNum';
 
     // Check both tableId and normTableId in RTDB

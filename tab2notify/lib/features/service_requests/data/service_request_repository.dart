@@ -660,6 +660,20 @@ class ServiceRequestRepository {
     String? waiterId,
   }) async {
     NotificationAudioService().stop();
+    _pendingEntryTimestamps.remove(tableId);
+    _escalatedTableIds.remove(tableId);
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanDigits.isNotEmpty) {
+      _pendingEntryTimestamps.remove('table_$cleanDigits');
+      _pendingEntryTimestamps.remove(cleanDigits);
+      _escalatedTableIds.remove('table_$cleanDigits');
+      _escalatedTableIds.remove(cleanDigits);
+    }
+    try {
+      final notifId = int.tryParse(cleanDigits) ?? (tableId.hashCode & 0x7FFFFFFF);
+      FCMService().clearNativeNotification(notifId);
+    } catch (_) {}
+
     await _dbService.acceptTableRequest(
       tableId: tableId,
       waiterName: waiterName,
@@ -676,6 +690,20 @@ class ServiceRequestRepository {
 
   Future<void> resetTableStatus(String tableId) async {
     NotificationAudioService().stop();
+    _pendingEntryTimestamps.remove(tableId);
+    _escalatedTableIds.remove(tableId);
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanDigits.isNotEmpty) {
+      _pendingEntryTimestamps.remove('table_$cleanDigits');
+      _pendingEntryTimestamps.remove(cleanDigits);
+      _escalatedTableIds.remove('table_$cleanDigits');
+      _escalatedTableIds.remove(cleanDigits);
+    }
+    try {
+      final notifId = int.tryParse(cleanDigits) ?? (tableId.hashCode & 0x7FFFFFFF);
+      FCMService().clearNativeNotification(notifId);
+    } catch (_) {}
+
     await _dbService.resetTableStatus(tableId, managerPhone: managerPhone);
     await _bleService.resetTableStatus(tableId);
   }
@@ -708,6 +736,7 @@ class ServiceRequestRepository {
   }) async {
     final cleanId = _bleService.cleanTableNum(deviceId);
     final tableId = 'table_$cleanId';
+    final cleanDigits = deviceId.replaceAll(RegExp(r'[^0-9]'), '');
     final verified = await _bleService.verifyDeviceOwnership(
       deviceId: cleanId,
       password: password,
@@ -719,6 +748,13 @@ class ServiceRequestRepository {
           managerPhone: managerPhone,
           managerUid: managerUid,
         );
+        if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
+          await _dbService.unlockTable(
+            'table_$cleanDigits',
+            managerPhone: managerPhone,
+            managerUid: managerUid,
+          );
+        }
       }
       return true;
     }
@@ -738,10 +774,20 @@ class ServiceRequestRepository {
 
   // Lock a Table (Manager Only)
   Future<void> lockTable(String tableId) async {
+    final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
     if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
       await _dbService.lockTable(tableId, managerPhone: managerPhone);
+      if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
+        await _dbService.lockTable(
+          'table_$cleanDigits',
+          managerPhone: managerPhone,
+        );
+      }
     }
     await _bleService.lockTableLocally(tableId);
+    if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
+      await _bleService.lockTableLocally('table_$cleanDigits');
+    }
   }
 
   void dispose() {

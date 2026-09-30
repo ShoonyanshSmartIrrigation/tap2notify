@@ -49,27 +49,24 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     }
   }
 
-  void _checkInitialRequest() {
+  void _checkInitialRequest([List<TableModel>? currentTables]) {
     final reqId = widget.initialRequestId;
     if (reqId == null || reqId.isEmpty || reqId == _handledRequestId) return;
-    _handledRequestId = reqId;
 
-    Future.delayed(const Duration(milliseconds: 600), () {
+    void attemptMatch(List<TableModel> tables) {
       if (!mounted) return;
       final currentWaiter = ref.read(currentLoggedWaiterProvider);
       if (currentWaiter == null) return;
 
-      final tablesAsync = ref.read(
-        waiterTablesStreamProvider(currentWaiter.waiterId),
-      );
-      final tables = tablesAsync.value ?? [];
-
+      final cleanReqNum = reqId.replaceAll(RegExp(r'[^0-9]'), '');
       final match = tables.where(
         (t) =>
             t.id == reqId ||
-            t.tableNumber.toString() == reqId.replaceAll(RegExp(r'[^0-9]'), ''),
+            (cleanReqNum.isNotEmpty &&
+                t.tableNumber.toString() == cleanReqNum),
       );
       if (match.isNotEmpty) {
+        _handledRequestId = reqId;
         final targetTable = match.first;
         if (targetTable.isPending) {
           _showAcceptDialog(
@@ -81,6 +78,23 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           _showCompleteDialog(targetTable);
         }
       }
+    }
+
+    if (currentTables != null && currentTables.isNotEmpty) {
+      attemptMatch(currentTables);
+      return;
+    }
+
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      final currentWaiter = ref.read(currentLoggedWaiterProvider);
+      if (currentWaiter == null) return;
+
+      final tablesAsync = ref.read(
+        waiterTablesStreamProvider(currentWaiter.waiterId),
+      );
+      final tables = tablesAsync.value ?? [];
+      attemptMatch(tables);
     });
   }
 
@@ -132,7 +146,10 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () {
+                _handledRequestId = null;
+                Navigator.pop(dialogContext);
+              },
               child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
@@ -148,6 +165,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ),
               ),
               onPressed: () async {
+                _handledRequestId = null;
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(dialogContext);
 
@@ -229,7 +247,10 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () {
+                _handledRequestId = null;
+                Navigator.pop(dialogContext);
+              },
               child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
@@ -245,6 +266,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ),
               ),
               onPressed: () async {
+                _handledRequestId = null;
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(dialogContext);
 
@@ -265,6 +287,104 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               child: const Text(
                 'MARK AS SERVED / COMPLETED',
                 style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showIdleDialog(TableModel table, String waiterName, String waiterId) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9800).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.radio_button_unchecked_rounded,
+                  color: Color(0xFFFF9800),
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Table ${table.tableNumber}',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Table is Idle & Available 🟠',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+          content: Text(
+            'Assigned Staff: $waiterName\nTap below if assistance is requested at this table.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dialogContext);
+
+                final repo = ref.read(waiterServiceRequestRepositoryProvider);
+                await repo.triggerTableRequest(
+                  table.id,
+                  tableNumber: table.tableNumber,
+                );
+
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '🔴 Service request triggered for Table ${table.tableNumber}',
+                      ),
+                      backgroundColor: const Color(0xFFE53935),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.notifications_active_rounded, size: 18),
+              label: const Text(
+                'CALL SERVICE',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ),
           ],
@@ -317,6 +437,14 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
 
     final waiterId = currentWaiter.waiterId;
     final waiterName = currentWaiter.name;
+
+    ref.listen<AsyncValue<List<TableModel>>>(
+      waiterTablesStreamProvider(waiterId),
+      (prev, next) {
+        final tables = next.value ?? [];
+        _checkInitialRequest(tables);
+      },
+    );
 
     final wifiService = ref.watch(gatewayWifiServiceProvider);
     final connectionStatus =
@@ -595,23 +723,37 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+                    onTap: pendingTables.isNotEmpty
+                        ? () {
+                            HapticFeedback.lightImpact();
+                            setState(() => _selectedFilter = 'pending');
+                          }
+                        : null,
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: pendingTables.isNotEmpty
+                              ? const Color(0xFFE53935).withValues(alpha: 0.6)
+                              : theme.colorScheme.primary.withValues(alpha: 0.3),
+                          width: pendingTables.isNotEmpty ? 1.5 : 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: pendingTables.isNotEmpty
+                                ? const Color(0xFFE53935).withValues(alpha: 0.15)
+                                : Colors.black.withValues(alpha: 0.03),
+                            blurRadius: pendingTables.isNotEmpty ? 12 : 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
                   child: Row(
                     children: [
                       Container(
@@ -680,6 +822,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ),
               ),
             ),
+          ),
+        ),
 
             // Filter Row
             SliverToBoxAdapter(
@@ -779,7 +923,19 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                   ),
                   delegate: SliverChildBuilderDelegate((context, index) {
                     final table = displayList[index];
-                    return TableCard(table: table);
+                    return TableCard(
+                      table: table,
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        if (table.isPending) {
+                          _showAcceptDialog(table, waiterName, waiterId);
+                        } else if (table.isAccepted) {
+                          _showCompleteDialog(table);
+                        } else {
+                          _showIdleDialog(table, waiterName, waiterId);
+                        }
+                      },
+                    );
                   }, childCount: displayList.length),
                 ),
               ),

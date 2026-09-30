@@ -406,8 +406,20 @@ void onEspNowDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, 
     // Synchronize with HTTP API call if waiting
     String cleanIncoming = cleanTableId(pkt->deviceId);
     String cleanPending = cleanTableId(g_pendingSync.targetDeviceId);
+
+    String incDigits = "";
+    for (unsigned int c = 0; c < cleanIncoming.length(); c++) {
+      if (isDigit(cleanIncoming[c])) incDigits += cleanIncoming[c];
+    }
+    String penDigits = "";
+    for (unsigned int c = 0; c < cleanPending.length(); c++) {
+      if (isDigit(cleanPending[c])) penDigits += cleanPending[c];
+    }
+    bool digitsMatch = (incDigits.length() > 0 && penDigits.length() > 0 && incDigits == penDigits);
+
     if (g_pendingSync.waiting && 
         (cleanIncoming.equalsIgnoreCase(cleanPending) ||
+         digitsMatch ||
          cleanPending == "0" ||
          cleanPending.equalsIgnoreCase("ALL"))) {
       g_pendingSync.received = true;

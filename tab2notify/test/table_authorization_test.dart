@@ -68,6 +68,7 @@ void main() {
 
     setUp(() {
       bleService = BleService();
+      bleService.resetForTesting();
       mockDbService = MockFirebaseRealtimeService();
     });
 

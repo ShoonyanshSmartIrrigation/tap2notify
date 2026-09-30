@@ -223,7 +223,7 @@ class TableModel {
     int? acceptedAt,
     int? requestSentAt,
   }) {
-    final int newFlag = flag ?? this.flag;
+    int newFlag = flag ?? this.flag;
     String newStatus = status ?? this.status;
 
     // Synchronize status with flag if flag is explicitly provided without status
@@ -236,8 +236,15 @@ class TableModel {
         newStatus = 'idle';
       }
     } else if (status != null && flag == null) {
-      if (newStatus == 'pending' || newStatus == 'new_request' || newStatus == 'calling') {
-        // Flag can be inferred if not provided
+      final s = newStatus.trim().toLowerCase();
+      if (s == 'pending' || s == 'new_request' || s == 'calling') {
+        newFlag = 0;
+      } else if (s == 'accepted' || s == 'in_progress' || s == 'serving') {
+        newFlag = 1;
+      } else if (s == 'idle' || s == 'completed') {
+        newFlag = -1;
+      } else if (s == 'locked') {
+        newFlag = -2;
       }
     }
 

@@ -400,6 +400,9 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     } catch (e) {
       debugPrint('[WAITER SIGN OUT] Error unregistering FCM token: $e');
     }
+    try {
+      GatewayWifiService().clearManagerSession();
+    } catch (_) {}
     await waiterNotifier.setWaiter(null);
     if (mounted) {
       context.go('/login');

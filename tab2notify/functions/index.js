@@ -1,4 +1,5 @@
 const { onValueWritten, onValueCreated } = require("firebase-functions/v2/database");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
@@ -247,107 +248,112 @@ exports.onTableRequestTriggered = onValueWritten(
     // -------------------------------------------------------------
     // 20-Second Manager Escalation Timer
     // If request remains pending for >20 seconds, alert the manager
+    // Awaiting the promise ensures serverless execution context is held
     // -------------------------------------------------------------
-    setTimeout(async () => {
-      try {
-        const latestSnap = await db.ref(`tables/${cleanPhone}/${tableId}`).get();
-        if (!latestSnap.exists()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20000));
 
-        const latestData = latestSnap.val();
-        const isStillPending = latestData.flag === 0 || latestData.status === "pending";
+    try {
+      const latestSnap = await db.ref(`tables/${cleanPhone}/${tableId}`).get();
+      if (!latestSnap.exists()) return;
 
-        if (!isStillPending) {
-          console.log(`[FCM ESCALATION] Table ${tableNumber} was attended/accepted within 20s. Escalation cancelled.`);
-          return;
-        }
+      const latestData = latestSnap.val();
+      const isStillPending = latestData.flag === 0 || latestData.status === "pending";
 
-        console.log(`[FCM ESCALATION] Table ${tableNumber} remained unattended for >20s! Escalating to manager ${cleanPhone}...`);
+      if (!isStillPending) {
+        console.log(`[FCM ESCALATION] Table ${tableNumber} was attended/accepted within 20s. Escalation cancelled.`);
+        return;
+      }
 
-        const managerUid = latestData.manager_uid || "";
-        const waiterDisplayName = latestData.waiter_name || latestData.assigned_waiter_name || assignedWaiterId || "Unassigned";
+      console.log(`[FCM ESCALATION] Table ${tableNumber} remained unattended for >20s! Escalating to manager ${cleanPhone}...`);
 
-        // Retrieve authorized manager tokens
-        let managerTokens = [];
-        if (managerUid) {
-          managerTokens = await getAuthorizedTokens({
-            managerPhone: cleanPhone,
-            targetUserId: managerUid,
-            targetRole: "manager",
-          });
-        }
+      const managerUid = latestData.manager_uid || "";
+      const waiterDisplayName = latestData.waiter_name || latestData.assigned_waiter_name || assignedWaiterId || "Unassigned";
 
-        // Fallback: search users registry for manager matching this phone
-        if (managerTokens.length === 0) {
-          const usersSnap = await db.ref("users").get();
-          if (usersSnap.exists()) {
-            const usersData = usersSnap.val();
-            for (const [uid, uData] of Object.entries(usersData)) {
-              const uPhone = (uData.phone || uData.phoneNumber || "").replace(/[^0-9]/g, "");
-              if (uPhone === cleanPhone && (uData.role === "manager" || !uData.role)) {
-                const foundTokens = await getAuthorizedTokens({
-                  managerPhone: cleanPhone,
-                  targetUserId: uid,
-                  targetRole: "manager",
-                });
-                if (foundTokens.length > 0) {
-                  managerTokens = foundTokens;
-                  break;
-                }
+      // Retrieve authorized manager tokens
+      let managerTokens = [];
+      if (managerUid) {
+        managerTokens = await getAuthorizedTokens({
+          managerPhone: cleanPhone,
+          targetUserId: managerUid,
+          targetRole: "manager",
+        });
+      }
+
+      // Fallback: search users registry for manager matching this phone via indexed query
+      if (managerTokens.length === 0) {
+        const userQuerySnap = await db.ref("users")
+          .orderByChild("phone")
+          .equalTo(cleanPhone)
+          .limitToFirst(1)
+          .get();
+
+        if (userQuerySnap.exists()) {
+          const usersData = userQuerySnap.val();
+          for (const [uid, uData] of Object.entries(usersData)) {
+            if (uData.role === "manager" || !uData.role) {
+              const foundTokens = await getAuthorizedTokens({
+                managerPhone: cleanPhone,
+                targetUserId: uid,
+                targetRole: "manager",
+              });
+              if (foundTokens.length > 0) {
+                managerTokens = foundTokens;
+                break;
               }
             }
           }
         }
-
-        if (managerTokens.length === 0) {
-          console.log(`[FCM ESCALATION] No active authorized tokens found for Manager ${cleanPhone}. Escalation push skipped.`);
-          return;
-        }
-
-        const escalationMessage = {
-          tokens: managerTokens,
-          notification: {
-            title: `⚠️ Unattended Table ${tableNumber} Alert!`,
-            body: `Table ${tableNumber} (Waiter: ${waiterDisplayName}) has been pending for >20s!`,
-          },
-          data: {
-            requestId: tableId,
-            tableNumber: String(tableNumber),
-            targetRole: "manager",
-            type: "manager_escalation",
-            managerPhone: cleanPhone,
-            click_action: "FLUTTER_NOTIFICATION_CLICK",
-          },
-          android: {
-            priority: "high",
-            notification: {
-              channelId: "manager_escalation_channel",
-              priority: "max",
-              sound: "please_hold",
-              defaultVibrateTimings: true,
-              visibility: "public",
-            },
-          },
-          apns: {
-            payload: {
-              aps: {
-                alert: {
-                  title: `⚠️ Unattended Table ${tableNumber} Alert!`,
-                  body: `Table ${tableNumber} (Waiter: ${waiterDisplayName}) has been pending for >20s!`,
-                },
-                sound: "Please_Hold.mp3",
-                badge: 1,
-                critical: true,
-              },
-            },
-          },
-        };
-
-        const escResponse = await admin.messaging().sendEachForMulticast(escalationMessage);
-        console.log(`[FCM ESCALATION] Manager push sent: ${escResponse.successCount} succeeded, ${escResponse.failureCount} failed.`);
-      } catch (escErr) {
-        console.error(`[FCM ESCALATION ERROR] Failed to run manager escalation:`, escErr);
       }
-    }, 20000);
+
+      if (managerTokens.length === 0) {
+        console.log(`[FCM ESCALATION] No active authorized tokens found for Manager ${cleanPhone}. Escalation push skipped.`);
+        return;
+      }
+
+      const escalationMessage = {
+        tokens: managerTokens,
+        notification: {
+          title: `⚠️ Unattended Table ${tableNumber} Alert!`,
+          body: `Table ${tableNumber} (Waiter: ${waiterDisplayName}) has been pending for >20s!`,
+        },
+        data: {
+          requestId: tableId,
+          tableNumber: String(tableNumber),
+          targetRole: "manager",
+          type: "manager_escalation",
+          managerPhone: cleanPhone,
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+        android: {
+          priority: "high",
+          notification: {
+            channelId: "manager_escalation_channel",
+            priority: "max",
+            sound: "please_hold",
+            defaultVibrateTimings: true,
+            visibility: "public",
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              alert: {
+                title: `⚠️ Unattended Table ${tableNumber} Alert!`,
+                body: `Table ${tableNumber} (Waiter: ${waiterDisplayName}) has been pending for >20s!`,
+              },
+              sound: "Please_Hold.mp3",
+              badge: 1,
+              critical: true,
+            },
+          },
+        },
+      };
+
+      const escResponse = await admin.messaging().sendEachForMulticast(escalationMessage);
+      console.log(`[FCM ESCALATION] Manager push sent: ${escResponse.successCount} succeeded, ${escResponse.failureCount} failed.`);
+    } catch (escErr) {
+      console.error(`[FCM ESCALATION ERROR] Failed to run manager escalation:`, escErr);
+    }
   }
 );
 
@@ -420,3 +426,48 @@ exports.onNotificationQueueCreated = onValueCreated(
     await db.ref(`notifications_queue/${queueId}`).remove();
   }
 );
+
+/**
+ * Callable Cloud Function: Secure Server-Side Waiter Authentication
+ * Verifies waiter passcode without exposing raw credentials to client memory.
+ * Issues a scoped Firebase Custom Auth Token with role and managerPhone claims.
+ */
+exports.verifyWaiterCredentials = onCall(async (request) => {
+  const data = request.data || {};
+  const managerPhone = (data.managerPhone || "").replace(/[^0-9]/g, "");
+  const waiterId = (data.waiterId || "").trim().toUpperCase();
+  const passcode = (data.passcode || "").trim();
+
+  if (!managerPhone || !waiterId || !passcode) {
+    throw new HttpsError("invalid-argument", "Manager phone, Waiter ID, and Passcode are required.");
+  }
+
+  const waiterSnap = await db.ref(`waiters/${managerPhone}/${waiterId}`).get();
+  if (!waiterSnap.exists()) {
+    throw new HttpsError("not-found", `Waiter ID "${waiterId}" not found under manager.`);
+  }
+
+  const waiterData = waiterSnap.val();
+  if (String(waiterData.passcode).trim() !== passcode) {
+    throw new HttpsError("unauthenticated", "Invalid passcode.");
+  }
+
+  // Issue scoped custom auth token
+  const customUid = `waiter_${managerPhone}_${waiterId}`;
+  const customToken = await admin.auth().createCustomToken(customUid, {
+    role: "waiter",
+    managerPhone: managerPhone,
+    waiterId: waiterId,
+  });
+
+  // Strip passcode from returned data
+  const sanitizedWaiter = { ...waiterData };
+  delete sanitizedWaiter.passcode;
+
+  return {
+    success: true,
+    token: customToken,
+    waiter: sanitizedWaiter,
+  };
+});
+

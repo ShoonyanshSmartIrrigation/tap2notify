@@ -19,6 +19,7 @@ class MockRealtimeDbForAuth extends FirebaseRealtimeService {
   Future<Map<String, dynamic>?> fetchRegisteredTable(
     String identifier, {
     String? managerPhone,
+    String? managerUid,
   }) async {
     final clean = identifier.trim();
     if (_mockCloudTables.containsKey(clean)) return _mockCloudTables[clean];
@@ -50,6 +51,7 @@ class MockRealtimeDbForAuth extends FirebaseRealtimeService {
   Future<void> lockTable(
     String tableId, {
     String? managerPhone,
+    String? managerUid,
   }) async {
     final target = _mockCloudTables[tableId];
     if (target != null) {

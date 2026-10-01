@@ -33,11 +33,33 @@ class ServiceRequestRepository {
     this.managerEmail,
     this.currentWaiterId = '',
   }) : _credentialService = credentialService {
+    // Set active manager session in GatewayWifiService
+    if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
+      _bleService.setActiveManager(
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
+    }
+
     // Pre-populate dynamic in-memory credentials from secure local storage for this manager
     if (_credentialService != null) {
-      final savedCreds = _credentialService!.getAllCredentials(managerPhone: managerPhone);
+      final savedCreds = _credentialService.getAllCredentials(
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
       savedCreds.forEach((devId, pwd) {
-        _bleService.registerStoredCredential(devId, pwd);
+        _bleService.registerStoredCredential(
+          devId,
+          pwd,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        );
+        _bleService.authorizeTableForManager(
+          tableId: devId,
+          password: pwd,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        );
       });
     }
 
@@ -47,7 +69,8 @@ class ServiceRequestRepository {
         '[BLE DISCOVERED HOOK] Table ${bleTable.tableNumber} (${bleTable.id}) status=${bleTable.status} flag=${bleTable.flag} managerPhone=$managerPhone currentWaiterId=$currentWaiterId',
       );
       // Instant Native Notification Alert for urgent service requests (STRICTLY for UNLOCKED tables)
-      if (bleTable.flag == 0 && bleTable.isUnlocked) {
+      final bool isTableUnlockedForThis = isTableAuthorizedForThisManager(bleTable);
+      if (bleTable.flag == 0 && isTableUnlockedForThis) {
         _pendingEntryTimestamps[bleTable.id] ??=
             bleTable.requestSentAt ?? DateTime.now().millisecondsSinceEpoch;
         _triggerRequestNotification(
@@ -55,7 +78,7 @@ class ServiceRequestRepository {
           tableNumber: bleTable.tableNumber,
           assignedWaiterId: bleTable.assignedWaiterId,
           waiterName: bleTable.waiterName,
-          isUnlocked: bleTable.isUnlocked,
+          isUnlocked: isTableUnlockedForThis,
         );
       } else if (bleTable.flag != 0) {
         _pendingEntryTimestamps.remove(bleTable.id);
@@ -111,6 +134,98 @@ class ServiceRequestRepository {
     }
   }
 
+  /// Determines if a table/device is authorized and unlocked for THIS specific manager
+  bool isTableAuthorizedForThisManager(TableModel t) {
+    final cleanId = _bleService.cleanTableNum(t.tableNumber ?? t.id);
+    final numPart = cleanId.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // 0. Foreign manager isolation check:
+    // If the table explicitly belongs to a different manager, REJECT access.
+    if (t.managerPhone.isNotEmpty && managerPhone.isNotEmpty && t.managerPhone != managerPhone) {
+      return false;
+    }
+    if (t.managerUid.isNotEmpty && managerUid.isNotEmpty && t.managerUid != managerUid) {
+      return false;
+    }
+
+    // 1. For a WAITER session: Waiters rely on the manager having unlocked and assigned the table
+    if (currentWaiterId.isNotEmpty) {
+      return t.isUnlocked;
+    }
+
+    // 2. If this manager's cloud RTDB record is unlocked AND strictly owned by this manager
+    final bool isOwnedByThisManager = (t.managerPhone.isNotEmpty && t.managerPhone == managerPhone) ||
+        (t.managerUid.isNotEmpty && t.managerUid == managerUid) ||
+        (t.unlockedBy != null && t.unlockedBy!.isNotEmpty && (t.unlockedBy == managerUid || t.unlockedBy == managerPhone)) ||
+        (t.managerPhone.isEmpty && t.managerUid.isEmpty && managerPhone.isEmpty && managerUid.isEmpty);
+
+    if (isOwnedByThisManager && t.isUnlocked) {
+      return true;
+    }
+
+    // 2. If this manager has saved credentials in DeviceCredentialService
+    if (_credentialService != null) {
+      if (_credentialService.getCredential(
+            cleanId,
+            managerPhone: managerPhone,
+            managerUid: managerUid,
+          ) !=
+          null ||
+          (numPart.isNotEmpty &&
+              _credentialService.getCredential(
+                    numPart,
+                    managerPhone: managerPhone,
+                    managerUid: managerUid,
+                  ) !=
+                  null)) {
+        return true;
+      }
+    }
+
+    // 3. If local GatewayWifiService has manager authorization for this manager
+    if (_bleService.isTableUnlockedForManager(
+          t.id,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        ) ||
+        _bleService.isTableUnlockedForManager(
+          cleanId,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        ) ||
+        (numPart.isNotEmpty &&
+            _bleService.isTableUnlockedForManager(
+              numPart,
+              managerPhone: managerPhone,
+              managerUid: managerUid,
+            ))) {
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _areTableListsEqual(List<TableModel> a, List<TableModel> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      final tA = a[i];
+      final tB = b[i];
+      if (tA.id != tB.id ||
+          tA.status != tB.status ||
+          tA.flag != tB.flag ||
+          tA.isUnlocked != tB.isUnlocked ||
+          tA.isDeviceOnline != tB.isDeviceOnline ||
+          tA.assignedWaiterId != tB.assignedWaiterId ||
+          tA.waiterName != tB.waiterName ||
+          tA.requestSentAt != tB.requestSentAt ||
+          tA.acceptedAt != tB.acceptedAt) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void _startCloudRequestListener() {
     _cloudRequestSub?.cancel();
     _cloudRequestSub = _dbService
@@ -123,8 +238,12 @@ class ServiceRequestRepository {
           (tables) {
             _cachedTables = tables;
             for (final table in tables) {
-              _bleService.syncTableFromCloud(table);
-              if (table.isPending) {
+              _bleService.syncTableFromCloud(
+                table,
+                managerPhone: managerPhone,
+                managerUid: managerUid,
+              );
+              if (table.isPending && isTableAuthorizedForThisManager(table)) {
                 _triggerRequestNotification(
                   tableId: table.id,
                   tableNumber: table.tableNumber,
@@ -164,21 +283,25 @@ class ServiceRequestRepository {
             ? (t.isDeviceOnline || _bleService.isTableOnline(t.id))
             : (t.isDeviceOnline || existing.isDeviceOnline);
 
+        final bool authorized = isTableAuthorizedForThisManager(existing) ||
+            isTableAuthorizedForThisManager(t);
+
         allActiveTables[t.id] = existing.copyWith(
           flag: useBle ? t.flag : existing.flag,
           status: useBle ? t.status : existing.status,
-          isUnlocked: t.isUnlocked || existing.isUnlocked,
+          isUnlocked: authorized,
           isDeviceOnline: isOnlineResolved,
           requestSentAt: t.requestSentAt ?? existing.requestSentAt,
         );
       } else {
-        allActiveTables[t.id] = t;
+        allActiveTables[t.id] = t.copyWith(
+          isUnlocked: isTableAuthorizedForThisManager(t),
+        );
       }
     }
 
     for (final table in allActiveTables.values) {
-      final isUnlocked =
-          table.isUnlocked || _bleService.isTableUnlocked(table.id);
+      final isUnlocked = isTableAuthorizedForThisManager(table);
       if (table.isPending && isUnlocked) {
         final effectiveSentTime =
             table.requestSentAt ?? _pendingEntryTimestamps[table.id] ?? now;
@@ -316,18 +439,22 @@ class ServiceRequestRepository {
 
     List<TableModel> computeMerged() {
       if (lastDbTables.isEmpty) {
-        return _bleService.currentTables;
+        return _bleService.currentTables.map((bleTable) {
+          final isAuthorized = isTableAuthorizedForThisManager(bleTable);
+          final bool isHwLocked = bleTable.flag == -2;
+          return bleTable.copyWith(isUnlocked: !isHwLocked && isAuthorized);
+        }).toList();
       }
       final merged = lastDbTables.map((t) {
         final isBleOnline = _bleService.isTableOnline(t.id) ||
             _bleService.isTableOnline(t.tableNumber.toString());
         final liveBleTable = _bleService.getLiveBleTable(t.id) ??
             _bleService.getLiveBleTable(t.tableNumber.toString());
-        final isUnlocked =
-            t.isUnlocked ||
-            _bleService.isTableUnlocked(t.id) ||
-            _bleService.isTableUnlocked(t.tableNumber.toString()) ||
-            (liveBleTable?.isUnlocked ?? false);
+
+        final bool isAuthorizedForThisManager = isTableAuthorizedForThisManager(t);
+        final bool isHardwareLocked = liveBleTable?.flag == -2;
+        final bool isUnlocked = !isHardwareLocked && isAuthorizedForThisManager;
+
         final bool effectiveOnline;
         if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
           effectiveOnline = liveBleTable != null
@@ -376,7 +503,9 @@ class ServiceRequestRepository {
               m.id == bleTable.id ||
               m.tableNumber.toString() == bleTable.tableNumber.toString(),
         )) {
-          merged.add(bleTable);
+          final isAuthorized = isTableAuthorizedForThisManager(bleTable);
+          final bool isHwLocked = bleTable.flag == -2;
+          merged.add(bleTable.copyWith(isUnlocked: !isHwLocked && isAuthorized));
         }
       }
       merged.sort((a, b) {
@@ -392,6 +521,17 @@ class ServiceRequestRepository {
 
     controller = StreamController<List<TableModel>>(
       onListen: () {
+        List<TableModel>? lastEmitted;
+        void emitMerged() {
+          if (controller.isClosed) return;
+          final merged = computeMerged();
+          if (lastEmitted != null && _areTableListsEqual(lastEmitted!, merged)) {
+            return;
+          }
+          lastEmitted = merged;
+          controller.add(merged);
+        }
+
         dbSub = _dbService
             .getTablesStream(
               managerPhone: managerPhone,
@@ -402,12 +542,14 @@ class ServiceRequestRepository {
               (dbList) {
                 lastDbTables = dbList;
                 for (final t in dbList) {
-                  _bleService.syncTableFromCloud(t);
+                  _bleService.syncTableFromCloud(
+                    t,
+                    managerPhone: managerPhone,
+                    managerUid: managerUid,
+                  );
                 }
                 Future(() {
-                  if (!controller.isClosed) {
-                    controller.add(computeMerged());
-                  }
+                  emitMerged();
                 });
               },
               onError: (e) {
@@ -419,9 +561,7 @@ class ServiceRequestRepository {
 
         bleSub = _bleService.tablesStream.listen((_) {
           Future(() {
-            if (!controller.isClosed) {
-              controller.add(computeMerged());
-            }
+            emitMerged();
           });
         });
       },
@@ -444,9 +584,7 @@ class ServiceRequestRepository {
     List<TableModel> computeMerged() {
       if (lastDbTables.isEmpty) {
         return _bleService.currentTables.where((t) {
-          final isUnlocked = t.isUnlocked ||
-              _bleService.isTableUnlocked(t.id) ||
-              _bleService.isTableUnlocked(t.tableNumber.toString());
+          final isUnlocked = isTableAuthorizedForThisManager(t);
           return isUnlocked &&
               ((t.assignedWaiterId.isNotEmpty &&
                       t.assignedWaiterId == waiterId) ||
@@ -457,20 +595,14 @@ class ServiceRequestRepository {
         }).toList();
       }
       final merged = lastDbTables
-          .where((t) =>
-              t.isUnlocked ||
-              _bleService.isTableUnlocked(t.id) ||
-              _bleService.isTableUnlocked(t.tableNumber.toString()))
+          .where((t) => isTableAuthorizedForThisManager(t))
           .map((t) {
             final isBleOnline = _bleService.isTableOnline(t.id) ||
                 _bleService.isTableOnline(t.tableNumber.toString());
             final liveBleTable = _bleService.getLiveBleTable(t.id) ??
                 _bleService.getLiveBleTable(t.tableNumber.toString());
-            final isUnlocked =
-                t.isUnlocked ||
-                _bleService.isTableUnlocked(t.id) ||
-                _bleService.isTableUnlocked(t.tableNumber.toString()) ||
-                (liveBleTable?.isUnlocked ?? false);
+            final bool isAuthorized = isTableAuthorizedForThisManager(t);
+            final bool isUnlocked = isAuthorized;
             final bool effectiveOnline;
             if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
               effectiveOnline = liveBleTable != null
@@ -515,17 +647,11 @@ class ServiceRequestRepository {
               isUnlocked: isUnlocked,
             );
           })
-          .where((t) =>
-              t.isUnlocked ||
-              _bleService.isTableUnlocked(t.id) ||
-              _bleService.isTableUnlocked(t.tableNumber.toString()))
+          .where((t) => t.isUnlocked)
           .toList();
 
       for (final bleTable in _bleService.currentTables) {
-        final isUnlocked =
-            bleTable.isUnlocked ||
-            _bleService.isTableUnlocked(bleTable.id) ||
-            _bleService.isTableUnlocked(bleTable.tableNumber.toString());
+        final isUnlocked = isTableAuthorizedForThisManager(bleTable) && bleTable.flag != -2;
         final isAssigned =
             (bleTable.assignedWaiterId.isNotEmpty &&
                 bleTable.assignedWaiterId == waiterId) ||
@@ -540,7 +666,7 @@ class ServiceRequestRepository {
                   m.id == bleTable.id ||
                   m.tableNumber.toString() == bleTable.tableNumber.toString(),
             )) {
-          merged.add(bleTable);
+          merged.add(bleTable.copyWith(isUnlocked: true));
         }
       }
 
@@ -557,6 +683,17 @@ class ServiceRequestRepository {
 
     controller = StreamController<List<TableModel>>(
       onListen: () {
+        List<TableModel>? lastEmitted;
+        void emitMerged() {
+          if (controller.isClosed) return;
+          final merged = computeMerged();
+          if (lastEmitted != null && _areTableListsEqual(lastEmitted!, merged)) {
+            return;
+          }
+          lastEmitted = merged;
+          controller.add(merged);
+        }
+
         dbSub = _dbService
             .getTablesForWaiterStream(
               waiterId,
@@ -569,12 +706,14 @@ class ServiceRequestRepository {
                 lastDbTables = dbList;
                 for (final t in dbList) {
                   _bleService.assignWaiterLocally(t.id, waiterId, t.waiterName);
-                  _bleService.syncTableFromCloud(t);
+                  _bleService.syncTableFromCloud(
+                    t,
+                    managerPhone: managerPhone,
+                    managerUid: managerUid,
+                  );
                 }
                 Future(() {
-                  if (!controller.isClosed) {
-                    controller.add(computeMerged());
-                  }
+                  emitMerged();
                 });
               },
               onError: (e) {
@@ -586,9 +725,7 @@ class ServiceRequestRepository {
 
         bleSub = _bleService.tablesStream.listen((_) {
           Future(() {
-            if (!controller.isClosed) {
-              controller.add(computeMerged());
-            }
+            emitMerged();
           });
         });
       },
@@ -626,8 +763,75 @@ class ServiceRequestRepository {
     required String waiterName,
     required List<String> tableIds,
   }) async {
+    // Admission check: Manager can only assign waiters to tables they have authorized and unlocked
+    final unauthorized = tableIds.where((tableId) {
+      final cleanId = _bleService.cleanTableNum(tableId);
+      final numPart = cleanId.replaceAll(RegExp(r'[^0-9]'), '');
+
+      // 1. Explicitly authorized in GatewayWifiService for this manager
+      if (_bleService.isTableUnlockedForManager(
+            tableId,
+            managerPhone: managerPhone,
+            managerUid: managerUid,
+          ) ||
+          _bleService.isTableUnlockedForManager(
+            cleanId,
+            managerPhone: managerPhone,
+            managerUid: managerUid,
+          )) {
+        return false;
+      }
+
+      // 2. Verified credentials exist for this manager
+      if (_credentialService != null &&
+          (_credentialService.getCredential(
+                cleanId,
+                managerPhone: managerPhone,
+                managerUid: managerUid,
+              ) !=
+              null ||
+              (numPart.isNotEmpty &&
+                  _credentialService.getCredential(
+                        numPart,
+                        managerPhone: managerPhone,
+                        managerUid: managerUid,
+                      ) !=
+                      null))) {
+        return false;
+      }
+
+      // 3. If in cached tables, verify this manager's authorization
+      final cached = _cachedTables.cast<TableModel?>().firstWhere(
+        (t) => t != null && (t.id == tableId || t.tableNumber.toString() == cleanId),
+        orElse: () => null,
+      );
+      if (cached != null) {
+        return !isTableAuthorizedForThisManager(cached);
+      }
+
+      // 4. If table is physically locked in local Gateway BLE service without credentials
+      final liveTable = _bleService.getLiveTable(tableId);
+      if (liveTable != null && (liveTable.flag == -2 || liveTable.status == 'locked')) {
+        return true;
+      }
+
+      return false;
+    }).toList();
+
+    if (unauthorized.isNotEmpty) {
+      throw Exception(
+        'Cannot assign waiter: The following tables are not unlocked or authorized by you: ${unauthorized.join(", ")}. Please unlock each table with its password first.',
+      );
+    }
+
     for (final tableId in tableIds) {
       _bleService.assignWaiterLocally(tableId, waiterId, waiterName);
+      _bleService.authorizeTableForManager(
+        tableId: tableId,
+        password: '',
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
     }
     if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
       await _dbService.assignWaiterToTables(
@@ -635,6 +839,7 @@ class ServiceRequestRepository {
         waiterName: waiterName,
         tableIds: tableIds,
         managerPhone: managerPhone,
+        managerUid: managerUid,
       );
     }
   }
@@ -646,6 +851,7 @@ class ServiceRequestRepository {
       await _dbService.removeWaiterFromTable(
         tableId,
         managerPhone: managerPhone,
+        managerUid: managerUid,
       );
     }
   }
@@ -809,6 +1015,8 @@ class ServiceRequestRepository {
     final verified = await _bleService.verifyDeviceOwnership(
       deviceId: cleanId,
       password: trimmedPassword,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
     );
 
     // ------------------------------------------------------------------
@@ -820,18 +1028,27 @@ class ServiceRequestRepository {
       );
     }
 
+    _bleService.authorizeTableForManager(
+      tableId: cleanId,
+      password: trimmedPassword,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
+
     // Persist verified credential dynamically in local secure store
     if (_credentialService != null) {
-      await _credentialService!.saveCredential(
+      await _credentialService.saveCredential(
         cleanId,
         trimmedPassword,
         managerPhone: managerPhone,
+        managerUid: managerUid,
       );
       if (cleanDigits.isNotEmpty && cleanDigits != cleanId) {
-        await _credentialService!.saveCredential(
+        await _credentialService.saveCredential(
           cleanDigits,
           trimmedPassword,
           managerPhone: managerPhone,
+          managerUid: managerUid,
         );
       }
     }
@@ -872,23 +1089,64 @@ class ServiceRequestRepository {
   Future<void> lockTable(String tableId) async {
     final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
     final cleanId = _bleService.cleanTableNum(tableId);
+
+    // Deauthorize for THIS manager in GatewayWifiService
+    _bleService.deauthorizeTableForManager(
+      tableId: tableId,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
+    if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
+      _bleService.deauthorizeTableForManager(
+        tableId: 'table_$cleanDigits',
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
+    }
+    _bleService.deauthorizeTableForManager(
+      tableId: cleanId,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
+
     if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
-      await _dbService.lockTable(tableId, managerPhone: managerPhone);
+      await _dbService.lockTable(
+        tableId,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
       if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
         await _dbService.lockTable(
           'table_$cleanDigits',
           managerPhone: managerPhone,
+          managerUid: managerUid,
         );
       }
     }
-    await _bleService.lockTableLocally(tableId);
+    await _bleService.lockTableLocally(
+      tableId,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
     if (cleanDigits.isNotEmpty && 'table_$cleanDigits' != tableId) {
-      await _bleService.lockTableLocally('table_$cleanDigits');
+      await _bleService.lockTableLocally(
+        'table_$cleanDigits',
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
     }
     if (_credentialService != null) {
-      await _credentialService!.removeCredential(cleanId, managerPhone: managerPhone);
+      await _credentialService.removeCredential(
+        cleanId,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
       if (cleanDigits.isNotEmpty && cleanDigits != cleanId) {
-        await _credentialService!.removeCredential(cleanDigits, managerPhone: managerPhone);
+        await _credentialService.removeCredential(
+          cleanDigits,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        );
       }
     }
   }

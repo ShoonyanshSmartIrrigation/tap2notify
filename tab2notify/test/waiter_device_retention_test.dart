@@ -89,6 +89,7 @@ class MockFirebaseRealtimeServiceForRetention extends FirebaseRealtimeService {
     required String waiterName,
     required List<String> tableIds,
     String? managerPhone,
+    String? managerUid,
   }) async {
     for (final tableId in tableIds) {
       final existing = _tablesStore[tableId];

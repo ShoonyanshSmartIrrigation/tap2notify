@@ -47,6 +47,7 @@
 #define GATEWAY_SETUP_AP_PASS   "Tap2Notify123"
 
 #define DEFAULT_WIFI_CHANNEL    1
+#define DEFAULT_HOTEL_TOKEN     0x54324E01  // Multi-tenant Hotel Network Isolation Token ("T2N1")
 #define MAX_DEVICES             64
 #define HEARTBEAT_TIMEOUT_MS    30000
 #define UDP_DISCOVERY_PORT      8888
@@ -69,6 +70,7 @@ enum MessageType : uint8_t {
 
 typedef struct __attribute__((packed)) {
   uint8_t  magic;             // Protocol Magic Byte: 0x54 ('T')
+  uint32_t hotelToken;        // Multi-tenant Hotel Network Isolation Token
   uint8_t  msgType;           // MessageType
   char     deviceId[16];      // e.g. "1", "2", "C3_001"
   int8_t   flag;              // -2: LOCKED, -1: IDLE, 0: PENDING, 1: ACCEPTED
@@ -103,6 +105,7 @@ Preferences wifiPrefs;
 bool routerConfigured = false;
 String routerSSID = "";
 String routerPass = "";
+uint32_t currentHotelToken = DEFAULT_HOTEL_TOKEN;
 String lastDisconnectReason = "None";
 bool isSoftApActive = false;
 
@@ -381,12 +384,18 @@ void onEspNowDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, 
   T2N_Packet* pkt = (T2N_Packet*)incomingData;
   if (pkt->magic != 0x54) return; // Ignore invalid magic byte
 
+  // Multi-tenant check: Drop packets originating from foreign hotels immediately
+  if (pkt->hotelToken != 0 && currentHotelToken != 0 && pkt->hotelToken != currentHotelToken) {
+    return;
+  }
+
   registerOrUpdateDevice(pkt->deviceId, src_addr, pkt->flag, pkt->isUnlocked == 1, pkt->seqNumber);
 
   // Send immediate ACK / PONG back to C3 node to keep channel sync & prevent false channel hunting
   T2N_Packet ackPkt;
   memset(&ackPkt, 0, sizeof(ackPkt));
   ackPkt.magic = 0x54;
+  ackPkt.hotelToken = currentHotelToken;
   ackPkt.msgType = MSG_RESP_STATUS;
   strncpy(ackPkt.deviceId, pkt->deviceId, sizeof(ackPkt.deviceId) - 1);
   ackPkt.flag = pkt->flag;
@@ -438,6 +447,7 @@ void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* p
   T2N_Packet pkt;
   memset(&pkt, 0, sizeof(pkt));
   pkt.magic = 0x54;
+  pkt.hotelToken = currentHotelToken;
   pkt.msgType = (uint8_t)type;
   String cleanTarget = cleanTableId(targetDeviceId);
   strncpy(pkt.deviceId, cleanTarget.length() > 0 ? cleanTarget.c_str() : targetDeviceId, sizeof(pkt.deviceId) - 1);
@@ -455,8 +465,8 @@ void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* p
   }
 
   esp_err_t res = esp_now_send(targetMac, (uint8_t*)&pkt, sizeof(pkt));
-  Serial.printf("[GATEWAY -> C3 TX] Target: Table %s | Cmd: 0x%02X | Payload: '%s' | Status: %s\n",
-                targetDeviceId, type, payload ? payload : "", res == ESP_OK ? "OK" : "FAIL");
+  Serial.printf("[GATEWAY -> C3 TX (Hotel 0x%08X)] Target: Table %s | Cmd: 0x%02X | Payload: '%s' | Status: %s\n",
+                currentHotelToken, targetDeviceId, type, payload ? payload : "", res == ESP_OK ? "OK" : "FAIL");
 }
 
 bool executeCommandWithSyncWait(const char* devId, MessageType msgType, const char* payload, unsigned long timeoutMs) {
@@ -526,7 +536,10 @@ void sendUdpDiscoveryBeacon() {
   String activeIp = getActiveGatewayIp();
 
   IPAddress broadcastIp(255, 255, 255, 255);
+  char tokHex[16];
+  snprintf(tokHex, sizeof(tokHex), "0x%08X", currentHotelToken);
   String beaconData = "{\"gateway\":\"T2N_GATEWAY"
+                      "\",\"hotel_token\":\"" + String(tokHex) + 
                       "\",\"ip\":\"" + activeIp + 
                       "\",\"sta_ip\":\"" + (isStaConnected ? WiFi.localIP().toString() : "") + 
                       "\",\"ap_ip\":\"" + (isSoftApActive ? WiFi.softAPIP().toString() : "") + 
@@ -622,7 +635,7 @@ void setupHttpRoutes() {
   auto enableCORS = []() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+    server.sendHeader("Access-Control-Allow-Headers", "Content-Type, X-Gateway-Key");
   };
 
   server.on("/api/devices", HTTP_OPTIONS, [enableCORS]() { enableCORS(); server.send(204); });
@@ -807,6 +820,12 @@ void setupHttpRoutes() {
     wifiPrefs.putString("pass", routerPass);
     wifiPrefs.putBool("configured", true);
 
+    if (doc.containsKey("hotelToken")) {
+      currentHotelToken = doc["hotelToken"].as<uint32_t>();
+      wifiPrefs.putUInt("hotel_tok", currentHotelToken);
+      Serial.printf("[WIFI PROVISION] Custom Hotel Token configured: 0x%08X\n", currentHotelToken);
+    }
+
     Serial.printf("\n[WIFI PROVISION] New router credentials saved to NVS: SSID='%s'\n", routerSSID.c_str());
 
     // Respond to app first before re-initializing Wi-Fi
@@ -888,9 +907,10 @@ void setup() {
 
   // Initialize NVS Storage for Wi-Fi Router Settings
   wifiPrefs.begin("t2n_wifi", false);
-  routerConfigured = wifiPrefs.getBool("configured", false);
-  routerSSID = wifiPrefs.getString("ssid", "");
-  routerPass = wifiPrefs.getString("pass", "");
+  routerConfigured  = wifiPrefs.getBool("configured", false);
+  routerSSID        = wifiPrefs.getString("ssid", "");
+  routerPass        = wifiPrefs.getString("pass", "");
+  currentHotelToken = wifiPrefs.getUInt("hotel_tok", DEFAULT_HOTEL_TOKEN);
 
   Serial.print("[WIFI STA] Gateway MAC Address: ");
   Serial.println(WiFi.macAddress());

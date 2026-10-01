@@ -38,26 +38,53 @@ class FirebaseRealtimeService {
   String? get _currentAuthPhone =>
       FirebaseAuth.instance.currentUser?.phoneNumber;
 
-  static String sanitizePhone(String phone) {
-    // Keep only numeric digits
-    final digits = phone.trim().replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) {
+  static String sanitizePhone(String phone, [String? fallbackUid]) {
+    final clean = phone.trim();
+    final digits = clean.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length >= 10) {
       // In case a country code prefix exists (e.g. 919876543210), extract the 10-digit mobile number
       return digits.substring(digits.length - 10);
     }
-    return digits.isNotEmpty ? digits : 'default_manager';
+    if (digits.isNotEmpty && digits.length >= 7 && digits == clean) {
+      return digits;
+    }
+    if (fallbackUid != null && fallbackUid.trim().isNotEmpty) {
+      return fallbackUid.trim().replaceAll(RegExp(r'[.#$\[\]]'), '_');
+    }
+    final sanitizedClean = clean.replaceAll(RegExp(r'[.#$\[\]]'), '_');
+    if (sanitizedClean.isNotEmpty) {
+      return sanitizedClean;
+    }
+    return 'default_manager';
   }
 
-  String _resolvePhone(String? managerPhone) {
-    if (managerPhone != null && managerPhone.trim().isNotEmpty) {
-      return sanitizePhone(managerPhone);
+  String _resolvePhone(String? managerPhone, [String? managerUid]) {
+    final phone = managerPhone?.trim() ?? '';
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length >= 10) {
+      return digits.substring(digits.length - 10);
+    }
+    if (digits.isNotEmpty && digits.length >= 7 && digits == phone) {
+      return digits;
+    }
+    final uid = (managerUid != null && managerUid.trim().isNotEmpty)
+        ? managerUid.trim()
+        : _currentAuthUid;
+    if (uid.isNotEmpty) {
+      return uid.replaceAll(RegExp(r'[.#$\[\]]'), '_');
+    }
+    final cleanPhone = phone.replaceAll(RegExp(r'[.#$\[\]]'), '_');
+    if (cleanPhone.isNotEmpty) {
+      return cleanPhone;
     }
     final authPhone = _currentAuthPhone;
     if (authPhone != null && authPhone.trim().isNotEmpty) {
-      return sanitizePhone(authPhone);
+      final authDigits = authPhone.trim().replaceAll(RegExp(r'[^0-9]'), '');
+      if (authDigits.length >= 10) {
+        return authDigits.substring(authDigits.length - 10);
+      }
+      if (authDigits.isNotEmpty) return authDigits;
     }
-    final authUid = _currentAuthUid;
-    if (authUid.isNotEmpty) return authUid;
     return 'default_manager';
   }
 
@@ -65,16 +92,16 @@ class FirebaseRealtimeService {
   DatabaseReference get _usersRef => _db.ref('users');
 
   // Manager-Scoped Waiters Node: /waiters/$managerPhone
-  DatabaseReference _waitersRef(String? managerPhone) =>
-      _db.ref('waiters/${_resolvePhone(managerPhone)}');
+  DatabaseReference _waitersRef(String? managerPhone, [String? managerUid]) =>
+      _db.ref('waiters/${_resolvePhone(managerPhone, managerUid)}');
 
   // Manager-Scoped Tables Node: /tables/$managerPhone
-  DatabaseReference _tablesRef(String? managerPhone) =>
-      _db.ref('tables/${_resolvePhone(managerPhone)}');
+  DatabaseReference _tablesRef(String? managerPhone, [String? managerUid]) =>
+      _db.ref('tables/${_resolvePhone(managerPhone, managerUid)}');
 
   // Manager-Scoped Service Requests Node: /serviceRequests/$managerPhone
-  DatabaseReference _requestsRef(String? managerPhone) =>
-      _db.ref('serviceRequests/${_resolvePhone(managerPhone)}');
+  DatabaseReference _requestsRef(String? managerPhone, [String? managerUid]) =>
+      _db.ref('serviceRequests/${_resolvePhone(managerPhone, managerUid)}');
 
   // Hardware Device Status Node (Global device telemetry)
   DatabaseReference get _devicesRef => _db.ref('devices');
@@ -167,13 +194,46 @@ class FirebaseRealtimeService {
     if (raw is Map) {
       raw.forEach((key, value) {
         if (value is Map) {
-          waiters.add(WaiterModel.fromMap(value, key.toString()));
+          final waiter = WaiterModel.fromMap(value, key.toString());
+          // Strip sensitive passcode so staff/waiters fetching the list cannot inspect credentials
+          waiters.add(waiter.copyWith(passcode: ''));
         }
       });
     }
 
     waiters.sort((a, b) => a.waiterId.compareTo(b.waiterId));
     return waiters;
+  }
+
+  /// Secure Waiter Authentication: Validates PIN against specific waiter record
+  /// without exposing passcodes of other staff members.
+  Future<WaiterModel?> authenticateWaiter({
+    required String managerPhone,
+    required String waiterId,
+    required String passcode,
+  }) async {
+    final cleanPhone = sanitizePhone(managerPhone);
+    final cleanId = waiterId.trim().toUpperCase();
+    final cleanPasscode = passcode.trim();
+
+    if (cleanPhone.isEmpty || cleanId.isEmpty || cleanPasscode.isEmpty) {
+      return null;
+    }
+
+    final snap = await _waitersRef(cleanPhone).child(cleanId).get();
+    if (!snap.exists || snap.value == null) {
+      return null;
+    }
+
+    final raw = snap.value;
+    if (raw is Map) {
+      final storedPass = (raw['passcode'] ?? raw['pin'] ?? '').toString().trim();
+      if (storedPass == cleanPasscode) {
+        final waiter = WaiterModel.fromMap(raw, cleanId);
+        return waiter.copyWith(passcode: '');
+      }
+    }
+    return null;
   }
 
   Future<void> saveWaiter(
@@ -318,8 +378,9 @@ class FirebaseRealtimeService {
     required String waiterName,
     required List<String> tableIds,
     String? managerPhone,
+    String? managerUid,
   }) async {
-    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedPhone = _resolvePhone(managerPhone, managerUid);
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Map<String, dynamic> updates = {};
 
@@ -331,11 +392,11 @@ class FirebaseRealtimeService {
     }
 
     if (updates.isNotEmpty) {
-      await _tablesRef(resolvedPhone).update(updates);
+      await _tablesRef(resolvedPhone, managerUid).update(updates);
     }
 
     // Synchronize all waiters' assignedTableIds in /waiters/$managerPhone
-    final allWaitersSnap = await _waitersRef(resolvedPhone).get();
+    final allWaitersSnap = await _waitersRef(resolvedPhone, managerUid).get();
     if (allWaitersSnap.exists && allWaitersSnap.value is Map) {
       final allWaiters = allWaitersSnap.value as Map;
       final Map<String, dynamic> waiterUpdates = {};
@@ -365,7 +426,7 @@ class FirebaseRealtimeService {
       });
 
       if (waiterUpdates.isNotEmpty) {
-        await _waitersRef(resolvedPhone).update(waiterUpdates);
+        await _waitersRef(resolvedPhone, managerUid).update(waiterUpdates);
       }
     }
   }
@@ -374,11 +435,12 @@ class FirebaseRealtimeService {
   Future<void> removeWaiterFromTable(
     String tableId, {
     String? managerPhone,
+    String? managerUid,
   }) async {
-    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedPhone = _resolvePhone(managerPhone, managerUid);
     final int now = DateTime.now().millisecondsSinceEpoch;
 
-    await _tablesRef(resolvedPhone).child(tableId).update({
+    await _tablesRef(resolvedPhone, managerUid).child(tableId).update({
       'assigned_waiter_id': '',
       'assigned_waiter_name': '',
       'waiter_name': '',
@@ -386,7 +448,7 @@ class FirebaseRealtimeService {
     });
 
     // Remove tableId from all waiters in /waiters/$managerPhone
-    final allWaitersSnap = await _waitersRef(resolvedPhone).get();
+    final allWaitersSnap = await _waitersRef(resolvedPhone, managerUid).get();
     if (allWaitersSnap.exists && allWaitersSnap.value is Map) {
       final allWaiters = allWaitersSnap.value as Map;
       final Map<String, dynamic> waiterUpdates = {};
@@ -403,7 +465,7 @@ class FirebaseRealtimeService {
       });
 
       if (waiterUpdates.isNotEmpty) {
-        await _waitersRef(resolvedPhone).update(waiterUpdates);
+        await _waitersRef(resolvedPhone, managerUid).update(waiterUpdates);
       }
     }
   }
@@ -414,8 +476,8 @@ class FirebaseRealtimeService {
     String? managerUid,
     String? managerEmail,
   }) {
-    final resolvedPhone = _resolvePhone(managerPhone);
-    final ref = _tablesRef(resolvedPhone);
+    final resolvedPhone = _resolvePhone(managerPhone, managerUid);
+    final ref = _tablesRef(resolvedPhone, managerUid);
 
     return ref.onValue.map((event) {
       final snapshot = event.snapshot;
@@ -476,7 +538,7 @@ class FirebaseRealtimeService {
     String? managerUid,
     String? managerEmail,
   }) {
-    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedPhone = _resolvePhone(managerPhone, managerUid);
     return getTablesStream(
       managerPhone: resolvedPhone,
       managerUid: managerUid,
@@ -487,6 +549,7 @@ class FirebaseRealtimeService {
       try {
         final waiterSnap = await _waitersRef(
           resolvedPhone,
+          managerUid,
         ).child(waiterId).get();
         if (waiterSnap.exists && waiterSnap.value is Map) {
           final wMap = waiterSnap.value as Map;
@@ -543,9 +606,10 @@ class FirebaseRealtimeService {
   Future<Map<String, dynamic>?> fetchRegisteredTable(
     String identifier, {
     String? managerPhone,
+    String? managerUid,
   }) async {
-    final resolvedPhone = _resolvePhone(managerPhone);
-    final ref = _tablesRef(resolvedPhone);
+    final resolvedPhone = _resolvePhone(managerPhone, managerUid);
+    final ref = _tablesRef(resolvedPhone, managerUid);
     final clean = identifier.trim();
     if (clean.isEmpty) return null;
 
@@ -605,21 +669,21 @@ class FirebaseRealtimeService {
     String? managerUid,
     String? password,
   }) async {
-    final resolvedPhone = _resolvePhone(managerPhone);
+    final resolvedPhone = _resolvePhone(managerPhone, managerUid);
     final resolvedUid = managerUid ?? _currentAuthUid;
     final int now = DateTime.now().millisecondsSinceEpoch;
     final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
     final normTableId = cleanDigits.isNotEmpty ? 'table_$cleanDigits' : tableId;
 
     var targetId = tableId;
-    var snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    var snap = await _tablesRef(resolvedPhone, managerUid).child(targetId).get();
     if (!snap.exists) {
       targetId = normTableId;
-      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+      snap = await _tablesRef(resolvedPhone, managerUid).child(targetId).get();
     }
     if (!snap.exists && cleanDigits.isNotEmpty) {
       targetId = cleanDigits;
-      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+      snap = await _tablesRef(resolvedPhone, managerUid).child(targetId).get();
     }
 
     final Map<String, dynamic> updates = {
@@ -628,33 +692,35 @@ class FirebaseRealtimeService {
       'unlocked_by': resolvedUid,
       'updated_at': now,
     };
-    if (password != null && password.trim().isNotEmpty) {
-      updates['device_password'] = password.trim();
-    }
 
-    await _tablesRef(resolvedPhone).child(targetId).update(updates);
+    await _tablesRef(resolvedPhone, managerUid).child(targetId).update(updates);
   }
 
   // Manager Locks Table
-  Future<void> lockTable(String tableId, {String? managerPhone}) async {
-    final resolvedPhone = _resolvePhone(managerPhone);
+  Future<void> lockTable(
+    String tableId, {
+    String? managerPhone,
+    String? managerUid,
+  }) async {
+    final resolvedPhone = _resolvePhone(managerPhone, managerUid);
     final int now = DateTime.now().millisecondsSinceEpoch;
     final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
     final normTableId = cleanDigits.isNotEmpty ? 'table_$cleanDigits' : tableId;
 
     var targetId = tableId;
-    var snap = await _tablesRef(resolvedPhone).child(targetId).get();
+    var snap = await _tablesRef(resolvedPhone, managerUid).child(targetId).get();
     if (!snap.exists) {
       targetId = normTableId;
-      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+      snap = await _tablesRef(resolvedPhone, managerUid).child(targetId).get();
     }
     if (!snap.exists && cleanDigits.isNotEmpty) {
       targetId = cleanDigits;
-      snap = await _tablesRef(resolvedPhone).child(targetId).get();
+      snap = await _tablesRef(resolvedPhone, managerUid).child(targetId).get();
     }
 
     await _tablesRef(
       resolvedPhone,
+      managerUid,
     ).child(targetId).update({'is_unlocked': false, 'updated_at': now});
   }
 

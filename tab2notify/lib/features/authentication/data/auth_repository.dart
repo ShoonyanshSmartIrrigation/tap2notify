@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/services/firebase_auth_service.dart';
 import '../../../core/services/firebase_realtime_service.dart';
+import '../../../core/services/gateway_wifi_service.dart';
 import '../domain/user_model.dart';
 
 class AuthRepository {
@@ -72,6 +73,7 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
+    GatewayWifiService().clearManagerSession();
     await _authService.signOut();
   }
 

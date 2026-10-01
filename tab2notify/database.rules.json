@@ -4,26 +4,27 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
-      }
+      },
+      ".indexOn": ["phone", "phoneNumber", "role"]
     },
     "tables": {
       "$managerPhone": {
-        ".read": "auth != null",
-        ".write": "auth != null",
+        ".read": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
+        ".write": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
         ".indexOn": ["table_number", "flag", "status", "assigned_waiter_id"]
       }
     },
     "waiters": {
       "$managerPhone": {
-        ".read": "auth != null",
-        ".write": "auth != null",
+        ".read": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
+        ".write": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
         ".indexOn": ["waiterId", "status", "name"]
       }
     },
     "serviceRequests": {
       "$managerPhone": {
-        ".read": "auth != null",
-        ".write": "auth != null",
+        ".read": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
+        ".write": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
         ".indexOn": ["createdAt", "status", "priority", "tableNumber"]
       }
     },

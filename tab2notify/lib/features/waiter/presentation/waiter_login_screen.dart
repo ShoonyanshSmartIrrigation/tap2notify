@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -271,16 +272,27 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
       final id = _idController.text.trim().toUpperCase();
       final pin = _pinController.text.trim();
 
-      // Find matching waiter strictly under this manager's phone
-      final match = _fetchedWaiters.where(
-        (w) => w.waiterId.toUpperCase() == id && w.passcode == pin,
+      // Secure Server-Side Waiter PIN Verification
+      final dbService = ref.read(firebaseRealtimeServiceProvider);
+      final authenticatedWaiter = await dbService.authenticateWaiter(
+        managerPhone: managerDigits,
+        waiterId: id,
+        passcode: pin,
       );
 
-      if (match.isNotEmpty) {
-        final waiter = match.first.copyWith(
+      if (authenticatedWaiter != null) {
+        final waiter = authenticatedWaiter.copyWith(
           managerPhone: FirebaseRealtimeService.sanitizePhone(managerDigits),
         );
         _failedAttempts = 0;
+
+        // Ensure active auth session for RTDB tenant access
+        if (FirebaseAuth.instance.currentUser == null) {
+          try {
+            await FirebaseAuth.instance.signInAnonymously();
+          } catch (_) {}
+        }
+
         await ref.read(currentLoggedWaiterProvider.notifier).setWaiter(waiter);
 
         // Register device FCM token for this waiter with session isolation

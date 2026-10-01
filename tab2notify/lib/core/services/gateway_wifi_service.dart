@@ -38,6 +38,12 @@ class GatewayWifiService {
   final Map<String, DateTime> _lastSeenTimes = {};
   final Set<String> _unlockedTableIds = {};
 
+  // Manager-Specific Authorization Partitioning (managerKey -> set of authorized tableIds/cleanNums)
+  final Map<String, Set<String>> _managerAuthorizedTables = {};
+  final Map<String, Map<String, String>> _managerStoredCredentials = {};
+  String? _activeManagerPhone;
+  String? _activeManagerUid;
+
   // Dynamic Device Ownership Credentials & Verification Tracking (Populated at runtime)
   final Map<String, String> _storedCredentials = {};
   final Set<String> _verifiedDeviceIds = {};
@@ -49,10 +55,198 @@ class GatewayWifiService {
     return match?.group(0);
   }
 
+  String resolveManagerKey({String? managerPhone, String? managerUid}) {
+    final phone = (managerPhone != null && managerPhone.isNotEmpty)
+        ? managerPhone
+        : (_activeManagerPhone ?? '');
+    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanPhone.length >= 10) {
+      return cleanPhone.substring(cleanPhone.length - 10);
+    }
+    if (cleanPhone.isNotEmpty && cleanPhone.length >= 7 && cleanPhone == phone.trim()) {
+      return cleanPhone;
+    }
+
+    final uid = (managerUid != null && managerUid.isNotEmpty)
+        ? managerUid
+        : (_activeManagerUid ?? '');
+    final cleanUid = uid.trim().replaceAll(RegExp(r'[.#$\[\]]'), '_');
+    if (cleanUid.isNotEmpty) return cleanUid;
+
+    if (phone.trim().isNotEmpty) {
+      return phone.trim().replaceAll(RegExp(r'[.#$\[\]]'), '_');
+    }
+
+    return 'default';
+  }
+
+  void setActiveManager({String? managerPhone, String? managerUid}) {
+    _activeManagerPhone = managerPhone;
+    _activeManagerUid = managerUid;
+
+    // Immediately re-evaluate unlock status of all cached tables for THIS manager session
+    final mgrKey = resolveManagerKey(managerPhone: managerPhone, managerUid: managerUid);
+    final bool hasValidManager = (mgrKey != 'default') ||
+        (managerPhone != null && managerPhone.trim().isNotEmpty) ||
+        (managerUid != null && managerUid.trim().isNotEmpty);
+
+    for (final entry in _tables.entries.toList()) {
+      final isUnlockedForThis = hasValidManager && isTableUnlockedForManager(
+        entry.key,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
+      _tables[entry.key] = entry.value.copyWith(
+        isUnlocked: isUnlockedForThis,
+      );
+    }
+    _emitTables();
+  }
+
+  void clearManagerSession() {
+    _activeManagerPhone = null;
+    _activeManagerUid = null;
+    _unlockedTableIds.clear();
+    _verifiedDeviceIds.clear();
+    _storedCredentials.clear();
+    _unauthorizedDeviceIds.clear();
+    _verifyingDeviceIds.clear();
+
+    // Reset isUnlocked on all cached tables to ensure complete isolation on logout/switch
+    for (final entry in _tables.entries.toList()) {
+      _tables[entry.key] = entry.value.copyWith(
+        isUnlocked: false,
+        unlockedAt: null,
+        unlockedBy: null,
+      );
+    }
+    _emitTables();
+  }
+
+  void authorizeTableForManager({
+    required String tableId,
+    required String password,
+    String? managerPhone,
+    String? managerUid,
+  }) {
+    final mgrKey = resolveManagerKey(
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
+    final cleanId = _cleanTableNum(tableId);
+    final numPart = _extractNumericId(cleanId);
+    final fullTableId = 'table_$cleanId';
+    final trimmed = password.trim();
+
+    final set = _managerAuthorizedTables.putIfAbsent(mgrKey, () => <String>{});
+    set.add(cleanId);
+    set.add(fullTableId);
+    if (numPart != null) {
+      set.add(numPart);
+      set.add('table_$numPart');
+    }
+
+    if (trimmed.isNotEmpty) {
+      final creds = _managerStoredCredentials.putIfAbsent(
+        mgrKey,
+        () => <String, String>{},
+      );
+      creds[cleanId] = trimmed;
+      if (numPart != null) creds[numPart] = trimmed;
+    }
+
+    final activeKey = resolveManagerKey();
+    if (mgrKey == activeKey) {
+      _unlockedTableIds.add(fullTableId);
+      if (numPart != null) _unlockedTableIds.add('table_$numPart');
+      _verifiedDeviceIds.add(cleanId);
+      if (numPart != null) _verifiedDeviceIds.add(numPart);
+      _unauthorizedDeviceIds.remove(cleanId);
+      if (numPart != null) _unauthorizedDeviceIds.remove(numPart);
+      if (trimmed.isNotEmpty) {
+        _storedCredentials[cleanId] = trimmed;
+        if (numPart != null) _storedCredentials[numPart] = trimmed;
+      }
+      _updateTableUnlockState(fullTableId, true);
+    }
+  }
+
+  void deauthorizeTableForManager({
+    required String tableId,
+    String? managerPhone,
+    String? managerUid,
+  }) {
+    final mgrKey = resolveManagerKey(
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
+    final cleanId = _cleanTableNum(tableId);
+    final numPart = _extractNumericId(cleanId);
+    final fullTableId = 'table_$cleanId';
+
+    final set = _managerAuthorizedTables[mgrKey];
+    if (set != null) {
+      set.remove(cleanId);
+      set.remove(fullTableId);
+      if (numPart != null) {
+        set.remove(numPart);
+        set.remove('table_$numPart');
+      }
+    }
+
+    final creds = _managerStoredCredentials[mgrKey];
+    if (creds != null) {
+      creds.remove(cleanId);
+      if (numPart != null) creds.remove(numPart);
+    }
+
+    final activeKey = resolveManagerKey();
+    if (mgrKey == activeKey) {
+      _unlockedTableIds.remove(fullTableId);
+      if (numPart != null) _unlockedTableIds.remove('table_$numPart');
+      _storedCredentials.remove(cleanId);
+      if (numPart != null) _storedCredentials.remove(numPart);
+      _updateTableUnlockState(fullTableId, false);
+    }
+  }
+
   Set<String> get verifiedDeviceIds => Set.unmodifiable(_verifiedDeviceIds);
-  bool isDeviceOwnershipVerified(String deviceId) {
+  bool isDeviceOwnershipVerified(
+    String deviceId, {
+    String? managerPhone,
+    String? managerUid,
+  }) {
     final clean = _cleanTableNum(deviceId);
     final numPart = _extractNumericId(clean);
+
+    final hasManager = (managerPhone != null && managerPhone.isNotEmpty) ||
+        (managerUid != null && managerUid.isNotEmpty) ||
+        (_activeManagerPhone != null && _activeManagerPhone!.isNotEmpty) ||
+        (_activeManagerUid != null && _activeManagerUid!.isNotEmpty);
+
+    if (hasManager) {
+      final mgrKey = resolveManagerKey(
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
+      final set = _managerAuthorizedTables[mgrKey];
+      if (set != null) {
+        if (set.contains(clean) ||
+            set.contains('table_$clean') ||
+            (numPart != null &&
+                (set.contains(numPart) || set.contains('table_$numPart')))) {
+          return true;
+        }
+      }
+      final creds = _managerStoredCredentials[mgrKey];
+      if (creds != null &&
+          (creds.containsKey(clean) ||
+              (numPart != null && creds.containsKey(numPart)))) {
+        return true;
+      }
+      return false;
+    }
+
     return _verifiedDeviceIds.contains(clean) ||
         (numPart != null && _verifiedDeviceIds.contains(numPart));
   }
@@ -66,20 +260,60 @@ class GatewayWifiService {
         (numPart != null && _tables.containsKey('table_$numPart'));
   }
 
-  String? getStoredPassword(String deviceId) {
+  String? getStoredPassword(
+    String deviceId, {
+    String? managerPhone,
+    String? managerUid,
+  }) {
     final clean = _cleanTableNum(deviceId);
     final numPart = _extractNumericId(clean);
+
+    final hasManager = (managerPhone != null && managerPhone.isNotEmpty) ||
+        (managerUid != null && managerUid.isNotEmpty) ||
+        (_activeManagerPhone != null && _activeManagerPhone!.isNotEmpty) ||
+        (_activeManagerUid != null && _activeManagerUid!.isNotEmpty);
+
+    if (hasManager) {
+      final mgrKey = resolveManagerKey(
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
+      final creds = _managerStoredCredentials[mgrKey];
+      if (creds != null) {
+        final pass = creds[clean] ?? (numPart != null ? creds[numPart] : null);
+        if (pass != null) return pass;
+      }
+    }
+
     return _storedCredentials[clean] ??
         (numPart != null ? _storedCredentials[numPart] : null);
   }
 
-  void registerStoredCredential(String deviceId, String password) {
+  void registerStoredCredential(
+    String deviceId,
+    String password, {
+    String? managerPhone,
+    String? managerUid,
+  }) {
     final clean = _cleanTableNum(deviceId);
     final numPart = _extractNumericId(clean);
     final trimmed = password.trim();
     _storedCredentials[clean] = trimmed;
     if (numPart != null) {
       _storedCredentials[numPart] = trimmed;
+    }
+
+    final mgrKey = resolveManagerKey(
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
+    final creds = _managerStoredCredentials.putIfAbsent(
+      mgrKey,
+      () => <String, String>{},
+    );
+    creds[clean] = trimmed;
+    if (numPart != null) {
+      creds[numPart] = trimmed;
     }
   }
 
@@ -540,12 +774,34 @@ class GatewayWifiService {
     final bool isUnauthorized = _unauthorizedDeviceIds.contains(cleanTableNum) &&
         (numPart == null || _unauthorizedDeviceIds.contains(numPart));
 
-    if (!isVerified) {
+    final bool hasActiveManager =
+        (_activeManagerPhone != null && _activeManagerPhone!.isNotEmpty) ||
+        (_activeManagerUid != null && _activeManagerUid!.isNotEmpty);
+
+    final bool isManagerVerified = hasActiveManager &&
+        (isTableUnlockedForManager(
+              cleanTableNum,
+              managerPhone: _activeManagerPhone,
+              managerUid: _activeManagerUid,
+            ) ||
+            getStoredPassword(
+                  cleanTableNum,
+                  managerPhone: _activeManagerPhone,
+                  managerUid: _activeManagerUid,
+                ) !=
+                null);
+
+    if (!isVerified && !isManagerVerified) {
       if (isUnauthorized) {
         return;
       }
 
-      final storedPassword = _storedCredentials[cleanTableNum] ??
+      final storedPassword = getStoredPassword(
+            cleanTableNum,
+            managerPhone: _activeManagerPhone,
+            managerUid: _activeManagerUid,
+          ) ??
+          _storedCredentials[cleanTableNum] ??
           (numPart != null ? _storedCredentials[numPart] : null);
       if (storedPassword == null) {
         _unauthorizedDeviceIds.add(cleanTableNum);
@@ -559,7 +815,12 @@ class GatewayWifiService {
       // Automatically verify against physical device in background using stored credentials
       if (!_verifyingDeviceIds.contains(cleanTableNum)) {
         _verifyingDeviceIds.add(cleanTableNum);
-        verifyDeviceOwnership(deviceId: cleanTableNum, password: storedPassword)
+        verifyDeviceOwnership(
+          deviceId: cleanTableNum,
+          password: storedPassword,
+          managerPhone: _activeManagerPhone,
+          managerUid: _activeManagerUid,
+        )
             .then((verified) {
               _verifyingDeviceIds.remove(cleanTableNum);
               if (verified) {
@@ -644,17 +905,29 @@ class GatewayWifiService {
     if (isExplicitlyLocked) {
       _unlockedTableIds.remove(tableId);
       if (numTableId != null) _unlockedTableIds.remove(numTableId);
-    } else if (explicitUnlocked == true) {
-      _unlockedTableIds.add(tableId);
-      if (numTableId != null) _unlockedTableIds.add(numTableId);
+      if (hasActiveManager) {
+        deauthorizeTableForManager(
+          tableId: tableId,
+          managerPhone: _activeManagerPhone,
+          managerUid: _activeManagerUid,
+        );
+      }
     }
 
     final existing = _tables[tableId];
-    final bool isUnlocked =
-        !isExplicitlyLocked &&
-        (explicitUnlocked == true ||
-            _unlockedTableIds.contains(tableId) ||
-            (existing?.isUnlocked ?? false));
+    final bool isUnlocked;
+    if (isExplicitlyLocked) {
+      isUnlocked = false;
+    } else if (hasActiveManager) {
+      isUnlocked = isTableUnlockedForManager(
+        tableId,
+        managerPhone: _activeManagerPhone,
+        managerUid: _activeManagerUid,
+      );
+    } else {
+      isUnlocked = _unlockedTableIds.contains(tableId) ||
+          (numTableId != null && _unlockedTableIds.contains(numTableId));
+    }
 
     final finalFlag = isHardwareLocked ? -1 : rawFlag;
     final finalStatus = isHardwareLocked
@@ -725,7 +998,7 @@ class GatewayWifiService {
       unlockedAt: isUnlocked ? (existing?.unlockedAt ?? now) : null,
       unlockedBy: existing?.unlockedBy,
       createdAt: existing?.createdAt ?? now,
-      updatedAt: stateChanged ? now : (existing?.updatedAt ?? now),
+      updatedAt: stateChanged ? now : existing.updatedAt,
       acceptedAt: accAt,
       requestSentAt: reqSentAt,
     );
@@ -768,6 +1041,13 @@ class GatewayWifiService {
         _storedCredentials[clean] = devPwd;
         if (numPart != null) _storedCredentials[numPart] = devPwd;
       }
+      final bool isUnl = device['unlocked'] == true ||
+          device['isUnlocked'] == true ||
+          device['is_unlocked'] == true;
+      if (isUnl) {
+        _unlockedTableIds.add('table_$clean');
+        if (numPart != null) _unlockedTableIds.add('table_$numPart');
+      }
     }
     processDevicePayload(device);
   }
@@ -781,6 +1061,10 @@ class GatewayWifiService {
     _unauthorizedDeviceIds.clear();
     _verifyingDeviceIds.clear();
     _storedCredentials.clear();
+    _managerAuthorizedTables.clear();
+    _managerStoredCredentials.clear();
+    _activeManagerPhone = null;
+    _activeManagerUid = null;
     devicePasswordValidator = null;
     httpClient = null;
     onDeviceDiscovered = null;
@@ -942,13 +1226,17 @@ class GatewayWifiService {
 
     // Admission Control: Operational commands (non-AUTH) require verified device ownership or unlocked table
     final bool isTableAuthorized = tableId == 'ALL' ||
+        isTableUnlocked(
+          tableId,
+          managerPhone: _activeManagerPhone,
+          managerUid: _activeManagerUid,
+        ) ||
         _verifiedDeviceIds.contains(cleanNum) ||
         (numPart != null && _verifiedDeviceIds.contains(numPart)) ||
         _unlockedTableIds.contains(cleanTableId) ||
         _unlockedTableIds.contains(cleanNum) ||
         (numPart != null && _unlockedTableIds.contains(numPart)) ||
-        (_tables[cleanTableId]?.isUnlocked ?? false) ||
-        isTableUnlocked(tableId);
+        (_tables[cleanTableId]?.isUnlocked ?? false);
 
     if (command != 'AUTH' && !isTableAuthorized) {
       debugPrint(
@@ -1110,6 +1398,8 @@ class GatewayWifiService {
   Future<bool> verifyDeviceOwnership({
     required String deviceId,
     required String password,
+    String? managerPhone,
+    String? managerUid,
   }) async {
     final cleanId = _cleanTableNum(deviceId);
     final numPart = _extractNumericId(cleanId) ?? _extractNumericId(deviceId);
@@ -1124,6 +1414,12 @@ class GatewayWifiService {
         trimmedPassword,
       );
       if (isValid) {
+        authorizeTableForManager(
+          tableId: cleanId,
+          password: trimmedPassword,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        );
         _storedCredentials[cleanId] = trimmedPassword;
         _verifiedDeviceIds.add(cleanId);
         _unauthorizedDeviceIds.remove(cleanId);
@@ -1139,6 +1435,11 @@ class GatewayWifiService {
         _updateTableUnlockState(cleanTableId, true);
         return true;
       }
+      deauthorizeTableForManager(
+        tableId: cleanId,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
       _verifiedDeviceIds.remove(cleanId);
       _unauthorizedDeviceIds.add(cleanId);
       if (numPart != null) {
@@ -1160,11 +1461,21 @@ class GatewayWifiService {
 
     // Check against dynamically stored credentials:
     // If device ID is already registered in system credentials, its password must match!
-    final expected = _storedCredentials[cleanId] ??
+    final expected = getStoredPassword(
+          cleanId,
+          managerPhone: managerPhone,
+          managerUid: managerUid,
+        ) ??
+        _storedCredentials[cleanId] ??
         (numPart != null ? _storedCredentials[numPart] : null);
     if (expected != null &&
         expected.isNotEmpty &&
         expected != trimmedPassword) {
+      deauthorizeTableForManager(
+        tableId: cleanId,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
       _verifiedDeviceIds.remove(cleanId);
       _unauthorizedDeviceIds.add(cleanId);
       if (numPart != null) {
@@ -1195,6 +1506,12 @@ class GatewayWifiService {
     );
 
     if (success) {
+      authorizeTableForManager(
+        tableId: cleanId,
+        password: trimmedPassword,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
       _storedCredentials[cleanId] = trimmedPassword;
       _verifiedDeviceIds.add(cleanId);
       _unauthorizedDeviceIds.remove(cleanId);
@@ -1213,6 +1530,11 @@ class GatewayWifiService {
       );
       return true;
     } else {
+      deauthorizeTableForManager(
+        tableId: cleanId,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
       _verifiedDeviceIds.remove(cleanId);
       _unauthorizedDeviceIds.add(cleanId);
       if (numPart != null) {
@@ -1240,16 +1562,29 @@ class GatewayWifiService {
   Future<bool> verifyDevicePassword({
     required String tableId,
     required String password,
+    String? managerPhone,
+    String? managerUid,
   }) async {
     return verifyDeviceOwnership(
       deviceId: _cleanTableNum(tableId),
       password: password,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
     );
   }
 
-  Future<void> revokeDeviceOwnership(String deviceId) async {
+  Future<void> revokeDeviceOwnership(
+    String deviceId, {
+    String? managerPhone,
+    String? managerUid,
+  }) async {
     final cleanId = _cleanTableNum(deviceId);
     final cleanTableId = 'table_$cleanId';
+    deauthorizeTableForManager(
+      tableId: cleanId,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
     _verifiedDeviceIds.remove(cleanId);
     _unauthorizedDeviceIds.add(cleanId);
     _unlockedTableIds.remove(cleanTableId);
@@ -1279,11 +1614,15 @@ class GatewayWifiService {
               ? (current.flag == 0
                   ? 'pending'
                   : (current.flag == 1 ? 'accepted' : 'idle'))
-              : 'locked',
+              : (current.status == 'pending'
+                  ? 'pending'
+                  : (current.status == 'accepted'
+                      ? 'accepted'
+                      : (current.flag == -2 ? 'locked' : current.status))),
           flag: unlocked
               ? (current.flag == -2 ? -1 : current.flag)
-              : -2,
-          unlockedAt: unlocked ? DateTime.now().millisecondsSinceEpoch : null,
+              : current.flag,
+          unlockedAt: unlocked ? (current.unlockedAt ?? DateTime.now().millisecondsSinceEpoch) : null,
         );
         _tables[key] = updated;
         anyUpdated = true;
@@ -1299,7 +1638,7 @@ class GatewayWifiService {
         tableNumber: parsedNum,
         deviceId: 'device_$cleanNum',
         status: unlocked ? 'idle' : 'locked',
-        flag: unlocked ? -1 : -2,
+        flag: unlocked ? -1 : -1,
         isDeviceOnline: true,
         isUnlocked: unlocked,
         unlockedAt: unlocked ? now : null,
@@ -1316,11 +1655,28 @@ class GatewayWifiService {
     }
   }
 
-  bool isTableUnlocked(String tableId) {
+  bool isTableUnlocked(
+    String tableId, {
+    String? managerPhone,
+    String? managerUid,
+  }) {
     final cleanId = tableId.startsWith('table_') ? tableId : 'table_$tableId';
     final cleanNum = _cleanTableNum(tableId);
     final numPart = _extractNumericId(cleanNum) ?? _extractNumericId(tableId);
     final numTableId = numPart != null ? 'table_$numPart' : null;
+
+    final hasManager = (managerPhone != null && managerPhone.isNotEmpty) ||
+        (managerUid != null && managerUid.isNotEmpty) ||
+        (_activeManagerPhone != null && _activeManagerPhone!.isNotEmpty) ||
+        (_activeManagerUid != null && _activeManagerUid!.isNotEmpty);
+
+    if (hasManager) {
+      return isTableUnlockedForManager(
+        tableId,
+        managerPhone: managerPhone,
+        managerUid: managerUid,
+      );
+    }
 
     final liveTable = _tables[cleanId] ??
         (numTableId != null ? _tables[numTableId] : null) ??
@@ -1334,26 +1690,80 @@ class GatewayWifiService {
         (numTableId != null && _unlockedTableIds.contains(numTableId));
   }
 
-  Future<void> unlockTableLocally(String tableId) async {
+  bool isTableUnlockedForManager(
+    String tableId, {
+    String? managerPhone,
+    String? managerUid,
+  }) {
+    final mgrKey = resolveManagerKey(
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
+    final cleanId = _cleanTableNum(tableId);
+    final numPart = _extractNumericId(cleanId) ?? _extractNumericId(tableId);
+    final fullTableId = 'table_$cleanId';
+
+    final set = _managerAuthorizedTables[mgrKey];
+    if (set != null) {
+      if (set.contains(cleanId) ||
+          set.contains(fullTableId) ||
+          (numPart != null &&
+              (set.contains(numPart) || set.contains('table_$numPart')))) {
+        return true;
+      }
+    }
+
+    final creds = _managerStoredCredentials[mgrKey];
+    if (creds != null &&
+        (creds.containsKey(cleanId) ||
+            (numPart != null && creds.containsKey(numPart)))) {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> unlockTableLocally(
+    String tableId, {
+    String? managerPhone,
+    String? managerUid,
+  }) async {
     final cleanTableId = tableId.startsWith('table_')
         ? tableId
         : 'table_$tableId';
     final cleanNum = _cleanTableNum(tableId);
     final numPart = _extractNumericId(cleanNum) ?? _extractNumericId(tableId);
     final numTableId = numPart != null ? 'table_$numPart' : null;
+
+    authorizeTableForManager(
+      tableId: tableId,
+      password: '',
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
 
     _unlockedTableIds.add(cleanTableId);
     if (numTableId != null) _unlockedTableIds.add(numTableId);
     _updateTableUnlockState(cleanTableId, true);
   }
 
-  Future<void> lockTableLocally(String tableId) async {
+  Future<void> lockTableLocally(
+    String tableId, {
+    String? managerPhone,
+    String? managerUid,
+  }) async {
     final cleanTableId = tableId.startsWith('table_')
         ? tableId
         : 'table_$tableId';
     final cleanNum = _cleanTableNum(tableId);
     final numPart = _extractNumericId(cleanNum) ?? _extractNumericId(tableId);
     final numTableId = numPart != null ? 'table_$numPart' : null;
+
+    deauthorizeTableForManager(
+      tableId: tableId,
+      managerPhone: managerPhone,
+      managerUid: managerUid,
+    );
 
     _unlockedTableIds.remove(cleanTableId);
     if (numTableId != null) _unlockedTableIds.remove(numTableId);
@@ -1383,27 +1793,21 @@ class GatewayWifiService {
       final updated = existing.copyWith(
         assignedWaiterId: waiterId,
         waiterName: waiterName,
-        isUnlocked: waiterId.isNotEmpty ? true : existing.isUnlocked,
-        unlockedAt: waiterId.isNotEmpty
-            ? (existing.unlockedAt ?? DateTime.now().millisecondsSinceEpoch)
-            : existing.unlockedAt,
+        isUnlocked: existing.isUnlocked,
+        unlockedAt: existing.unlockedAt,
       );
-      if (waiterId.isNotEmpty) {
-        _unlockedTableIds.add(cleanTableId);
-      }
       _tables[cleanTableId] = updated;
       _emitTables();
       onDeviceDiscovered?.call(updated);
     } else if (waiterId.isNotEmpty) {
-      _unlockedTableIds.add(cleanTableId);
       final newTable = TableModel(
         id: cleanTableId,
         tableNumber: tableNum,
         deviceId: 'device_$stripped',
         assignedWaiterId: waiterId,
         waiterName: waiterName,
-        isUnlocked: true,
-        unlockedAt: DateTime.now().millisecondsSinceEpoch,
+        isUnlocked: false,
+        unlockedAt: null,
         status: 'idle',
         flag: -1,
         createdAt: DateTime.now().millisecondsSinceEpoch,
@@ -1556,16 +1960,64 @@ class GatewayWifiService {
   }
 
   /// Syncs an incoming table state from Firebase Realtime Database into local Gateway cache
-  void syncTableFromCloud(TableModel cloudTable) {
+  void syncTableFromCloud(
+    TableModel cloudTable, {
+    String? managerPhone,
+    String? managerUid,
+  }) {
     final cleanNum = _cleanTableNum(cloudTable.tableNumber ?? cloudTable.id);
     final numPart = _extractNumericId(cleanNum) ?? _extractNumericId(cloudTable.id);
     final tableId = 'table_$cleanNum';
     final existing = _tables[tableId];
 
-    final int cloudUpdated = cloudTable.updatedAt ?? cloudTable.createdAt;
+    final int cloudUpdated = cloudTable.updatedAt ?? cloudTable.unlockedAt ?? cloudTable.createdAt;
     final int localUpdated = existing?.updatedAt ?? existing?.createdAt ?? 0;
 
-    if (existing == null || cloudUpdated >= localUpdated) {
+    final targetManager = managerPhone ?? _activeManagerPhone;
+    final targetUid = managerUid ?? cloudTable.unlockedBy ?? _activeManagerUid;
+
+    // Strict multi-manager isolation: If cloudTable has a distinct managerPhone or managerUid,
+    // verify it matches the current manager session before applying any state.
+    final bool isForeignManager = (cloudTable.managerPhone.isNotEmpty &&
+            targetManager != null &&
+            targetManager.isNotEmpty &&
+            cloudTable.managerPhone != targetManager) ||
+        (cloudTable.managerUid.isNotEmpty &&
+            targetUid != null &&
+            targetUid.isNotEmpty &&
+            cloudTable.managerUid != targetUid);
+
+    if (isForeignManager) {
+      return;
+    }
+
+    if (cloudTable.isUnlocked) {
+      if (targetManager != null && targetManager.isNotEmpty) {
+        authorizeTableForManager(
+          tableId: tableId,
+          password: '',
+          managerPhone: targetManager,
+          managerUid: targetUid,
+        );
+      }
+    } else {
+      if (targetManager != null && targetManager.isNotEmpty) {
+        deauthorizeTableForManager(
+          tableId: tableId,
+          managerPhone: targetManager,
+          managerUid: targetUid,
+        );
+      }
+    }
+
+    final bool unlockStateChanged = existing == null || existing.isUnlocked != cloudTable.isUnlocked;
+    if (existing == null || cloudUpdated >= localUpdated || unlockStateChanged) {
+      final isUnlockedForActive = isTableUnlocked(
+        tableId,
+        managerPhone: targetManager,
+        managerUid: targetUid,
+      );
+
       final updated = (existing ?? cloudTable).copyWith(
         flag: cloudTable.flag,
         status: cloudTable.status,
@@ -1575,19 +2027,14 @@ class GatewayWifiService {
         assignedWaiterId: cloudTable.assignedWaiterId.isNotEmpty
             ? cloudTable.assignedWaiterId
             : (existing?.assignedWaiterId ?? ''),
-        isUnlocked: cloudTable.isUnlocked,
+        isUnlocked: isUnlockedForActive,
         updatedAt: cloudUpdated,
         acceptedAt: cloudTable.acceptedAt ?? existing?.acceptedAt,
         requestSentAt: cloudTable.requestSentAt ?? existing?.requestSentAt,
       );
       _tables[tableId] = updated;
 
-      if (cloudTable.isUnlocked) {
-        _unlockedTableIds.add(tableId);
-        if (numPart != null) _unlockedTableIds.add('table_$numPart');
-        _verifiedDeviceIds.add(cleanNum);
-        if (numPart != null) _verifiedDeviceIds.add(numPart);
-      } else {
+      if (!isUnlockedForActive) {
         _unlockedTableIds.remove(tableId);
         if (numPart != null) _unlockedTableIds.remove('table_$numPart');
       }

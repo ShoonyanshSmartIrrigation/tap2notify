@@ -35,6 +35,7 @@
 #define DEVICE_ID               "Shoon2"
 #define DEFAULT_PASSWORD        "12345"
 #define DEFAULT_WIFI_CHANNEL    1
+#define DEFAULT_HOTEL_TOKEN     0x54324E01  // Multi-tenant Hotel Network Isolation Token ("T2N1")
 
 const int TOUCH_PIN  = 1;    // Touch / Button -> GPIO 1
 const int BUZZER_PIN = 2;    // Buzzer I/O    -> GPIO 2
@@ -56,6 +57,7 @@ DeviceState currentState = STATE_LOCKED;
 bool isDeviceUnlocked = false;
 String devicePassword = DEFAULT_PASSWORD;
 int currentChannel = DEFAULT_WIFI_CHANNEL;
+uint32_t currentHotelToken = DEFAULT_HOTEL_TOKEN;
 
 unsigned long acceptedTimestamp       = 0;
 int lastTouchState                    = LOW;
@@ -88,6 +90,7 @@ enum MessageType : uint8_t {
 
 typedef struct __attribute__((packed)) {
   uint8_t  magic;             // Protocol Magic Byte: 0x54 ('T')
+  uint32_t hotelToken;        // Multi-tenant Hotel Network Isolation Token
   uint8_t  msgType;           // MessageType
   char     deviceId[16];      // e.g. "1" or "C3_001"
   int8_t   flag;              // -2: LOCKED, -1: IDLE, 0: PENDING, 1: ACCEPTED
@@ -166,6 +169,7 @@ void sendPacketToGateway(MessageType type, const char* payloadStr = "") {
   T2N_Packet pkt;
   memset(&pkt, 0, sizeof(pkt));
   pkt.magic = 0x54;
+  pkt.hotelToken = currentHotelToken;
   pkt.msgType = (uint8_t)type;
   strncpy(pkt.deviceId, TABLE_NUMBER, sizeof(pkt.deviceId) - 1);
   pkt.flag = (int8_t)currentState;
@@ -180,8 +184,8 @@ void sendPacketToGateway(MessageType type, const char* payloadStr = "") {
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&pkt, sizeof(pkt));
   
   if (result == ESP_OK) {
-    Serial.printf("[ESP-NOW TX #%d (CH %d)] Type: 0x%02X | Table: %s | Flag: %d | Unlocked: %d | Payload: '%s'\n",
-                  packetSequence, currentChannel, type, TABLE_NUMBER, currentState, isDeviceUnlocked ? 1 : 0, payloadStr);
+    Serial.printf("[ESP-NOW TX #%d (CH %d | Hotel 0x%08X)] Type: 0x%02X | Table: %s | Flag: %d | Unlocked: %d | Payload: '%s'\n",
+                  packetSequence, currentChannel, currentHotelToken, type, TABLE_NUMBER, currentState, isDeviceUnlocked ? 1 : 0, payloadStr);
   } else {
     Serial.printf("[ESP-NOW TX ERROR (CH %d)] Failed to send packet (Code: %d)\n", currentChannel, result);
   }
@@ -211,9 +215,18 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
   T2N_Packet* pkt = (T2N_Packet*)incomingData;
   if (pkt->magic != 0x54) return; // Ignore invalid magic byte
 
-  // Update last gateway contact timestamp on ANY valid gateway packet
+  // Multi-tenant check: Drop packets originating from foreign hotels immediately
+  if (pkt->hotelToken != 0 && currentHotelToken != 0 && pkt->hotelToken != currentHotelToken) {
+    return;
+  }
+
+  // Update last gateway contact timestamp on valid gateway packet
   lastGatewayContactTime = millis();
-  preferences.putInt("channel", currentChannel);
+
+  // Wear-out protection: only write to NVS flash when channel has actually changed
+  if (preferences.getInt("channel", -1) != currentChannel) {
+    preferences.putInt("channel", currentChannel);
+  }
 
   // Filter messages: Only process commands addressed to THIS table, THIS device ID, or broadcast ("0" or "ALL")
   String cleanPktId = cleanTableId(pkt->deviceId);
@@ -382,15 +395,16 @@ void setup() {
 
   // Initialize NVS Preferences Storage
   preferences.begin("t2n_auth", false);
-  isDeviceUnlocked = preferences.getBool("unlocked", false);
-  devicePassword   = preferences.getString("password", DEFAULT_PASSWORD);
-  currentChannel   = preferences.getInt("channel", DEFAULT_WIFI_CHANNEL);
-  currentState     = isDeviceUnlocked ? STATE_IDLE : STATE_LOCKED;
+  isDeviceUnlocked  = preferences.getBool("unlocked", false);
+  devicePassword    = preferences.getString("password", DEFAULT_PASSWORD);
+  currentChannel    = preferences.getInt("channel", DEFAULT_WIFI_CHANNEL);
+  currentHotelToken = preferences.getUInt("hotel_tok", DEFAULT_HOTEL_TOKEN);
+  currentState      = isDeviceUnlocked ? STATE_IDLE : STATE_LOCKED;
 
   Serial.printf("\n============================================\n");
   Serial.printf("  Tab2Notify ESP32-C3 Node Booting\n");
-  Serial.printf("  Table: %s | Device ID: %s | Status: %s | Channel: %d\n", 
-                TABLE_NUMBER, DEVICE_ID, isDeviceUnlocked ? "UNLOCKED" : "LOCKED", currentChannel);
+  Serial.printf("  Table: %s | Device ID: %s | Status: %s | Channel: %d | Hotel: 0x%08X\n", 
+                TABLE_NUMBER, DEVICE_ID, isDeviceUnlocked ? "UNLOCKED" : "LOCKED", currentChannel, currentHotelToken);
   Serial.printf("============================================\n");
 
   // Initialize GPIO Pins

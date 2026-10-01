@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/services/fcm_service.dart';
+import '../../../core/services/gateway_wifi_service.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../dashboard/presentation/widgets/wifi_gateway_setup_dialog.dart';
@@ -384,6 +385,10 @@ class SettingsTabView extends ConsumerWidget {
       } catch (e) {
         debugPrint('[MANAGER SIGN OUT] Error unregistering FCM token: $e');
       }
+
+      try {
+        GatewayWifiService().clearManagerSession();
+      } catch (_) {}
 
       try {
         await ref.read(authRepositoryProvider).signOut();

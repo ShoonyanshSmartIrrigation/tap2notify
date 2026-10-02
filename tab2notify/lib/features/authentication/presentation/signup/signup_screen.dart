@@ -455,22 +455,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             letterSpacing: -0.5,
           ),
         ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.1, end: 0),
-
-        const SizedBox(height: 6),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Provision a new administrative account to control restaurant tables, waiter allocations, and live call bells',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.4,
-              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-            ),
-          ),
-        ).animate().fadeIn(delay: 150.ms),
       ],
     );
   }

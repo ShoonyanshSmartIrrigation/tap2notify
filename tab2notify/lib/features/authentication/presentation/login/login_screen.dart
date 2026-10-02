@@ -63,19 +63,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       });
 
       try {
-        await ref.read(authRepositoryProvider).signIn(
+        await ref
+            .read(authRepositoryProvider)
+            .signIn(
               email: _emailController.text.trim(),
               password: _passwordController.text,
             );
 
         // RBAC Role Verification: Enforce that the account is an authorized manager
-        final userProfile =
-            await ref.read(authRepositoryProvider).getCurrentUserProfile();
+        final userProfile = await ref
+            .read(authRepositoryProvider)
+            .getCurrentUserProfile();
         if (userProfile == null || userProfile.role != 'manager') {
           await ref.read(authRepositoryProvider).signOut();
           if (mounted) {
             setState(() {
-              _inlineError = 'Access Denied: Account lacks Manager permissions.';
+              _inlineError =
+                  'Access Denied: Account lacks Manager permissions.';
               _shakeTrigger++;
             });
             HapticFeedback.mediumImpact();
@@ -218,8 +222,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? AppColors.darkBackground : const Color(0xFFF8FAFC),
+      backgroundColor: isDark
+          ? AppColors.darkBackground
+          : const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Stack(
           children: [
@@ -411,45 +416,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       children: [
         // Executive Shield Badge
         Container(
-          width: 82,
-          height: 82,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFFB923C),
-                Color(0xFFEA580C),
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFEA580C).withValues(alpha: 0.35),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDark ? const Color(0xFF181818) : Colors.white,
+              width: 82,
+              height: 82,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
                 ),
-                child: const Icon(
-                  Icons.admin_panel_settings_rounded,
-                  size: 38,
-                  color: AppColors.primaryOrange,
-                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFEA580C).withValues(alpha: 0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-            ],
-          ),
-        )
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isDark ? const Color(0xFF181818) : Colors.white,
+                    ),
+                    child: const Icon(
+                      Icons.admin_panel_settings_rounded,
+                      size: 38,
+                      color: AppColors.primaryOrange,
+                    ),
+                  ),
+                ],
+              ),
+            )
             .animate()
             .scale(duration: 400.ms, curve: Curves.easeOutBack)
             .fadeIn(duration: 350.ms),
@@ -492,14 +494,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF2C1515)
-            : const Color(0xFFFEF2F2),
+        color: isDark ? const Color(0xFF2C1515) : const Color(0xFFFEF2F2),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isDark
-              ? const Color(0xFF7F1D1D)
-              : const Color(0xFFFECACA),
+          color: isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFECACA),
           width: 1.2,
         ),
         boxShadow: [
@@ -532,7 +530,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFF991B1B),
+                color: isDark
+                    ? const Color(0xFFFCA5A5)
+                    : const Color(0xFF991B1B),
                 height: 1.3,
               ),
             ),
@@ -554,73 +554,79 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   // ==========================================
   Widget _buildLoginFormCard(ThemeData theme, bool isDark) {
     return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : const Color(0xFFE2E8F0),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 1. Email Field
-          _buildEmailField(isDark),
-          const SizedBox(height: 18),
-
-          // 2. Password Field
-          _buildPasswordField(isDark),
-          const SizedBox(height: 8),
-
-          // 3. Forgot Password Link
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => context.push('/forgot-password'),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Forgot Password?',
-                    style: TextStyle(
-                      color: AppColors.primaryOrange,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 11,
-                    color: AppColors.primaryOrange,
-                  ),
-                ],
-              ),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : const Color(0xFFE2E8F0),
+              width: 1.2,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          const SizedBox(height: 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 1. Email Field
+              _buildEmailField(isDark),
+              const SizedBox(height: 18),
 
-          // 4. Primary Submit Button
-          _buildSubmitButton(),
-        ],
-      ),
-    ).animate().fadeIn(delay: 200.ms, duration: 400.ms).slideY(begin: 0.06, end: 0);
+              // 2. Password Field
+              _buildPasswordField(isDark),
+              const SizedBox(height: 8),
+
+              // 3. Forgot Password Link
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => context.push('/forgot-password'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Forgot Password?',
+                        style: TextStyle(
+                          color: AppColors.primaryOrange,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 11,
+                        color: AppColors.primaryOrange,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+
+              // 4. Primary Submit Button
+              _buildSubmitButton(),
+            ],
+          ),
+        )
+        .animate()
+        .fadeIn(delay: 200.ms, duration: 400.ms)
+        .slideY(begin: 0.06, end: 0);
   }
 
   // ==========================================
@@ -644,8 +650,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   color: hasFocus
                       ? AppColors.primaryOrange
                       : (isDark
-                          ? const Color(0xFFE2E8F0)
-                          : const Color(0xFF334155)),
+                            ? const Color(0xFFE2E8F0)
+                            : const Color(0xFF334155)),
                 ),
               ),
             ),
@@ -663,8 +669,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               color: hasFocus
                   ? AppColors.primaryOrange
                   : (isDark
-                      ? Colors.white.withValues(alpha: 0.10)
-                      : const Color(0xFFE2E8F0)),
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : const Color(0xFFE2E8F0)),
               width: hasFocus ? 1.8 : 1.2,
             ),
             boxShadow: hasFocus
@@ -759,8 +765,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   color: hasFocus
                       ? AppColors.primaryOrange
                       : (isDark
-                          ? const Color(0xFFE2E8F0)
-                          : const Color(0xFF334155)),
+                            ? const Color(0xFFE2E8F0)
+                            : const Color(0xFF334155)),
                 ),
               ),
             ),
@@ -778,8 +784,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               color: hasFocus
                   ? AppColors.primaryOrange
                   : (isDark
-                      ? Colors.white.withValues(alpha: 0.10)
-                      : const Color(0xFFE2E8F0)),
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : const Color(0xFFE2E8F0)),
               width: hasFocus ? 1.8 : 1.2,
             ),
             boxShadow: hasFocus
@@ -870,10 +876,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const Color(0xFFF97316).withValues(alpha: 0.7),
                   const Color(0xFFEA580C).withValues(alpha: 0.7),
                 ]
-              : [
-                  const Color(0xFFFB923C),
-                  const Color(0xFFEA580C),
-                ],
+              : [const Color(0xFFFB923C), const Color(0xFFEA580C)],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
@@ -981,36 +984,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
 
         const SizedBox(height: 18),
-
-        // Floor Staff Option
-        OutlinedButton.icon(
-          onPressed: () => context.go('/login'),
-          icon: const Icon(
-            Icons.restaurant_menu_rounded,
-            size: 16,
-            color: AppColors.primaryOrange,
-          ),
-          label: const Text(
-            'Switch to Floor Staff Terminal',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primaryOrange,
-            ),
-          ),
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : const Color(0xFFCBD5E1),
-              width: 1,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
       ],
     ).animate().fadeIn(delay: 250.ms);
   }

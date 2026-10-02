@@ -45,6 +45,8 @@ dependencies:
   intl: ^0.20.3
   http: ^1.6.0
   permission_handler: ^11.4.0
+  lottie: ^3.6.1
+  flutter_animate: ^4.5.2
 
 dev_dependencies:
   flutter_test:
@@ -73,6 +75,7 @@ flutter:
   assets:
     - assets/images/
     - assets/audio/
+    - assets/animations/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

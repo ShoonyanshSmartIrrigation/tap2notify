@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/services/fcm_service.dart';
 import '../../../../core/services/gateway_wifi_service.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/widgets/table_card.dart';
 import '../../service_requests/domain/table_model.dart';
@@ -98,102 +99,181 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     });
   }
 
+  // ==========================================
+  // MODERN ACTION DIALOGS
+  // ==========================================
+
   void _showAcceptDialog(TableModel table, String waiterName, String waiterId) {
     showDialog(
       context: context,
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
+        final isDark = theme.brightness == Brightness.dark;
+
         return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(26),
           ),
-          title: Column(
+          contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Hero Calling Icon
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 68,
+                height: 68,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE53935).withValues(alpha: 0.15),
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: const Icon(
-                  Icons.notifications_active_rounded,
-                  color: Color(0xFFE53935),
-                  size: 36,
+                child: const Center(
+                  child: Icon(
+                    Icons.notifications_active_rounded,
+                    color: Color(0xFFEF4444),
+                    size: 34,
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+
               Text(
                 'Table ${table.tableNumber} Calling',
                 style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  letterSpacing: -0.3,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Guest requesting immediate assistance',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFEF4444),
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'Guest is requesting immediate service 🔴',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                'Accept request for Table ${table.tableNumber} as $waiterName ($waiterId)?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: isDark ? Colors.grey[300] : const Color(0xFF475569),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () {
+                        _handledRequestId = null;
+                        Navigator.pop(dialogContext);
+                      },
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF16A34A).withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () async {
+                            _handledRequestId = null;
+                            final messenger = ScaffoldMessenger.of(context);
+                            Navigator.pop(dialogContext);
+
+                            final repo =
+                                ref.read(waiterServiceRequestRepositoryProvider);
+                            await repo.acceptTableRequest(
+                              tableId: table.id,
+                              waiterName: waiterName,
+                              waiterId: waiterId,
+                            );
+
+                            if (mounted) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '✓ Request accepted for Table ${table.tableNumber} by $waiterName',
+                                  ),
+                                  backgroundColor: const Color(0xFF16A34A),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Center(
+                              child: Text(
+                                'ACCEPT REQUEST',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          content: Text(
-            'Accept request for Table ${table.tableNumber} as $waiterName ($waiterId)?',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14),
-          ),
-          actionsPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                _handledRequestId = null;
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D32),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                _handledRequestId = null;
-                final messenger = ScaffoldMessenger.of(context);
-                Navigator.pop(dialogContext);
-
-                final repo = ref.read(waiterServiceRequestRepositoryProvider);
-                await repo.acceptTableRequest(
-                  tableId: table.id,
-                  waiterName: waiterName,
-                  waiterId: waiterId,
-                );
-
-                if (mounted) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '🟢 Table ${table.tableNumber} Request Accepted!',
-                      ),
-                      backgroundColor: const Color(0xFF2E7D32),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
-              child: const Text(
-                'ACCEPT REQUEST',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -204,92 +284,168 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
       context: context,
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
+        final isDark = theme.brightness == Brightness.dark;
+
         return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(26),
           ),
-          title: Column(
+          contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Hero Check Icon
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 68,
+                height: 68,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                  color: const Color(0xFF22C55E).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: const Icon(
-                  Icons.check_circle_outline_rounded,
-                  color: Color(0xFF2E7D32),
-                  size: 36,
+                child: const Center(
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF22C55E),
+                    size: 36,
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+
               Text(
                 'Table ${table.tableNumber}',
                 style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  letterSpacing: -0.3,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Service Currently in Progress',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF16A34A),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
-                'Request is in progress 🟢',
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                'Have you served the guest and completed the request for Table ${table.tableNumber}?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: isDark ? Colors.grey[300] : const Color(0xFF475569),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () {
+                        _handledRequestId = null;
+                        Navigator.pop(dialogContext);
+                      },
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF16A34A).withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () async {
+                            _handledRequestId = null;
+                            final messenger = ScaffoldMessenger.of(context);
+                            Navigator.pop(dialogContext);
+
+                            final repo =
+                                ref.read(waiterServiceRequestRepositoryProvider);
+                            await repo.resetTableStatus(table.id);
+
+                            if (mounted) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '✓ Table ${table.tableNumber} marked as Completed & Ready.',
+                                  ),
+                                  backgroundColor: const Color(0xFF16A34A),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Center(
+                              child: Text(
+                                'MARK AS SERVED',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          content: const Text(
-            'Have you served the guest and completed the request?',
-            textAlign: TextAlign.center,
-          ),
-          actionsPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                _handledRequestId = null;
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D32),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                _handledRequestId = null;
-                final messenger = ScaffoldMessenger.of(context);
-                Navigator.pop(dialogContext);
-
-                final repo = ref.read(waiterServiceRequestRepositoryProvider);
-                await repo.resetTableStatus(table.id);
-
-                if (mounted) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '✓ Table ${table.tableNumber} marked as Completed & Ready.',
-                      ),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
-              child: const Text(
-                'MARK AS SERVED / COMPLETED',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -300,94 +456,164 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
       context: context,
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
+        final isDark = theme.brightness == Brightness.dark;
+
         return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(26),
           ),
-          title: Column(
+          contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 68,
+                height: 68,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF9800).withValues(alpha: 0.15),
+                  color: AppColors.primaryOrange.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.radio_button_unchecked_rounded,
-                  color: Color(0xFFFF9800),
-                  size: 36,
+                child: const Center(
+                  child: Icon(
+                    Icons.table_restaurant_rounded,
+                    color: AppColors.primaryOrange,
+                    size: 34,
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+
               Text(
                 'Table ${table.tableNumber}',
                 style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  letterSpacing: -0.3,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'Table is Idle & Available 🟠',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryOrange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Table Available / Idle',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryOrange,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Assigned Staff: $waiterName\nTap below if guest requests assistance at this table.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: isDark ? Colors.grey[300] : const Color(0xFF475569),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: Text(
+                        'Close',
+                        style: TextStyle(
+                          color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFDC2626).withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            Navigator.pop(dialogContext);
+
+                            final repo =
+                                ref.read(waiterServiceRequestRepositoryProvider);
+                            await repo.triggerTableRequest(
+                              table.id,
+                              tableNumber: table.tableNumber,
+                            );
+
+                            if (mounted) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '🔴 Service request triggered for Table ${table.tableNumber}',
+                                  ),
+                                  backgroundColor: const Color(0xFFEF4444),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.notifications_active_rounded,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'CALL SERVICE',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 12.5,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          content: Text(
-            'Assigned Staff: $waiterName\nTap below if assistance is requested at this table.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14),
-          ),
-          actionsPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE53935),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                Navigator.pop(dialogContext);
-
-                final repo = ref.read(waiterServiceRequestRepositoryProvider);
-                await repo.triggerTableRequest(
-                  table.id,
-                  tableNumber: table.tableNumber,
-                );
-
-                if (mounted) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '🔴 Service request triggered for Table ${table.tableNumber}',
-                      ),
-                      backgroundColor: const Color(0xFFE53935),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
-              icon: const Icon(Icons.notifications_active_rounded, size: 18),
-              label: const Text(
-                'CALL SERVICE',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -409,6 +635,9 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     }
   }
 
+  // ==========================================
+  // MAIN BUILD METHOD
+  // ==========================================
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -417,18 +646,20 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
 
     if (currentWaiter == null) {
       return Scaffold(
+        backgroundColor:
+            isDark ? AppColors.darkBackground : const Color(0xFFF8FAFC),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(),
+              const CircularProgressIndicator(color: AppColors.primaryOrange),
               const SizedBox(height: 16),
               const Text(
                 'Loading Staff Session...',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
               ),
-              const SizedBox(height: 8),
-              TextButton(
+              const SizedBox(height: 12),
+              OutlinedButton(
                 onPressed: () => context.go('/login'),
                 child: const Text('Return to Staff Login'),
               ),
@@ -475,6 +706,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     }
 
     return Scaffold(
+      backgroundColor:
+          isDark ? AppColors.darkBackground : const Color(0xFFF8FAFC),
       drawer: _buildWaiterDrawer(
         context: context,
         theme: theme,
@@ -493,13 +726,14 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
       appBar: AppBar(
         elevation: 0,
         scrolledUnderElevation: 0,
-        toolbarHeight: 62,
-        backgroundColor: isDark ? const Color(0xFF141218) : Colors.white,
+        toolbarHeight: 64,
+        backgroundColor:
+            isDark ? AppColors.darkSurface : Colors.white,
         automaticallyImplyLeading: false,
         titleSpacing: 16,
         title: Builder(
           builder: (drawerCtx) => InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             onTap: () {
               HapticFeedback.lightImpact();
               Scaffold.of(drawerCtx).openDrawer();
@@ -508,84 +742,73 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: Row(
                 children: [
+                  // Waiter Avatar Button / Menu Trigger
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeInOut,
-                        width: 38,
-                        height: 38,
+                      Container(
+                        width: 42,
+                        height: 42,
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF1E1B26)
-                              : const Color(0xFFFFF3E0),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.3,
-                            ),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
                           ),
+                          borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: isDark ? 0.25 : 0.15,
-                              ),
-                              blurRadius: 6,
-                              offset: const Offset(0, 1),
+                              color: const Color(0xFFEA580C).withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 350),
-                            child: Image.asset(
-                              isDark
-                                  ? 'assets/images/app_logo.png'
-                                  : 'assets/images/app_logo_white.png',
-                              key: ValueKey(isDark),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Icon(
-                                    Icons.restaurant_rounded,
-                                    color: theme.colorScheme.primary,
-                                    size: 22,
-                                  ),
+                        child: Center(
+                          child: Text(
+                            waiterId,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12.5,
+                              letterSpacing: 0.3,
                             ),
                           ),
                         ),
                       ),
                       if (pendingTables.isNotEmpty)
                         Positioned(
-                          top: -4,
-                          right: -4,
+                          top: -3,
+                          right: -3,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 1.5,
-                            ),
+                            padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE53935),
+                              color: const Color(0xFFEF4444),
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: isDark
-                                    ? const Color(0xFF141218)
+                                    ? AppColors.darkSurface
                                     : Colors.white,
                                 width: 1.5,
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                                  blurRadius: 6,
+                                ),
+                              ],
                             ),
                             constraints: const BoxConstraints(
-                              minWidth: 17,
-                              minHeight: 17,
+                              minWidth: 16,
+                              minHeight: 16,
                             ),
                             child: Center(
                               child: Text(
                                 '${pendingTables.length}',
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w900,
                                   height: 1.0,
                                 ),
                               ),
@@ -595,6 +818,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                     ],
                   ),
                   const SizedBox(width: 12),
+
+                  // Waiter Info Header
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -606,23 +831,22 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                               child: Text(
                                 waiterName,
                                 style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.3,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            const SizedBox(width: 3),
+                            const SizedBox(width: 4),
                             Icon(
                               Icons.keyboard_arrow_down_rounded,
                               size: 18,
-                              color: isDark
-                                  ? Colors.grey[400]
-                                  : Colors.grey[600],
+                              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 1),
+                        const SizedBox(height: 2),
                         Row(
                           children: [
                             Container(
@@ -630,20 +854,22 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                               height: 7,
                               decoration: BoxDecoration(
                                 color: isConnected
-                                    ? const Color.fromARGB(255, 49, 233, 58)
-                                    : const Color(0xFFE53935),
+                                    ? const Color(0xFF22C55E)
+                                    : const Color(0xFFEF4444),
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 5),
-                            Text(
-                              'ID: $waiterId • ${assignedTables.length} Tables',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: isDark
-                                    ? Colors.grey[400]
-                                    : Colors.grey[600],
+                            Flexible(
+                              child: Text(
+                                'FLOOR TERMINAL • ${assignedTables.length} TABLES',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                  color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -661,7 +887,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 14.0),
             child: InkWell(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               onTap: () {
                 HapticFeedback.lightImpact();
                 _showGatewayInfoModal(
@@ -677,18 +903,14 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color:
-                      (isConnected
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFFE53935))
-                          .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: isConnected
+                      ? const Color(0xFF22C55E).withValues(alpha: 0.12)
+                      : const Color(0xFFEF4444).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color:
-                        (isConnected
-                                ? const Color(0xFF2E7D32)
-                                : const Color(0xFFE53935))
-                            .withValues(alpha: 0.35),
+                    color: isConnected
+                        ? const Color(0xFF22C55E).withValues(alpha: 0.3)
+                        : const Color(0xFFEF4444).withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -698,10 +920,21 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                       isConnected
                           ? Icons.wifi_rounded
                           : Icons.wifi_find_rounded,
-                      size: 18,
+                      size: 16,
                       color: isConnected
-                          ? const Color.fromARGB(255, 49, 233, 58)
-                          : const Color(0xFFE53935),
+                          ? const Color(0xFF22C55E)
+                          : const Color(0xFFEF4444),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isConnected ? 'Online' : 'Scanning',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: isConnected
+                            ? const Color(0xFF22C55E)
+                            : const Color(0xFFEF4444),
+                      ),
                     ),
                   ],
                 ),
@@ -711,25 +944,24 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
         ],
       ),
       body: RefreshIndicator(
+        color: AppColors.primaryOrange,
         onRefresh: () async {
           HapticFeedback.lightImpact();
-          // Refresh Wi-Fi Gateway devices
           await ref.read(gatewayWifiServiceProvider).refreshDevices();
-          // Invalidate waiter stream provider to re-merge
           ref.invalidate(waiterTablesStreamProvider(waiterId));
           await Future.delayed(const Duration(milliseconds: 500));
         },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // Hero Banner for Waiter
+            // 1. Hero Floor Status Card
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(22),
                     onTap: pendingTables.isNotEmpty
                         ? () {
                             HapticFeedback.lightImpact();
@@ -739,96 +971,126 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E1B26) : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
+                        color: isDark ? AppColors.darkSurface : Colors.white,
+                        borderRadius: BorderRadius.circular(22),
                         border: Border.all(
                           color: pendingTables.isNotEmpty
-                              ? const Color(0xFFE53935).withValues(alpha: 0.6)
-                              : theme.colorScheme.primary.withValues(alpha: 0.3),
-                          width: pendingTables.isNotEmpty ? 1.5 : 1.2,
+                              ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                              : (isDark
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : const Color(0xFFE2E8F0)),
+                          width: pendingTables.isNotEmpty ? 1.6 : 1.2,
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: pendingTables.isNotEmpty
-                                ? const Color(0xFFE53935).withValues(alpha: 0.15)
-                                : Colors.black.withValues(alpha: 0.03),
-                            blurRadius: pendingTables.isNotEmpty ? 12 : 10,
-                            offset: const Offset(0, 2),
+                                ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                                : Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
+                            blurRadius: pendingTables.isNotEmpty ? 16 : 10,
+                            offset: const Offset(0, 3),
                           ),
                         ],
                       ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
-                          ),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFFEA580C,
-                              ).withValues(alpha: 0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                      child: Row(
+                        children: [
+                          // Left Icon Squircle
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: pendingTables.isNotEmpty
+                                    ? [const Color(0xFFEF4444), const Color(0xFFDC2626)]
+                                    : [const Color(0xFFFB923C), const Color(0xFFEA580C)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (pendingTables.isNotEmpty
+                                          ? const Color(0xFFDC2626)
+                                          : const Color(0xFFEA580C))
+                                      .withValues(alpha: 0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            waiterId,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'My Assigned Floor Tables',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                            child: Center(
+                              child: Icon(
+                                pendingTables.isNotEmpty
+                                    ? Icons.notifications_active_rounded
+                                    : Icons.room_service_rounded,
+                                color: Colors.white,
+                                size: 24,
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              pendingTables.isNotEmpty
-                                  ? '🔴 ${pendingTables.length} Active Request(s) require attention!'
-                                  : '✓ All assigned tables are serviced & ready.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: pendingTables.isNotEmpty
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: pendingTables.isNotEmpty
-                                    ? const Color(0xFFE53935)
-                                    : const Color.fromARGB(255, 60, 218, 68),
+                          ),
+                          const SizedBox(width: 14),
+
+                          // Text Status
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'My Floor Station',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15,
+                                    letterSpacing: -0.2,
+                                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  pendingTables.isNotEmpty
+                                      ? '🔴 ${pendingTables.length} Active Request(s) require attention!'
+                                      : '✓ All assigned tables are serviced & ready.',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: pendingTables.isNotEmpty
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                    color: pendingTables.isNotEmpty
+                                        ? const Color(0xFFEF4444)
+                                        : const Color(0xFF16A34A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Filter pill prompt
+                          if (pendingTables.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Text(
+                                'VIEW ➔',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFFEF4444),
+                                ),
                               ),
                             ),
-                          ],
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
 
-            // Filter Row
+            // 2. Filter Segment Bar
             SliverToBoxAdapter(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -838,75 +1100,95 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ),
                 child: Row(
                   children: [
-                    _buildFilterChip(
-                      'all',
-                      'All (${assignedTables.length})',
-                      null,
+                    _buildModernFilterPill(
+                      value: 'all',
+                      label: 'All Tables',
+                      count: assignedTables.length,
+                      accentColor: AppColors.primaryOrange,
+                      isDark: isDark,
                     ),
                     const SizedBox(width: 8),
-                    _buildFilterChip(
-                      'pending',
-                      'Pending 🔴 (${pendingTables.length})',
-                      const Color(0xFFE53935),
+                    _buildModernFilterPill(
+                      value: 'pending',
+                      label: 'Calling 🔴',
+                      count: pendingTables.length,
+                      accentColor: const Color(0xFFEF4444),
+                      isDark: isDark,
+                      highlightAlert: pendingTables.isNotEmpty,
                     ),
                     const SizedBox(width: 8),
-                    _buildFilterChip(
-                      'accepted',
-                      'Accepted 🟢 (${acceptedTables.length})',
-                      const Color(0xFF2E7D32),
+                    _buildModernFilterPill(
+                      value: 'accepted',
+                      label: 'Accepted 🟢',
+                      count: acceptedTables.length,
+                      accentColor: const Color(0xFF22C55E),
+                      isDark: isDark,
                     ),
                     const SizedBox(width: 8),
-                    _buildFilterChip(
-                      'idle',
-                      'Idle 🟠 (${idleTables.length})',
-                      const Color(0xFFFF9800),
+                    _buildModernFilterPill(
+                      value: 'idle',
+                      label: 'Idle 🟠',
+                      count: idleTables.length,
+                      accentColor: const Color(0xFFF57C00),
+                      isDark: isDark,
                     ),
                   ],
                 ),
               ),
             ),
+            const SliverToBoxAdapter(child: SizedBox(height: 6)),
 
-            // Empty State or Tables Grid
+            // 3. Empty State or 3-Column Table Grid
             if (displayList.isEmpty)
               SliverToBoxAdapter(
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      vertical: 60.0,
-                      horizontal: 20.0,
+                      vertical: 56.0,
+                      horizontal: 24.0,
                     ),
                     child: Column(
                       children: [
-                        Icon(
-                          Icons.table_restaurant_outlined,
-                          size: 64,
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.3,
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryOrange.withValues(
+                              alpha: isDark ? 0.15 : 0.1,
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.table_restaurant_outlined,
+                              size: 36,
+                              color: AppColors.primaryOrange,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           assignedTables.isEmpty
-                              ? 'No tables currently assigned to $waiterId.'
-                              : 'No tables match this filter.',
+                              ? 'No tables currently assigned to $waiterId'
+                              : 'No tables in this status',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.7,
-                            ),
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            color: isDark ? Colors.white : const Color(0xFF1E293B),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         Text(
                           assignedTables.isEmpty
-                              ? 'Please ask your Floor Manager to assign tables to your Waiter ID ($waiterId).'
-                              : 'Switch filter to view other assigned tables.',
+                              ? 'Ask your Floor Manager to assign restaurant tables to your Waiter ID ($waiterId).'
+                              : 'Tap "All Tables" above to view all floor stations.',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: Colors.grey,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                            height: 1.4,
                           ),
                         ),
                       ],
@@ -916,7 +1198,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16.0, 10.0, 16.0, 40.0),
+                padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 48.0),
                 sliver: SliverGrid(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
@@ -948,27 +1230,98 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     );
   }
 
-  Widget _buildFilterChip(String value, String label, Color? color) {
+  // ==========================================
+  // MODERN FILTER PILL
+  // ==========================================
+  Widget _buildModernFilterPill({
+    required String value,
+    required String label,
+    required int count,
+    required Color accentColor,
+    required bool isDark,
+    bool highlightAlert = false,
+  }) {
     final isSelected = _selectedFilter == value;
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.bold,
-          color: isSelected ? Colors.white : color,
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() => _selectedFilter = value);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? accentColor
+                : (isDark
+                    ? AppColors.darkSurface
+                    : Colors.white),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected
+                  ? accentColor
+                  : (highlightAlert
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                      : (isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : const Color(0xFFE2E8F0))),
+              width: highlightAlert && !isSelected ? 1.5 : 1.2,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: isSelected
+                      ? Colors.white
+                      : (isDark ? Colors.grey[300] : const Color(0xFF334155)),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w900,
+                    color: isSelected ? Colors.white : accentColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      selected: isSelected,
-      selectedColor: color ?? Theme.of(context).colorScheme.primary,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() => _selectedFilter = value);
-        }
-      },
     );
   }
 
+  // ==========================================
+  // GATEWAY DIAGNOSTICS MODAL
+  // ==========================================
   void _showGatewayInfoModal(
     List<TableModel> tables,
     bool isScanning,
@@ -980,12 +1333,13 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
 
     showModalBottomSheet(
       context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -995,7 +1349,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.4),
+                    color: Colors.grey.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1006,28 +1360,38 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        isConnected
-                            ? Icons.wifi_rounded
-                            : Icons.wifi_find_rounded,
-                        color: isConnected
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFE53935),
-                        size: 24,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: (isConnected
+                                  ? const Color(0xFF22C55E)
+                                  : const Color(0xFFEF4444))
+                              .withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isConnected
+                              ? Icons.wifi_rounded
+                              : Icons.wifi_find_rounded,
+                          color: isConnected
+                              ? const Color(0xFF22C55E)
+                              : const Color(0xFFEF4444),
+                          size: 22,
+                        ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       const Text(
-                        'Gateway Wi-Fi Telemetry',
+                        'Gateway Telemetry',
                         style: TextStyle(
                           fontSize: 17,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ],
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh_rounded),
-                    tooltip: 'Refresh Gateway Status',
+                    tooltip: 'Refresh Status',
                     onPressed: () {
                       ref.read(gatewayWifiServiceProvider).refreshDevices();
                       Navigator.pop(ctx);
@@ -1039,11 +1403,11 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               _buildDiagRow(
                 'Gateway Status',
                 isConnected ? 'Connected ✓ (Online)' : 'Searching Gateway...',
-                isConnected ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
+                isConnected ? const Color(0xFF22C55E) : const Color(0xFFF57C00),
               ),
               _buildDiagRow(
                 'Gateway IP Address',
-                '$gatewayIp:80',
+                gatewayIp.isNotEmpty ? '$gatewayIp:80' : 'Auto-discovery',
                 isDark ? Colors.white70 : Colors.black87,
               ),
               _buildDiagRow(
@@ -1053,7 +1417,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'ESP32-WROOM Gateway communicates over local Wi-Fi with instant sub-5ms event dispatching.',
+                'ESP32-WROOM Gateway communicates over local Wi-Fi with sub-5ms event dispatching.',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 12),
@@ -1090,6 +1454,9 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     );
   }
 
+  // ==========================================
+  // MODERN WAITER DRAWER
+  // ==========================================
   Widget _buildWaiterDrawer({
     required BuildContext context,
     required ThemeData theme,
@@ -1106,63 +1473,58 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     required String gatewayIp,
   }) {
     return Drawer(
-      backgroundColor: isDark
-          ? const Color(0xFF141218)
-          : const Color(0xFFFBFBFB),
+      backgroundColor:
+          isDark ? const Color(0xFF141218) : const Color(0xFFF8FAFC),
       child: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           children: [
-            // 1. Drawer Header Profile Box
+            // 1. Profile Header Box
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: isDark
-                      ? [const Color(0xFF261D1A), const Color(0xFF1E1B26)]
-                      : [const Color(0xFFFFF3E0), Colors.white],
-                ),
+                color: isDark ? AppColors.darkSurface : Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : const Color(0xFFE2E8F0),
                   width: 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
                     blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
               child: Row(
                 children: [
-                  // Avatar Circle
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
                       ),
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(
-                            0xFFEA580C,
-                          ).withValues(alpha: 0.35),
+                          color: const Color(0xFFEA580C).withValues(alpha: 0.35),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.person_rounded,
-                        color: Colors.white,
-                        size: 26,
+                    child: Center(
+                      child: Text(
+                        waiterId,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                   ),
@@ -1175,7 +1537,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                           waiterName,
                           style: const TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.2,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -1189,17 +1552,17 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withValues(
+                                color: AppColors.primaryOrange.withValues(
                                   alpha: 0.15,
                                 ),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 'ID: $waiterId',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primaryOrange,
                                 ),
                               ),
                             ),
@@ -1210,9 +1573,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF2E7D32,
-                                ).withValues(alpha: 0.15),
+                                color: const Color(0xFF22C55E).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Row(
@@ -1221,15 +1582,15 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                                   Icon(
                                     Icons.circle,
                                     size: 6,
-                                    color: Color(0xFF2E7D32),
+                                    color: Color(0xFF22C55E),
                                   ),
                                   SizedBox(width: 3),
                                   Text(
                                     'On Duty',
                                     style: TextStyle(
                                       fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF2E7D32),
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF22C55E),
                                     ),
                                   ),
                                 ],
@@ -1243,31 +1604,30 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
 
-            const SizedBox(height: 14),
-
-            // 2. Floor Status Box
+            // 2. Floor Overview Stat Grid
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Text(
                 'FLOOR OVERVIEW',
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
-                  color: Colors.grey,
+                  color: AppColors.primaryOrange,
                 ),
               ),
             ),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                color: isDark ? AppColors.darkSurface : Colors.white,
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.08)
-                      : Colors.black.withValues(alpha: 0.06),
+                      : const Color(0xFFE2E8F0),
                 ),
               ),
               child: Column(
@@ -1276,9 +1636,9 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                     children: [
                       Expanded(
                         child: _buildDrawerStatTile(
-                          title: 'Pending',
+                          title: 'Calling',
                           count: pendingTables.length,
-                          color: const Color(0xFFE53935),
+                          color: const Color(0xFFEF4444),
                           icon: Icons.notifications_active_rounded,
                           isDark: isDark,
                           onTap: () {
@@ -1292,7 +1652,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                         child: _buildDrawerStatTile(
                           title: 'Accepted',
                           count: acceptedTables.length,
-                          color: const Color(0xFF2E7D32),
+                          color: const Color(0xFF22C55E),
                           icon: Icons.check_circle_rounded,
                           isDark: isDark,
                           onTap: () {
@@ -1310,7 +1670,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                         child: _buildDrawerStatTile(
                           title: 'Idle Tables',
                           count: idleTables.length,
-                          color: const Color(0xFFFF9800),
+                          color: const Color(0xFFF57C00),
                           icon: Icons.pause_circle_rounded,
                           isDark: isDark,
                           onTap: () {
@@ -1338,97 +1698,86 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
-            // 4. Quick Actions / Preferences
+            // 3. Preferences Section
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Text(
                 'PREFERENCES',
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
-                  color: Colors.grey,
+                  color: AppColors.primaryOrange,
                 ),
               ),
             ),
             Container(
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                color: isDark ? AppColors.darkSurface : Colors.white,
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.08)
-                      : Colors.black.withValues(alpha: 0.06),
+                      : const Color(0xFFE2E8F0),
                 ),
               ),
-              child: Column(
-                children: [
-                  ListTile(
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(16),
-                      ),
-                    ),
-                    leading: Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.12,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        isDark
-                            ? Icons.dark_mode_rounded
-                            : Icons.light_mode_rounded,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    title: const Text(
-                      'Dark Mode',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    trailing: Switch.adaptive(
-                      value: isDark,
-                      activeTrackColor: theme.colorScheme.primary,
-                      onChanged: (_) {
-                        ref.read(themeModeProvider.notifier).toggleTheme();
-                      },
-                    ),
+              child: ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                leading: Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryOrange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                ],
+                  child: Icon(
+                    isDark
+                        ? Icons.dark_mode_rounded
+                        : Icons.light_mode_rounded,
+                    size: 18,
+                    color: AppColors.primaryOrange,
+                  ),
+                ),
+                title: const Text(
+                  'Dark Theme',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+                trailing: Switch.adaptive(
+                  value: isDark,
+                  activeTrackColor: AppColors.primaryOrange,
+                  onChanged: (_) {
+                    ref.read(themeModeProvider.notifier).toggleTheme();
+                  },
+                ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
-            // 3. Wi-Fi Gateway Telemetry Box
+            // 4. Wi-Fi Gateway Telemetry Box
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Text(
                 'GATEWAY TELEMETRY',
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
-                  color: Colors.grey,
+                  color: AppColors.primaryOrange,
                 ),
               ),
             ),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                color: isDark ? AppColors.darkSurface : Colors.white,
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.08)
-                      : Colors.black.withValues(alpha: 0.06),
+                      : const Color(0xFFE2E8F0),
                 ),
               ),
               child: Column(
@@ -1438,11 +1787,10 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color:
-                              (isConnected
-                                      ? const Color(0xFF2E7D32)
-                                      : const Color(0xFFE53935))
-                                  .withValues(alpha: 0.15),
+                          color: (isConnected
+                                  ? const Color(0xFF22C55E)
+                                  : const Color(0xFFEF4444))
+                              .withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -1451,8 +1799,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                               : Icons.wifi_find_rounded,
                           size: 18,
                           color: isConnected
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFFE53935),
+                              ? const Color(0xFF22C55E)
+                              : const Color(0xFFEF4444),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1465,7 +1813,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                                   ? 'Gateway Connected'
                                   : 'Searching Gateway...',
                               style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w800,
                                 fontSize: 13,
                               ),
                             ),
@@ -1475,9 +1823,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                                   : 'Auto-discovery active',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: isDark
-                                    ? Colors.grey[400]
-                                    : Colors.grey[600],
+                                color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
                               ),
                             ),
                           ],
@@ -1485,25 +1831,31 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         side: BorderSide(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.3,
-                          ),
+                          color: AppColors.primaryOrange.withValues(alpha: 0.3),
                         ),
                       ),
-                      icon: const Icon(Icons.analytics_outlined, size: 16),
+                      icon: const Icon(
+                        Icons.analytics_outlined,
+                        size: 16,
+                        color: AppColors.primaryOrange,
+                      ),
                       label: const Text(
                         'Open Diagnostics',
-                        style: TextStyle(fontSize: 12),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryOrange,
+                        ),
                       ),
                       onPressed: () {
                         Navigator.pop(context);
@@ -1521,23 +1873,23 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
             ),
 
             // 5. Drawer Footer: Sign Out Button
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             InkWell(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               onTap: () {
                 Navigator.pop(context);
                 _handleSignOut();
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  vertical: 11,
+                  vertical: 13,
                   horizontal: 16,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE53935).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: const Color(0xFFE53935).withValues(alpha: 0.25),
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.25),
                   ),
                 ),
                 child: const Row(
@@ -1545,15 +1897,15 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                   children: [
                     Icon(
                       Icons.logout_rounded,
-                      color: Color(0xFFE53935),
+                      color: Color(0xFFEF4444),
                       size: 18,
                     ),
                     SizedBox(width: 8),
                     Text(
                       'Sign Out',
                       style: TextStyle(
-                        color: Color(0xFFE53935),
-                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFEF4444),
+                        fontWeight: FontWeight.w900,
                         fontSize: 13.5,
                       ),
                     ),
@@ -1577,13 +1929,13 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     required VoidCallback onTap,
   }) {
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
+          color: color.withValues(alpha: isDark ? 0.12 : 0.08),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withValues(alpha: 0.25)),
         ),
         child: Column(
@@ -1596,7 +1948,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 Text(
                   '$count',
                   style: TextStyle(
-                    fontSize: 15,
+                    fontSize: 16,
                     fontWeight: FontWeight.w900,
                     color: color,
                   ),
@@ -1608,8 +1960,8 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               title,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.grey[300] : Colors.grey[700],
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.grey[300] : const Color(0xFF475569),
               ),
             ),
           ],

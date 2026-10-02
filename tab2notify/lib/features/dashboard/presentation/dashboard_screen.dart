@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/gateway_wifi_service.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_bottom_navbar.dart';
 import '../../service_requests/domain/table_model.dart';
 import '../../service_requests/presentation/service_request_providers.dart';
@@ -45,41 +47,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
         return Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 28.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
                 child: Container(
-                  width: 40,
-                  height: 4,
+                  width: 44,
+                  height: 4.5,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(2),
+                    color: Colors.grey.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(9),
                         decoration: BoxDecoration(
-                          color:
-                              (isConnected
-                                      ? const Color(0xFF2E7D32)
-                                      : const Color(0xFF0284C7))
-                                  .withValues(alpha: 0.15),
+                          color: (isConnected
+                                  ? const Color(0xFF22C55E)
+                                  : const Color(0xFF0284C7))
+                              .withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -87,17 +88,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               ? Icons.wifi_rounded
                               : Icons.wifi_find_rounded,
                           color: isConnected
-                              ? const Color(0xFF2E7D32)
+                              ? const Color(0xFF22C55E)
                               : const Color(0xFF0284C7),
                           size: 22,
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Text(
-                        'Wi-Fi Gateway Diagnostics',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Wi-Fi Gateway Telemetry',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16.5,
+                            ),
+                          ),
+                          Text(
+                            isConnected
+                                ? 'Hardware bridge active & synced'
+                                : 'Scanning local network for ESP32',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -105,6 +121,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     icon: const Icon(Icons.refresh_rounded),
                     tooltip: 'Refresh Devices',
                     onPressed: () {
+                      HapticFeedback.lightImpact();
                       ref.read(gatewayWifiServiceProvider).refreshDevices();
                       Navigator.pop(ctx);
                     },
@@ -115,12 +132,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               _buildDiagRow(
                 'Gateway Status',
                 isConnected ? 'Connected ✓ (Online)' : 'Searching Gateway...',
-                isConnected ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
+                isConnected ? const Color(0xFF22C55E) : const Color(0xFFF57C00),
               ),
               _buildDiagRow(
                 'Gateway IP Address',
-                '$gatewayIp:80',
-                isDark ? Colors.white70 : Colors.black87,
+                gatewayIp.isNotEmpty ? '$gatewayIp:80' : 'Auto-detecting',
+                isDark ? Colors.white70 : const Color(0xFF334155),
               ),
               _buildDiagRow(
                 'Communication Mode',
@@ -128,20 +145,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 const Color(0xFF0284C7),
               ),
               _buildDiagRow(
-                'Total Devices Found',
-                '${tables.length} Tables Registered',
-                isDark ? Colors.white : Colors.black87,
+                'Registered Tables',
+                '${tables.length} Total Devices',
+                isDark ? Colors.white : const Color(0xFF0F172A),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'ESP32-WROOM Gateway communicates over local Wi-Fi with instant sub-5ms event dispatching.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+              Text(
+                'ESP32-WROOM Gateway communicates over local Wi-Fi with instant sub-5ms event dispatching to staff terminals.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                  height: 1.35,
+                ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () {
+                    HapticFeedback.lightImpact();
                     Navigator.pop(ctx);
                     WifiGatewaySetupDialog.show(
                       context,
@@ -149,16 +171,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     );
                   },
                   icon: const Icon(Icons.router_rounded, size: 18),
-                  label: const Text('Configure Gateway Wi-Fi Router'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  label: const Text(
+                    'CONFIGURE GATEWAY ROUTER',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                      fontSize: 13,
                     ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryOrange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
             ],
           ),
         );
@@ -172,14 +204,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               value,
               textAlign: TextAlign.right,
               style: TextStyle(
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w800,
                 fontSize: 13,
                 color: valueColor,
               ),
@@ -229,27 +268,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     } else if (_selectedFilter == 'unlocked') {
       displayList = unlockedTables;
     } else {
-      // Default: 'all' filter shows only unlocked tables
       displayList = unlockedTables;
     }
 
     return Scaffold(
+      backgroundColor:
+          isDark ? AppColors.darkBackground : const Color(0xFFF8FAFC),
       extendBody: true,
       appBar: AppBar(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor:
+            isDark ? AppColors.darkSurface : Colors.white,
+        toolbarHeight: 64,
         title: Row(
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeInOut,
-              width: 40,
-              height: 40,
+            // App Brand Logo Container
+            Container(
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF1E1B26) : Colors.white,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : const Color(0xFFE2E8F0),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.colorScheme.primary.withValues(
-                      alpha: isDark ? 0.25 : 0.15,
+                    color: AppColors.primaryOrange.withValues(
+                      alpha: isDark ? 0.2 : 0.12,
                     ),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
@@ -257,7 +306,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 350),
                   child: Image.asset(
@@ -266,52 +315,88 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         : 'assets/images/app_logo_white.png',
                     key: ValueKey(isDark),
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Icon(
+                    errorBuilder: (context, error, stackTrace) => const Icon(
                       Icons.notifications_active_rounded,
-                      color: theme.colorScheme.primary,
-                      size: 30,
+                      color: AppColors.primaryOrange,
+                      size: 26,
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
-            const Text(
-              'Tab2Notify',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            const SizedBox(width: 12),
+
+            // App Name & Admin Badge
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Tab2Notify',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryOrange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'MANAGER CONSOLE',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                          color: AppColors.primaryOrange,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
         actions: [
           // Wi-Fi Gateway Status Pill
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
+            padding: const EdgeInsets.only(right: 14.0),
             child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () => _showGatewayInfoModal(
-                tablesList,
-                isScanning,
-                connectionStatus,
-                wifiService.gatewayIp,
-              ),
+              borderRadius: BorderRadius.circular(14),
+              onTap: () {
+                HapticFeedback.lightImpact();
+                _showGatewayInfoModal(
+                  tablesList,
+                  isScanning,
+                  connectionStatus,
+                  wifiService.gatewayIp,
+                );
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
-                  vertical: 5,
+                  vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color:
-                      (isConnected
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFF0284C7))
-                          .withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
+                  color: (isConnected
+                          ? const Color(0xFF22C55E)
+                          : const Color(0xFF0284C7))
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color:
-                        (isConnected
-                                ? const Color(0xFF2E7D32)
-                                : const Color(0xFF0284C7))
-                            .withValues(alpha: 0.4),
+                    color: (isConnected
+                            ? const Color(0xFF22C55E)
+                            : const Color(0xFF0284C7))
+                        .withValues(alpha: 0.35),
                   ),
                 ),
                 child: Row(
@@ -323,17 +408,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           : Icons.wifi_find_rounded,
                       size: 15,
                       color: isConnected
-                          ? const Color(0xFF2E7D32)
+                          ? const Color(0xFF22C55E)
                           : const Color(0xFF0284C7),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 5),
                     Text(
-                      isConnected ? 'Gateway Connected' : 'Wi-Fi Searching',
+                      isConnected ? 'Gateway Online' : 'Searching Wi-Fi',
                       style: TextStyle(
                         color: isConnected
-                            ? const Color(0xFF2E7D32)
+                            ? const Color(0xFF22C55E)
                             : const Color(0xFF0284C7),
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
                         fontSize: 11,
                       ),
                     ),

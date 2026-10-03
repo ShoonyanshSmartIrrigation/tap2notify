@@ -419,16 +419,6 @@ class SettingsTabView extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Settings & Profile',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w900,
-              fontSize: 22,
-              letterSpacing: 0.3,
-            ),
-          ),
-          const SizedBox(height: 16),
-
           // 1. Manager Profile Card
           Container(
             padding: const EdgeInsets.all(18),
@@ -757,10 +747,7 @@ class SettingsTabView extends ConsumerWidget {
                 ),
                 title: const Text(
                   'Gateway Wi-Fi Router Setup',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                 ),
                 subtitle: const Text(
                   'Configure router SSID & connect to hotel network',

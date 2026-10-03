@@ -1,14 +1,10 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lottie/lottie.dart';
 
 import '../../../../core/services/fcm_service.dart';
 import '../../../../core/services/gateway_wifi_service.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/widgets/table_card.dart';
 import '../../service_requests/domain/table_model.dart';
@@ -102,1029 +98,298 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     });
   }
 
-  // =========================================================================
-  // 1. DIALOG / BOTTOM SHEET: ACCEPT TABLE CALL (URGENT PENDING STATE)
-  // =========================================================================
   void _showAcceptDialog(TableModel table, String waiterName, String waiterId) {
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (bottomSheetContext) {
-        final theme = Theme.of(bottomSheetContext);
-        final isDark = theme.brightness == Brightness.dark;
-
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF181520) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFE53935).withValues(alpha: 0.25),
-                blurRadius: 30,
-                offset: const Offset(0, -6),
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE53935).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.notifications_active_rounded,
+                  color: Color(0xFFE53935),
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Table ${table.tableNumber} Calling',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Guest is requesting immediate service 🔴',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
               ),
             ],
           ),
-          padding: EdgeInsets.fromLTRB(
-            22,
-            12,
-            22,
-            MediaQuery.of(bottomSheetContext).viewInsets.bottom + 26,
+          content: Text(
+            'Accept request for Table ${table.tableNumber} as $waiterName ($waiterId)?',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _handledRequestId = null;
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                _handledRequestId = null;
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dialogContext);
+
+                final repo = ref.read(waiterServiceRequestRepositoryProvider);
+                await repo.acceptTableRequest(
+                  tableId: table.id,
+                  waiterName: waiterName,
+                  waiterId: waiterId,
+                );
+
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '🟢 Table ${table.tableNumber} Request Accepted!',
+                      ),
+                      backgroundColor: const Color(0xFF2E7D32),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text(
+                'ACCEPT REQUEST',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showCompleteDialog(TableModel table) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Column(
             children: [
-              // Grab Handle Bar
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 4.5,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Animated Service Bell Hero with Pulsing Aura
               Container(
-                width: 78,
-                height: 78,
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
+                  color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
-                  color: const Color(0xFFE53935).withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: const Color(0xFFE53935).withValues(alpha: 0.35),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFE53935).withValues(alpha: 0.22),
-                      blurRadius: 18,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
-                child: ClipOval(
-                  child: RepaintBoundary(
-                    child: Lottie.asset(
-                      'assets/animations/service_bell.json',
-                      fit: BoxFit.contain,
-                      repeat: true,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.notifications_active_rounded,
-                        color: Color(0xFFE53935),
-                        size: 38,
-                      ),
-                    ),
-                  ),
+                child: const Icon(
+                  Icons.check_circle_outline_rounded,
+                  color: Color(0xFF2E7D32),
+                  size: 36,
                 ),
-              ).animate().scale(duration: 350.ms, curve: Curves.easeOutBack),
-
-              const SizedBox(height: 14),
-
-              // Title and Table Calling Number
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE53935),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'ACTIVE CALL',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Table ${table.tableNumber}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                ],
               ),
-
-              const SizedBox(height: 6),
+              const SizedBox(height: 12),
               Text(
-                'Guest has pressed the service bell and is waiting for assistance.',
+                'Table ${table.tableNumber}',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Request is in progress 🟢',
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Have you served the guest and completed the request?',
+            textAlign: TextAlign.center,
+          ),
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _handledRequestId = null;
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
+              onPressed: () async {
+                _handledRequestId = null;
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dialogContext);
 
-              const SizedBox(height: 18),
+                final repo = ref.read(waiterServiceRequestRepositoryProvider);
+                await repo.resetTableStatus(table.id);
 
-              // Staff Details Info Tile
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '✓ Table ${table.tableNumber} marked as Completed & Ready.',
+                      ),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text(
+                'MARK AS SERVED / COMPLETED',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showIdleDialog(TableModel table, String waiterName, String waiterId) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Column(
+            children: [
               Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9800).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.radio_button_unchecked_rounded,
+                  color: Color(0xFFFF9800),
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Table ${table.tableNumber}',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Table is Idle & Available 🟠',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+          content: Text(
+            'Assigned Staff: $waiterName\nTap below if assistance is requested at this table.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 12,
                 ),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.05)
-                      : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : const Color(0xFFE2E8F0),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryOrange.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.person_rounded,
-                        color: AppColors.primaryOrange,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Assigned Waiter',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            '$waiterName ($waiterId)',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D32).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.wifi_rounded,
-                            size: 12,
-                            color: Color(0xFF2E7D32),
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            'ONLINE',
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF2E7D32),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        side: BorderSide(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.15)
-                              : Colors.grey[300]!,
-                        ),
-                      ),
-                      onPressed: () {
-                        _handledRequestId = null;
-                        Navigator.pop(bottomSheetContext);
-                      },
-                      child: Text(
-                        'DISMISS',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.grey[400] : Colors.grey[700],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF16A34A).withValues(alpha: 0.38),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        onPressed: () async {
-                          _handledRequestId = null;
-                          final messenger = ScaffoldMessenger.of(context);
-                          Navigator.pop(bottomSheetContext);
-
-                          HapticFeedback.mediumImpact();
-                          final repo = ref.read(
-                            waiterServiceRequestRepositoryProvider,
-                          );
-                          await repo.acceptTableRequest(
-                            tableId: table.id,
-                            waiterName: waiterName,
-                            waiterId: waiterId,
-                          );
-
-                          if (mounted) {
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.check_circle_rounded,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Table ${table.tableNumber} Request Accepted!',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                backgroundColor: const Color(0xFF16A34A),
-                                duration: const Duration(seconds: 2),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.check_rounded, size: 18),
-                            SizedBox(width: 6),
-                            Text(
-                              'ACCEPT CALL',
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // =========================================================================
-  // 2. DIALOG / BOTTOM SHEET: COMPLETE SERVICE (ACCEPTED IN-PROGRESS STATE)
-  // =========================================================================
-  void _showCompleteDialog(TableModel table) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (bottomSheetContext) {
-        final theme = Theme.of(bottomSheetContext);
-        final isDark = theme.brightness == Brightness.dark;
-
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF181520) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF2E7D32).withValues(alpha: 0.25),
-                blurRadius: 30,
-                offset: const Offset(0, -6),
-              ),
-            ],
-          ),
-          padding: EdgeInsets.fromLTRB(
-            22,
-            12,
-            22,
-            MediaQuery.of(bottomSheetContext).viewInsets.bottom + 26,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Grab Handle Bar
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 4.5,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Animated Success Checkmark Hero
-              Container(
-                width: 78,
-                height: 78,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: const Color(0xFF2E7D32).withValues(alpha: 0.35),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF2E7D32).withValues(alpha: 0.22),
-                      blurRadius: 18,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: RepaintBoundary(
-                    child: Lottie.asset(
-                      'assets/animations/auth_success.json',
-                      fit: BoxFit.contain,
-                      repeat: false,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.check_circle_outline_rounded,
-                        color: Color(0xFF2E7D32),
-                        size: 38,
-                      ),
-                    ),
-                  ),
-                ),
-              ).animate().scale(duration: 350.ms, curve: Curves.easeOutBack),
-
-              const SizedBox(height: 14),
-
-              // Title and Table State
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2E7D32),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'IN PROGRESS',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Table ${table.tableNumber}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 6),
-              Text(
-                'Have you served the guest and completed their service request?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
-              ),
-
-              const SizedBox(height: 22),
-
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        side: BorderSide(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.15)
-                              : Colors.grey[300]!,
-                        ),
-                      ),
-                      onPressed: () {
-                        _handledRequestId = null;
-                        Navigator.pop(bottomSheetContext);
-                      },
-                      child: Text(
-                        'KEEP ACTIVE',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.grey[400] : Colors.grey[700],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF16A34A), Color(0xFF15803D)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF15803D).withValues(alpha: 0.38),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        onPressed: () async {
-                          _handledRequestId = null;
-                          final messenger = ScaffoldMessenger.of(context);
-                          Navigator.pop(bottomSheetContext);
-
-                          HapticFeedback.mediumImpact();
-                          final repo = ref.read(
-                            waiterServiceRequestRepositoryProvider,
-                          );
-                          await repo.resetTableStatus(table.id);
-
-                          if (mounted) {
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.task_alt_rounded,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Table ${table.tableNumber} Marked as Served & Ready!',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                backgroundColor: const Color(0xFF16A34A),
-                                duration: const Duration(seconds: 2),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.done_all_rounded, size: 18),
-                            SizedBox(width: 6),
-                            Text(
-                              'MARK AS SERVED',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // =========================================================================
-  // 3. DIALOG / BOTTOM SHEET: IDLE TABLE DETAILS & SERVICE DISPATCH
-  // =========================================================================
-  void _showIdleDialog(TableModel table, String waiterName, String waiterId) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (bottomSheetContext) {
-        final theme = Theme.of(bottomSheetContext);
-        final isDark = theme.brightness == Brightness.dark;
-
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF181520) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFFF9800).withValues(alpha: 0.2),
-                blurRadius: 30,
-                offset: const Offset(0, -6),
-              ),
-            ],
-          ),
-          padding: EdgeInsets.fromLTRB(
-            22,
-            12,
-            22,
-            MediaQuery.of(bottomSheetContext).viewInsets.bottom + 26,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Grab Handle Bar
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 4.5,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Amber Icon Hero
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFFF9800).withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: const Color(0xFFFF9800).withValues(alpha: 0.35),
-                    width: 2,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.table_restaurant_rounded,
-                  color: Color(0xFFFF9800),
-                  size: 34,
-                ),
-              ).animate().scale(duration: 350.ms, curve: Curves.easeOutBack),
-
-              const SizedBox(height: 14),
-
-              // Title and Table State
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF9800),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'IDLE & READY',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Table ${table.tableNumber}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 6),
-              Text(
-                'Assigned Staff: $waiterName ($waiterId)\nNo active service requested. Table is ready for dining.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
-              ),
-
-              const SizedBox(height: 22),
-
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        side: BorderSide(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.15)
-                              : Colors.grey[300]!,
-                        ),
-                      ),
-                      onPressed: () => Navigator.pop(bottomSheetContext),
-                      child: Text(
-                        'CLOSE',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.grey[400] : Colors.grey[700],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFFDC2626).withValues(alpha: 0.35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        onPressed: () async {
-                          final messenger = ScaffoldMessenger.of(context);
-                          Navigator.pop(bottomSheetContext);
-
-                          HapticFeedback.mediumImpact();
-                          final repo = ref.read(
-                            waiterServiceRequestRepositoryProvider,
-                          );
-                          await repo.triggerTableRequest(
-                            table.id,
-                            tableNumber: table.tableNumber,
-                          );
-
-                          if (mounted) {
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '🔴 Service request triggered for Table ${table.tableNumber}',
-                                ),
-                                backgroundColor: const Color(0xFFDC2626),
-                                duration: const Duration(seconds: 2),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        icon: const Icon(
-                          Icons.notifications_active_rounded,
-                          size: 18,
-                        ),
-                        label: const Text(
-                          'CALL SERVICE',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // =========================================================================
-  // 4. DIALOG / BOTTOM SHEET: GATEWAY TELEMETRY DIAGNOSTICS
-  // =========================================================================
-  void _showGatewayInfoModal(
-    List<TableModel> tables,
-    bool isScanning,
-    GatewayConnectionStatus status,
-    String gatewayIp,
-  ) {
-    final isConnected = status == GatewayConnectionStatus.connected;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF181520) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1),
-                blurRadius: 30,
-                offset: const Offset(0, -6),
-              ),
-            ],
-          ),
-          padding: EdgeInsets.fromLTRB(
-            22,
-            12,
-            22,
-            MediaQuery.of(ctx).viewInsets.bottom + 26,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 4.5,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: (isConnected
-                                  ? const Color(0xFF2E7D32)
-                                  : const Color(0xFFE53935))
-                              .withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isConnected
-                              ? Icons.wifi_rounded
-                              : Icons.wifi_find_rounded,
-                          color: isConnected
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFFE53935),
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Gateway Telemetry',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          Text(
-                            isConnected
-                                ? 'Local Wi-Fi Mesh Connected'
-                                : 'Searching Local Subnet...',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh_rounded),
-                    tooltip: 'Refresh Gateway Status',
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      ref.read(gatewayWifiServiceProvider).refreshDevices();
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
-
-              _buildDiagRow(
-                'Gateway Status',
-                isConnected ? 'Connected ✓ (Online)' : 'Searching Gateway...',
-                isConnected
-                    ? const Color(0xFF2E7D32)
-                    : const Color(0xFFF57C00),
-              ),
-              _buildDiagRow(
-                'Gateway IP Address',
-                gatewayIp.isNotEmpty ? '$gatewayIp:80' : 'Auto-discovery',
-                isDark ? Colors.white70 : Colors.black87,
-              ),
-              _buildDiagRow(
-                'Hardware Device State',
-                '${tables.where((t) => t.isDeviceOnline).length} / ${tables.length} Devices Online',
-                isDark ? Colors.white : Colors.black87,
-              ),
-              const SizedBox(height: 12),
-
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.04)
-                      : const Color(0xFFF1F5F9),
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.bolt_rounded,
-                      color: AppColors.primaryOrange,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'ESP32 Gateway communicates with instant sub-5ms low latency event dispatching.',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? Colors.grey[400] : Colors.grey[700],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-              const SizedBox(height: 16),
-            ],
-          ),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dialogContext);
+
+                final repo = ref.read(waiterServiceRequestRepositoryProvider);
+                await repo.triggerTableRequest(
+                  table.id,
+                  tableNumber: table.tableNumber,
+                );
+
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '🔴 Service request triggered for Table ${table.tableNumber}',
+                      ),
+                      backgroundColor: const Color(0xFFE53935),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.notifications_active_rounded, size: 18),
+              label: const Text(
+                'CALL SERVICE',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+          ],
         );
       },
-    );
-  }
-
-  Widget _buildDiagRow(String label, String value, Color valueColor) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 13,
-                color: valueColor,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1144,9 +409,6 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     }
   }
 
-  // =========================================================================
-  // MAIN BUILD METHOD
-  // =========================================================================
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1159,18 +421,11 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RepaintBoundary(
-                child: Lottie.asset(
-                  'assets/animations/auth_loading.json',
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.contain,
-                ),
-              ),
+              const CircularProgressIndicator(),
               const SizedBox(height: 16),
               const Text(
                 'Loading Staff Session...',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
               const SizedBox(height: 8),
               TextButton(
@@ -1220,8 +475,6 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     }
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0F0E13) : const Color(0xFFF8FAFC),
       drawer: _buildWaiterDrawer(
         context: context,
         theme: theme,
@@ -1240,13 +493,13 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
       appBar: AppBar(
         elevation: 0,
         scrolledUnderElevation: 0,
-        toolbarHeight: 68,
-        backgroundColor: isDark ? const Color(0xFF16141E) : Colors.white,
+        toolbarHeight: 62,
+        backgroundColor: isDark ? const Color(0xFF141218) : Colors.white,
         automaticallyImplyLeading: false,
         titleSpacing: 16,
         title: Builder(
           builder: (drawerCtx) => InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             onTap: () {
               HapticFeedback.lightImpact();
               Scaffold.of(drawerCtx).openDrawer();
@@ -1255,67 +508,93 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: Row(
                 children: [
-                  // Avatar Profile with Online Ring
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      Container(
-                        width: 44,
-                        height: 44,
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeInOut,
+                        width: 38,
+                        height: 38,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
+                          color: isDark
+                              ? const Color(0xFF1E1B26)
+                              : const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.3,
+                            ),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(
-                                0xFFEA580C,
-                              ).withValues(alpha: 0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: isDark ? 0.25 : 0.15,
+                              ),
+                              blurRadius: 6,
+                              offset: const Offset(0, 1),
                             ),
                           ],
                         ),
-                        child: Center(
-                          child: Text(
-                            waiterName.isNotEmpty
-                                ? waiterName.substring(0, 1).toUpperCase()
-                                : 'W',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 350),
+                            child: Image.asset(
+                              isDark
+                                  ? 'assets/images/app_logo.png'
+                                  : 'assets/images/app_logo_white.png',
+                              key: ValueKey(isDark),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Icon(
+                                    Icons.restaurant_rounded,
+                                    color: theme.colorScheme.primary,
+                                    size: 22,
+                                  ),
                             ),
                           ),
                         ),
                       ),
-                      // Online Duty Indicator
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 13,
-                          height: 13,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF22C55E),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isDark
-                                  ? const Color(0xFF16141E)
-                                  : Colors.white,
-                              width: 2,
+                      if (pendingTables.isNotEmpty)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE53935),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF141218)
+                                    : Colors.white,
+                                width: 1.5,
+                              ),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 17,
+                              minHeight: 17,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${pendingTables.length}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.0,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                   const SizedBox(width: 12),
-
-                  // Waiter Name & Status Pill
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1327,56 +606,44 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                               child: Text(
                                 waiterName,
                                 style: const TextStyle(
-                                  fontSize: 16.5,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: -0.3,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 3),
                             Icon(
                               Icons.keyboard_arrow_down_rounded,
                               size: 18,
-                              color: isDark ? Colors.white60 : Colors.black54,
+                              color: isDark
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
                             ),
                           ],
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 1),
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
+                              width: 7,
+                              height: 7,
                               decoration: BoxDecoration(
-                                color: AppColors.primaryOrange.withValues(
-                                  alpha: 0.14,
-                                ),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'ID: $waiterId',
-                                style: const TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.primaryOrange,
-                                ),
+                                color: isConnected
+                                    ? const Color.fromARGB(255, 49, 233, 58)
+                                    : const Color(0xFFE53935),
+                                shape: BoxShape.circle,
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                '${assignedTables.length} Tables',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                            const SizedBox(width: 5),
+                            Text(
+                              'ID: $waiterId • ${assignedTables.length} Tables',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
                               ),
                             ),
                           ],
@@ -1390,11 +657,11 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
           ),
         ),
         actions: [
-          // Wi-Fi Telemetry Live Pill
+          // Wi-Fi Gateway Connectivity Status Box
           Padding(
             padding: const EdgeInsets.only(right: 14.0),
             child: InkWell(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               onTap: () {
                 HapticFeedback.lightImpact();
                 _showGatewayInfoModal(
@@ -1410,16 +677,18 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: (isConnected
-                          ? const Color(0xFF22C55E)
-                          : const Color(0xFFEF4444))
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color:
+                      (isConnected
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE53935))
+                          .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: (isConnected
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFFEF4444))
-                        .withValues(alpha: 0.35),
+                    color:
+                        (isConnected
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFFE53935))
+                            .withValues(alpha: 0.35),
                   ),
                 ),
                 child: Row(
@@ -1429,22 +698,10 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                       isConnected
                           ? Icons.wifi_rounded
                           : Icons.wifi_find_rounded,
-                      size: 16,
+                      size: 18,
                       color: isConnected
-                          ? const Color(0xFF22C55E)
-                          : const Color(0xFFEF4444),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      isConnected ? 'MESH ON' : 'SEARCH',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                        color: isConnected
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFFEF4444),
-                      ),
+                          ? const Color.fromARGB(255, 49, 233, 58)
+                          : const Color(0xFFE53935),
                     ),
                   ],
                 ),
@@ -1454,30 +711,124 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
         ],
       ),
       body: RefreshIndicator(
-        color: AppColors.primaryOrange,
         onRefresh: () async {
           HapticFeedback.lightImpact();
+          // Refresh Wi-Fi Gateway devices
           await ref.read(gatewayWifiServiceProvider).refreshDevices();
+          // Invalidate waiter stream provider to re-merge
           ref.invalidate(waiterTablesStreamProvider(waiterId));
           await Future.delayed(const Duration(milliseconds: 500));
         },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // 1. Hero Floor Status Card (Command Center)
+            // Hero Banner for Waiter
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: _buildHeroCommandBanner(
-                  theme: theme,
-                  isDark: isDark,
-                  pendingCount: pendingTables.length,
-                  totalCount: assignedTables.length,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: pendingTables.isNotEmpty
+                        ? () {
+                            HapticFeedback.lightImpact();
+                            setState(() => _selectedFilter = 'pending');
+                          }
+                        : null,
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: pendingTables.isNotEmpty
+                              ? const Color(0xFFE53935).withValues(alpha: 0.6)
+                              : theme.colorScheme.primary.withValues(alpha: 0.3),
+                          width: pendingTables.isNotEmpty ? 1.5 : 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: pendingTables.isNotEmpty
+                                ? const Color(0xFFE53935).withValues(alpha: 0.15)
+                                : Colors.black.withValues(alpha: 0.03),
+                            blurRadius: pendingTables.isNotEmpty ? 12 : 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFFEA580C,
+                              ).withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            waiterId,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'My Assigned Floor Tables',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              pendingTables.isNotEmpty
+                                  ? '🔴 ${pendingTables.length} Active Request(s) require attention!'
+                                  : '✓ All assigned tables are serviced & ready.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: pendingTables.isNotEmpty
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: pendingTables.isNotEmpty
+                                    ? const Color(0xFFE53935)
+                                    : const Color.fromARGB(255, 60, 218, 68),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
+          ),
+        ),
 
-            // 2. Modern Segmented Filter Pills
+            // Filter Row
             SliverToBoxAdapter(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -1487,110 +838,77 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                 ),
                 child: Row(
                   children: [
-                    _buildFilterPill(
-                      value: 'all',
-                      label: 'All Tables',
-                      count: assignedTables.length,
-                      accentColor: AppColors.primaryOrange,
-                      isDark: isDark,
+                    _buildFilterChip(
+                      'all',
+                      'All (${assignedTables.length})',
+                      null,
                     ),
                     const SizedBox(width: 8),
-                    _buildFilterPill(
-                      value: 'pending',
-                      label: 'Urgent Calls',
-                      count: pendingTables.length,
-                      accentColor: const Color(0xFFEF4444),
-                      isDark: isDark,
-                      isUrgent: pendingTables.isNotEmpty,
+                    _buildFilterChip(
+                      'pending',
+                      'Pending 🔴 (${pendingTables.length})',
+                      const Color(0xFFE53935),
                     ),
                     const SizedBox(width: 8),
-                    _buildFilterPill(
-                      value: 'accepted',
-                      label: 'In Service',
-                      count: acceptedTables.length,
-                      accentColor: const Color(0xFF22C55E),
-                      isDark: isDark,
+                    _buildFilterChip(
+                      'accepted',
+                      'Accepted 🟢 (${acceptedTables.length})',
+                      const Color(0xFF2E7D32),
                     ),
                     const SizedBox(width: 8),
-                    _buildFilterPill(
-                      value: 'idle',
-                      label: 'Idle / Ready',
-                      count: idleTables.length,
-                      accentColor: const Color(0xFFF59E0B),
-                      isDark: isDark,
+                    _buildFilterChip(
+                      'idle',
+                      'Idle 🟠 (${idleTables.length})',
+                      const Color(0xFFFF9800),
                     ),
                   ],
                 ),
               ),
             ),
 
-            // 3. Table Grid or Empty State
+            // Empty State or Tables Grid
             if (displayList.isEmpty)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 40.0,
-                    horizontal: 24.0,
-                  ),
-                  child: Center(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 60.0,
+                      horizontal: 20.0,
+                    ),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        RepaintBoundary(
-                          child: Lottie.asset(
-                            'assets/animations/restaurant_service.json',
-                            width: 140,
-                            height: 140,
-                            repeat: true,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, _, _) => const Icon(
-                              Icons.table_restaurant_outlined,
-                              size: 64,
-                              color: AppColors.primaryOrange,
-                            ),
+                        Icon(
+                          Icons.table_restaurant_outlined,
+                          size: 64,
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.3,
                           ),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           assignedTables.isEmpty
-                              ? 'No Tables Assigned Yet'
-                              : 'No Tables in This Filter',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          assignedTables.isEmpty
-                              ? 'Please ask your restaurant Floor Manager to allocate tables to your ID ($waiterId).'
-                              : 'Try selecting a different filter category to see your other floor tables.',
+                              ? 'No tables currently assigned to $waiterId.'
+                              : 'No tables match this filter.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                         ),
-                        if (_selectedFilter != 'all') ...[
-                          const SizedBox(height: 16),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            icon: const Icon(
-                              Icons.filter_alt_off_rounded,
-                              size: 16,
-                            ),
-                            label: const Text('Show All Tables'),
-                            onPressed: () {
-                              HapticFeedback.lightImpact();
-                              setState(() => _selectedFilter = 'all');
-                            },
+                        const SizedBox(height: 8),
+                        Text(
+                          assignedTables.isEmpty
+                              ? 'Please ask your Floor Manager to assign tables to your Waiter ID ($waiterId).'
+                              : 'Switch filter to view other assigned tables.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.grey,
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
@@ -1604,7 +922,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                     crossAxisCount: 3,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 10,
-                    childAspectRatio: 0.74,
+                    childAspectRatio: 0.72,
                   ),
                   delegate: SliverChildBuilderDelegate((context, index) {
                     final table = displayList[index];
@@ -1630,274 +948,148 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     );
   }
 
-  // =========================================================================
-  // HERO COMMAND BANNER COMPONENT
-  // =========================================================================
-  Widget _buildHeroCommandBanner({
-    required ThemeData theme,
-    required bool isDark,
-    required int pendingCount,
-    required int totalCount,
-  }) {
-    final hasPending = pendingCount > 0;
+  Widget _buildFilterChip(String value, String label, Color? color) {
+    final isSelected = _selectedFilter == value;
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.bold,
+          color: isSelected ? Colors.white : color,
+        ),
+      ),
+      selected: isSelected,
+      selectedColor: color ?? Theme.of(context).colorScheme.primary,
+      onSelected: (selected) {
+        if (selected) {
+          setState(() => _selectedFilter = value);
+        }
+      },
+    );
+  }
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: hasPending
-            ? () {
-                HapticFeedback.lightImpact();
-                setState(() => _selectedFilter = 'pending');
-              }
-            : null,
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: hasPending
-                  ? (isDark
-                      ? [const Color(0xFF3B1212), const Color(0xFF260D0D)]
-                      : [const Color(0xFFFEE2E2), const Color(0xFFFECACA)])
-                  : (isDark
-                      ? [const Color(0xFF17201D), const Color(0xFF101715)]
-                      : [const Color(0xFFECFDF5), const Color(0xFFD1FAE5)]),
-            ),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: hasPending
-                  ? const Color(0xFFEF4444).withValues(alpha: 0.6)
-                  : const Color(0xFF10B981).withValues(alpha: 0.35),
-              width: hasPending ? 1.8 : 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: hasPending
-                    ? const Color(0xFFEF4444).withValues(alpha: 0.2)
-                    : Colors.black.withValues(alpha: 0.04),
-                blurRadius: hasPending ? 16 : 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
+  void _showGatewayInfoModal(
+    List<TableModel> tables,
+    bool isScanning,
+    GatewayConnectionStatus status,
+    String gatewayIp,
+  ) {
+    final isConnected = status == GatewayConnectionStatus.connected;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Hero Icon / Lottie Indicator
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: hasPending
-                      ? const Color(0xFFEF4444)
-                      : const Color(0xFF10B981),
-                  boxShadow: [
-                    BoxShadow(
-                      color: hasPending
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.4)
-                          : const Color(0xFF10B981).withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Icon(
-                    hasPending
-                        ? Icons.notifications_active_rounded
-                        : Icons.task_alt_rounded,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-
-              // Title and Descriptive Metrics
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            hasPending
-                                ? '$pendingCount Table(s) Calling!'
-                                : 'Floor Operations Normal',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: hasPending
-                                  ? (isDark
-                                      ? const Color(0xFFFCA5A5)
-                                      : const Color(0xFF991B1B))
-                                  : (isDark
-                                      ? const Color(0xFF6EE7B7)
-                                      : const Color(0xFF065F46)),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      hasPending
-                          ? 'Guests requesting service • Tap to attend'
-                          : '$totalCount table(s) under your care • All attended',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: hasPending
-                            ? (isDark
-                                ? const Color(0xFFF87171)
-                                : const Color(0xFFB91C1C))
-                            : (isDark
-                                ? const Color(0xFFA7F3D0)
-                                : const Color(0xFF047857)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              if (hasPending)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDC2626),
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.grey.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
                     children: [
-                      Text(
-                        'VIEW',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      SizedBox(width: 2),
                       Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        color: Colors.white,
-                        size: 10,
+                        isConnected
+                            ? Icons.wifi_rounded
+                            : Icons.wifi_find_rounded,
+                        color: isConnected
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFE53935),
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Gateway Wi-Fi Telemetry',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // =========================================================================
-  // FILTER PILL COMPONENT
-  // =========================================================================
-  Widget _buildFilterPill({
-    required String value,
-    required String label,
-    required int count,
-    required Color accentColor,
-    required bool isDark,
-    bool isUrgent = false,
-  }) {
-    final isSelected = _selectedFilter == value;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          setState(() => _selectedFilter = value);
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? accentColor
-                : (isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.white),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isSelected
-                  ? accentColor
-                  : (isUrgent
-                      ? const Color(0xFFEF4444).withValues(alpha: 0.45)
-                      : (isDark
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : const Color(0xFFE2E8F0))),
-              width: isUrgent && !isSelected ? 1.5 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: accentColor.withValues(alpha: 0.35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                  color: isSelected
-                      ? Colors.white
-                      : (isDark ? Colors.white70 : Colors.black87),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : (isUrgent
-                          ? const Color(0xFFEF4444)
-                          : accentColor.withValues(alpha: 0.15)),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    color: isSelected
-                        ? Colors.white
-                        : (isUrgent ? Colors.white : accentColor),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded),
+                    tooltip: 'Refresh Gateway Status',
+                    onPressed: () {
+                      ref.read(gatewayWifiServiceProvider).refreshDevices();
+                      Navigator.pop(ctx);
+                    },
                   ),
-                ),
+                ],
               ),
+              const Divider(height: 24),
+              _buildDiagRow(
+                'Gateway Status',
+                isConnected ? 'Connected ✓ (Online)' : 'Searching Gateway...',
+                isConnected ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
+              ),
+              _buildDiagRow(
+                'Gateway IP Address',
+                '$gatewayIp:80',
+                isDark ? Colors.white70 : Colors.black87,
+              ),
+              _buildDiagRow(
+                'Assigned Devices',
+                '${tables.where((t) => t.isDeviceOnline).length} / ${tables.length} Tables Online',
+                isDark ? Colors.white : Colors.black87,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'ESP32-WROOM Gateway communicates over local Wi-Fi with instant sub-5ms event dispatching.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
             ],
           ),
-        ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDiagRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: valueColor,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // =========================================================================
-  // DRAWER NAVIGATION
-  // =========================================================================
   Widget _buildWaiterDrawer({
     required BuildContext context,
     required ThemeData theme,
@@ -1914,8 +1106,9 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     required String gatewayIp,
   }) {
     return Drawer(
-      backgroundColor:
-          isDark ? const Color(0xFF141218) : const Color(0xFFFBFBFB),
+      backgroundColor: isDark
+          ? const Color(0xFF141218)
+          : const Color(0xFFFBFBFB),
       child: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -2083,7 +1276,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                     children: [
                       Expanded(
                         child: _buildDrawerStatTile(
-                          title: 'Pending Calls',
+                          title: 'Pending',
                           count: pendingTables.length,
                           color: const Color(0xFFE53935),
                           icon: Icons.notifications_active_rounded,
@@ -2097,7 +1290,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: _buildDrawerStatTile(
-                          title: 'In Service',
+                          title: 'Accepted',
                           count: acceptedTables.length,
                           color: const Color(0xFF2E7D32),
                           icon: Icons.check_circle_rounded,
@@ -2147,7 +1340,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
             ),
             const SizedBox(height: 14),
 
-            // 3. Quick Actions / Preferences
+            // 4. Quick Actions / Preferences
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Text(
@@ -2214,7 +1407,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
             ),
             const SizedBox(height: 14),
 
-            // 4. Wi-Fi Gateway Telemetry Box
+            // 3. Wi-Fi Gateway Telemetry Box
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Text(

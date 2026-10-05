@@ -52,11 +52,23 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
   @override
   void initState() {
     super.initState();
+    _ensureAuthSession();
     _loadSavedManagerPhone();
 
     _managerPhoneFocus.addListener(_onFocusChange);
     _idFocus.addListener(_onFocusChange);
     _pinFocus.addListener(_onFocusChange);
+  }
+
+  Future<void> _ensureAuthSession() async {
+    try {
+      if (FirebaseAuth.instance.currentUser == null) {
+        await FirebaseAuth.instance.signInAnonymously();
+        debugPrint('[WAITER_LOGIN] Anonymous auth session active');
+      }
+    } catch (e) {
+      debugPrint('[WAITER_LOGIN] Anonymous auth check/signIn attempt: $e');
+    }
   }
 
   void _onFocusChange() {
@@ -69,7 +81,7 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
       final savedPhone = prefs.getString(_prefManagerPhoneKey);
       if (savedPhone != null && savedPhone.trim().isNotEmpty) {
         final digits = savedPhone.replaceAll(RegExp(r'[^0-9]'), '');
-        final cleanPhone = digits.length > 10
+        final cleanPhone = digits.length >= 10
             ? digits.substring(digits.length - 10)
             : digits;
         if (cleanPhone.length == 10) {
@@ -129,7 +141,10 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
   }
 
   Future<void> _fetchWaitersForManager(String phoneInput) async {
-    final digits = phoneInput.trim().replaceAll(RegExp(r'[^0-9]'), '');
+    var digits = phoneInput.trim().replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length > 10) {
+      digits = digits.substring(digits.length - 10);
+    }
     if (digits.length != 10) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -148,6 +163,7 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
     });
 
     try {
+      await _ensureAuthSession();
       final dbService = ref.read(firebaseRealtimeServiceProvider);
       final waiters = await dbService.fetchWaitersByPhone(digits);
 
@@ -173,7 +189,10 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
         setState(() {
           _isFetchingWaiters = false;
           _fetchedWaiters = [];
-          _inlineError = 'Error loading staff roster for manager: $e';
+          final errorMsg = e.toString().contains('permission-denied')
+              ? 'Database access denied. Please verify Firebase security rules.'
+              : 'Error loading staff roster for manager: $e';
+          _inlineError = errorMsg;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -350,10 +369,13 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
     // Prevent duplicate clicks while already processing or locked out
     if (_isLoading || _lockoutSeconds > 0) return;
 
-    final managerDigits = _managerPhoneController.text.trim().replaceAll(
+    final rawManagerDigits = _managerPhoneController.text.trim().replaceAll(
       RegExp(r'[^0-9]'),
       '',
     );
+    final managerDigits = rawManagerDigits.length > 10
+        ? rawManagerDigits.substring(rawManagerDigits.length - 10)
+        : rawManagerDigits;
     if (managerDigits.length != 10) {
       setState(() {
         _inlineError = 'Please enter a valid 10-digit manager mobile number.';
@@ -398,6 +420,7 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
         _inlineError = null;
       });
 
+      await _ensureAuthSession();
       final id = _idController.text.trim().toUpperCase();
       final pin = _pinController.text.trim();
 
@@ -433,7 +456,7 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
         if (mounted) {
           HapticFeedback.mediumImpact();
           // Display production-ready success celebration dialog before routing
-          await showGeneralDialog(
+          showGeneralDialog(
             context: context,
             barrierDismissible: false,
             barrierLabel: 'Login Success',
@@ -507,7 +530,13 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
             },
           );
 
+          // Allow celebration animation to smoothly complete
+          await Future.delayed(const Duration(milliseconds: 1500));
+
           if (mounted) {
+            if (Navigator.of(context, rootNavigator: true).canPop()) {
+              Navigator.of(context, rootNavigator: true).pop();
+            }
             context.go('/waiter-dashboard');
           }
         }
@@ -889,12 +918,20 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
             maxLength: 10,
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(10),
+              LengthLimitingTextInputFormatter(14),
             ],
             onChanged: (val) {
               setState(() => _inlineError = null);
-              if (val.trim().length == 10) {
-                _fetchWaitersForManager(val);
+              final digits = val.replaceAll(RegExp(r'[^0-9]'), '');
+              if (digits.length >= 10) {
+                final clean = digits.substring(digits.length - 10);
+                if (_managerPhoneController.text != clean) {
+                  _managerPhoneController.value = TextEditingValue(
+                    text: clean,
+                    selection: TextSelection.collapsed(offset: clean.length),
+                  );
+                }
+                _fetchWaitersForManager(clean);
               }
             },
             onFieldSubmitted: (val) => _fetchWaitersForManager(val),
@@ -903,7 +940,10 @@ class _WaiterLoginScreenState extends ConsumerState<WaiterLoginScreen> {
                 return 'Manager Mobile Number is required';
               }
               final digits = val.replaceAll(RegExp(r'[^0-9]'), '');
-              if (digits.length != 10) {
+              final clean = digits.length > 10
+                  ? digits.substring(digits.length - 10)
+                  : digits;
+              if (clean.length != 10) {
                 return 'Please enter a valid 10-digit mobile number';
               }
               return null;

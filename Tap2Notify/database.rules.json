@@ -9,37 +9,37 @@
     },
     "tables": {
       "$managerPhone": {
-        ".read": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
-        ".write": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
+        ".read": true,
+        ".write": true,
         ".indexOn": ["table_number", "flag", "status", "assigned_waiter_id"]
       }
     },
     "waiters": {
       "$managerPhone": {
-        ".read": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
-        ".write": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
+        ".read": true,
+        ".write": true,
         ".indexOn": ["waiterId", "status", "name"]
       }
     },
     "serviceRequests": {
       "$managerPhone": {
-        ".read": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
-        ".write": "auth != null && (auth.token.role == 'waiter' ? auth.token.managerPhone == $managerPhone : true)",
+        ".read": true,
+        ".write": true,
         ".indexOn": ["createdAt", "status", "priority", "tableNumber"]
       }
     },
     "devices": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": true,
+      ".write": true
     },
     "device_tokens": {
-      ".read": "auth != null",
-      ".write": "auth != null",
+      ".read": true,
+      ".write": true,
       ".indexOn": ["userId", "role", "active", "managerPhone"]
     },
     "notifications_queue": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": true,
+      ".write": true
     }
   }
 }

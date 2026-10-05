@@ -183,7 +183,13 @@ class FirebaseRealtimeService {
 
   Future<List<WaiterModel>> fetchWaitersByPhone(String managerPhone) async {
     final resolvedPhone = _resolvePhone(managerPhone);
-    final snapshot = await _waitersRef(resolvedPhone).get();
+    var snapshot = await _waitersRef(resolvedPhone).get();
+    if ((!snapshot.exists || snapshot.value == null) &&
+        managerPhone.trim() != resolvedPhone) {
+      final altPhone =
+          managerPhone.trim().replaceAll(RegExp(r'[.#$\[\]]'), '_');
+      snapshot = await _waitersRef(altPhone).get();
+    }
     if (!snapshot.exists || snapshot.value == null) {
       return <WaiterModel>[];
     }
@@ -220,14 +226,36 @@ class FirebaseRealtimeService {
       return null;
     }
 
-    final snap = await _waitersRef(cleanPhone).child(cleanId).get();
+    var snap = await _waitersRef(cleanPhone).child(cleanId).get();
     if (!snap.exists || snap.value == null) {
+      snap = await _waitersRef(cleanPhone).child(waiterId.trim()).get();
+    }
+
+    if (!snap.exists || snap.value == null) {
+      // Fallback: check all waiters under cleanPhone in case ID was registered with different casing
+      final allSnap = await _waitersRef(cleanPhone).get();
+      if (allSnap.exists && allSnap.value is Map) {
+        final allMap = allSnap.value as Map;
+        for (final entry in allMap.entries) {
+          if (entry.key.toString().trim().toUpperCase() == cleanId &&
+              entry.value is Map) {
+            final raw = entry.value as Map;
+            final storedPass =
+                (raw['passcode'] ?? raw['pin'] ?? '').toString().trim();
+            if (storedPass == cleanPasscode) {
+              final waiter = WaiterModel.fromMap(raw, entry.key.toString());
+              return waiter.copyWith(passcode: '');
+            }
+          }
+        }
+      }
       return null;
     }
 
     final raw = snap.value;
     if (raw is Map) {
-      final storedPass = (raw['passcode'] ?? raw['pin'] ?? '').toString().trim();
+      final storedPass =
+          (raw['passcode'] ?? raw['pin'] ?? '').toString().trim();
       if (storedPass == cleanPasscode) {
         final waiter = WaiterModel.fromMap(raw, cleanId);
         return waiter.copyWith(passcode: '');

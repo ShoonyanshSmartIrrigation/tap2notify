@@ -305,104 +305,6 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     );
   }
 
-  void _showIdleDialog(TableModel table, String waiterName, String waiterId) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        final theme = Theme.of(dialogContext);
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF9800).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.radio_button_unchecked_rounded,
-                  color: Color(0xFFFF9800),
-                  size: 36,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Table ${table.tableNumber}',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Table is Idle & Available 🟠',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-            ],
-          ),
-          content: Text(
-            'Assigned Staff: $waiterName\nTap below if assistance is requested at this table.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14),
-          ),
-          actionsPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE53935),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                Navigator.pop(dialogContext);
-
-                final repo = ref.read(waiterServiceRequestRepositoryProvider);
-                await repo.triggerTableRequest(
-                  table.id,
-                  tableNumber: table.tableNumber,
-                );
-
-                if (mounted) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '🔴 Service request triggered for Table ${table.tableNumber}',
-                      ),
-                      backgroundColor: const Color(0xFFE53935),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
-              icon: const Icon(Icons.notifications_active_rounded, size: 18),
-              label: const Text(
-                'CALL SERVICE',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   void _handleSignOut() async {
     final waiterNotifier = ref.read(currentLoggedWaiterProvider.notifier);
     try {
@@ -774,6 +676,50 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                                           ),
                                   ),
                                 ),
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: isConnected
+                                            ? const Color.fromARGB(
+                                                255,
+                                                60,
+                                                218,
+                                                68,
+                                              )
+                                            : (isScanning
+                                                  ? const Color(0xFF0284C7)
+                                                  : const Color(0xFFE53935)),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      isConnected
+                                          ? 'Wi-Fi: Connected (${wifiService.gatewayIp.isNotEmpty ? wifiService.gatewayIp : "Online"})'
+                                          : (isScanning
+                                                ? 'Wi-Fi: Searching Gateway...'
+                                                : 'Wi-Fi: Disconnected'),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: isConnected
+                                            ? const Color.fromARGB(
+                                                255,
+                                                60,
+                                                218,
+                                                68,
+                                              )
+                                            : (isScanning
+                                                  ? const Color(0xFF0284C7)
+                                                  : const Color(0xFFE53935)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
@@ -785,40 +731,58 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
               ),
             ),
 
-            // Filter Row
+            // Filter Row (Modern, Impressive, Attractive)
             SliverToBoxAdapter(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 6.0,
-                ),
-                child: Row(
-                  children: [
-                    _buildFilterChip(
-                      'all',
-                      'All (${assignedTables.length})',
-                      null,
-                    ),
-                    const SizedBox(width: 8),
-                    _buildFilterChip(
-                      'pending',
-                      'Pending 🔴 (${pendingTables.length})',
-                      const Color(0xFFE53935),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildFilterChip(
-                      'accepted',
-                      'Accepted 🟢 (${acceptedTables.length})',
-                      const Color(0xFF2E7D32),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildFilterChip(
-                      'idle',
-                      'Idle 🟠 (${idleTables.length})',
-                      const Color(0xFFFF9800),
-                    ),
-                  ],
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2.0, bottom: 8.0),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  clipBehavior: Clip.none,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 4.0,
+                  ),
+                  child: Row(
+                    children: [
+                      _buildModernFilterButton(
+                        value: 'all',
+                        label: 'All',
+                        count: assignedTables.length,
+                        icon: Icons.grid_view_rounded,
+                        activeColor: const Color(0xFFD97706),
+                        isDark: isDark,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildModernFilterButton(
+                        value: 'pending',
+                        label: 'Pending',
+                        count: pendingTables.length,
+                        icon: Icons.notifications_active_rounded,
+                        activeColor: const Color(0xFFDC2626),
+                        isDark: isDark,
+                        hasAlert: pendingTables.isNotEmpty,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildModernFilterButton(
+                        value: 'accepted',
+                        label: 'Accepted',
+                        count: acceptedTables.length,
+                        icon: Icons.check_circle_rounded,
+                        activeColor: const Color(0xFF15803D),
+                        isDark: isDark,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildModernFilterButton(
+                        value: 'idle',
+                        label: 'Idle',
+                        count: idleTables.length,
+                        icon: Icons.pause_circle_outline_rounded,
+                        activeColor: const Color(0xFFD97706),
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -883,19 +847,7 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
                   ),
                   delegate: SliverChildBuilderDelegate((context, index) {
                     final table = displayList[index];
-                    return TableCard(
-                      table: table,
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        if (table.isPending) {
-                          _showAcceptDialog(table, waiterName, waiterId);
-                        } else if (table.isAccepted) {
-                          _showCompleteDialog(table);
-                        } else {
-                          _showIdleDialog(table, waiterName, waiterId);
-                        }
-                      },
-                    );
+                    return TableCard(table: table);
                   }, childCount: displayList.length),
                 ),
               ),
@@ -905,24 +857,130 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
     );
   }
 
-  Widget _buildFilterChip(String value, String label, Color? color) {
+  Widget _buildModernFilterButton({
+    required String value,
+    required String label,
+    required int count,
+    required IconData icon,
+    required Color activeColor,
+    required bool isDark,
+    bool hasAlert = false,
+  }) {
     final isSelected = _selectedFilter == value;
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.bold,
-          color: isSelected ? Colors.white : color,
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          setState(() => _selectedFilter = value);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? activeColor
+                : (hasAlert
+                      ? activeColor.withValues(alpha: isDark ? 0.14 : 0.07)
+                      : (isDark ? const Color(0xFF1E1B26) : Colors.white)),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected
+                  ? activeColor
+                  : (hasAlert
+                        ? activeColor.withValues(alpha: 0.5)
+                        : (isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : const Color(0xFFE2E8F0))),
+              width: hasAlert && !isSelected ? 1.4 : 1.0,
+            ),
+            boxShadow: [
+              if (isSelected)
+                BoxShadow(
+                  color: activeColor.withValues(alpha: 0.28),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )
+              else
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected
+                    ? Colors.white
+                    : (hasAlert
+                          ? activeColor
+                          : activeColor.withValues(alpha: 0.85)),
+              ),
+              const SizedBox(width: 7),
+              // Status Label
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  letterSpacing: -0.2,
+                  color: isSelected
+                      ? Colors.white
+                      : (hasAlert
+                            ? activeColor
+                            : (isDark
+                                  ? const Color(0xFFCBD5E1)
+                                  : const Color(0xFF475569))),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Counter Badge Capsule
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7.5,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.22)
+                      : (hasAlert
+                            ? activeColor.withValues(
+                                alpha: isDark ? 0.25 : 0.14,
+                              )
+                            : (isDark
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : const Color(0xFFF1F5F9))),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected
+                        ? Colors.white
+                        : (hasAlert
+                              ? activeColor
+                              : (isDark
+                                    ? const Color(0xFF94A3B8)
+                                    : const Color(0xFF64748B))),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      selected: isSelected,
-      selectedColor: color ?? Theme.of(context).colorScheme.primary,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() => _selectedFilter = value);
-        }
-      },
     );
   }
 

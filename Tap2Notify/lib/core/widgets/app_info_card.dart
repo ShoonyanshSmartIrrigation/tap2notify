@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 class AppInfoCard extends StatelessWidget {
-  const AppInfoCard({super.key});
+  final bool isWaiter;
+
+  const AppInfoCard({super.key, this.isWaiter = false});
 
   void _showSystemGuideModal(BuildContext context) {
     final theme = Theme.of(context);
@@ -52,15 +54,19 @@ class AppInfoCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'How Tap2Notify Works',
+                        isWaiter
+                            ? 'How Tap2Notify Works for Staff'
+                            : 'How Tap2Notify Works',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w900,
                           fontSize: 18,
                         ),
                       ),
-                      const Text(
-                        'Instant physical-to-digital hospitality sync',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      Text(
+                        isWaiter
+                            ? 'Instant guest call & service response workflow'
+                            : 'Instant physical-to-digital hospitality sync',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -78,18 +84,24 @@ class AppInfoCard extends StatelessWidget {
               const SizedBox(height: 14),
               _buildGuideStep(
                 step: '2',
-                title: 'Manager Gets Instant Live Alert',
-                desc:
-                    'The app displays the table card in RED under "Pending Requests" within milliseconds.',
+                title: isWaiter
+                    ? 'Staff Gets Instant Live Alert'
+                    : 'Manager Gets Instant Live Alert',
+                desc: isWaiter
+                    ? 'The app plays audio and highlights your table in RED under "Pending Requests".'
+                    : 'The app displays the table card in RED under "Pending Requests" within milliseconds.',
                 color: const Color(0xFFF97316),
                 isDark: isDark,
               ),
               const SizedBox(height: 14),
               _buildGuideStep(
                 step: '3',
-                title: '1-Tap Manager Acceptance',
-                desc:
-                    'Manager taps Accept ->  Device LED turns GREEN and the table state updates live.',
+                title: isWaiter
+                    ? '1-Tap Service Acceptance'
+                    : '1-Tap Manager Acceptance',
+                desc: isWaiter
+                    ? 'Tap Accept to take the request. Device LED turns GREEN confirming you are on your way.'
+                    : 'Manager taps Accept ->  Device LED turns GREEN and the table state updates live.',
                 color: const Color(0xFF2E7D32),
                 isDark: isDark,
               ),
@@ -412,7 +424,7 @@ class AppInfoCard extends StatelessWidget {
                               fit: BoxFit.scaleDown,
                               child: _buildFlowStep(
                                 icon: Icons.touch_app_rounded,
-                                label: '1. Tap',
+                                label: isWaiter ? '1. Guest Call' : '1. Tap',
                                 color: const Color(0xFFF97316),
                                 isDark: isDark,
                               ),

@@ -19,7 +19,7 @@ final gatewayWifiServiceProvider = Provider<GatewayWifiService>((ref) {
 final bleServiceProvider = gatewayWifiServiceProvider;
 
 // Real-time Stream of all Dynamic Hotel Tables (from Firebase Realtime Database for Manager)
-final serviceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepository>((ref) {
+final serviceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
   final credentialService = ref.watch(deviceCredentialServiceProvider);
@@ -47,7 +47,7 @@ final serviceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepo
 });
 
 // Waiter Service Request Repository (Floor Session Scoped)
-final waiterServiceRequestRepositoryProvider = Provider.autoDispose<ServiceRequestRepository>((ref) {
+final waiterServiceRequestRepositoryProvider = Provider<ServiceRequestRepository>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   final dbService = ref.watch(firebaseRealtimeServiceProvider);
   final credentialService = ref.watch(deviceCredentialServiceProvider);

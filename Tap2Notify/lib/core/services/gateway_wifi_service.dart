@@ -914,7 +914,10 @@ class GatewayWifiService {
       }
     }
 
-    final existing = _tables[tableId];
+    final existing = _tables[tableId] ??
+        _tables[cleanTableNum] ??
+        (numPart != null ? _tables[numPart] : null) ??
+        (numTableId != null ? _tables[numTableId] : null);
     final bool isUnlocked;
     if (isExplicitlyLocked) {
       isUnlocked = false;
@@ -971,7 +974,7 @@ class GatewayWifiService {
                     ? (device['requestSentAt'] as num).toInt()
                     : (device['request_sent_at'] != null
                           ? (device['request_sent_at'] as num).toInt()
-                          : now)))
+                          : (existing?.requestSentAt ?? now))))
         : (finalFlag == 1
               ? (existing?.requestSentAt ?? device['requestSentAt'] as int?)
               : null);

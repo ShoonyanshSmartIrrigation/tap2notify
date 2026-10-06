@@ -17,12 +17,87 @@ class ServiceRequestRepository {
   final String? managerEmail;
   final String currentWaiterId;
 
-  final Map<String, int> _lastNotifiedTime = {};
-  final Set<String> _escalatedTableIds = {};
-  final Map<String, int> _pendingEntryTimestamps = {};
+  static final Map<String, int> _lastNotifiedTime = {};
+  static final Set<String> _escalatedTableIds = {};
+  static final Map<String, int> _pendingEntryTimestamps = {};
+  static final Set<String> _notifiedPendingTableKeys = {};
+  static final Map<String, int> _lastNotifiedRequestSentAt = {};
   List<TableModel> _cachedTables = [];
   Timer? _managerEscalationTicker;
   StreamSubscription<List<TableModel>>? _cloudRequestSub;
+
+  static String _cleanKey(dynamic rawId) {
+    if (rawId == null) return '';
+    final str = rawId.toString().trim();
+    if (str.isEmpty) return '';
+    final lower = str.toLowerCase();
+    String stripped = str;
+    if (lower.startsWith('table_')) {
+      stripped = str.substring(6);
+    } else if (lower.startsWith('table')) {
+      stripped = str.substring(5);
+    } else if (lower.startsWith('device_')) {
+      stripped = str.substring(7);
+    } else if (lower.startsWith('device')) {
+      stripped = str.substring(6);
+    }
+    final clean = stripped.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
+    return clean;
+  }
+
+  static Set<String> _getNormalizedKeys(String tableId, [dynamic tableNumber]) {
+    final keys = <String>{};
+    final trimmedId = tableId.trim();
+    if (trimmedId.isNotEmpty) {
+      keys.add(trimmedId.toLowerCase());
+      final clean = _cleanKey(trimmedId);
+      if (clean.isNotEmpty) {
+        keys.add(clean.toLowerCase());
+        keys.add('table_${clean.toLowerCase()}');
+      }
+      final digits = trimmedId.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digits.isNotEmpty) {
+        keys.add(digits);
+        keys.add('table_$digits');
+      }
+    }
+    if (tableNumber != null) {
+      final tStr = tableNumber.toString().trim();
+      if (tStr.isNotEmpty) {
+        keys.add(tStr.toLowerCase());
+        final clean = _cleanKey(tStr);
+        if (clean.isNotEmpty) {
+          keys.add(clean.toLowerCase());
+          keys.add('table_${clean.toLowerCase()}');
+        }
+        final digits = tStr.replaceAll(RegExp(r'[^0-9]'), '');
+        if (digits.isNotEmpty) {
+          keys.add(digits);
+          keys.add('table_$digits');
+        }
+      }
+    }
+    return keys;
+  }
+
+  static void _clearNotifiedPending(String tableId, [dynamic tableNumber]) {
+    final keys = _getNormalizedKeys(tableId, tableNumber);
+    for (final k in keys) {
+      _notifiedPendingTableKeys.remove(k);
+      _lastNotifiedRequestSentAt.remove(k);
+      _lastNotifiedTime.remove(k);
+    }
+  }
+
+  @visibleForTesting
+  static void resetNotificationStateForTesting() {
+    _notifiedPendingTableKeys.clear();
+    _lastNotifiedRequestSentAt.clear();
+    _lastNotifiedTime.clear();
+    _escalatedTableIds.clear();
+    _pendingEntryTimestamps.clear();
+  }
+
 
   ServiceRequestRepository(
     this._bleService,
@@ -79,10 +154,12 @@ class ServiceRequestRepository {
           assignedWaiterId: bleTable.assignedWaiterId,
           waiterName: bleTable.waiterName,
           isUnlocked: isTableUnlockedForThis,
+          requestSentAt: bleTable.requestSentAt,
         );
       } else if (bleTable.flag != 0) {
         _pendingEntryTimestamps.remove(bleTable.id);
         _escalatedTableIds.remove(bleTable.id);
+        _clearNotifiedPending(bleTable.id, bleTable.tableNumber);
       }
 
       if (managerPhone.isNotEmpty || managerUid.isNotEmpty) {
@@ -243,14 +320,19 @@ class ServiceRequestRepository {
                 managerPhone: managerPhone,
                 managerUid: managerUid,
               );
-              if (table.isPending && isTableAuthorizedForThisManager(table)) {
-                _triggerRequestNotification(
-                  tableId: table.id,
-                  tableNumber: table.tableNumber,
-                  assignedWaiterId: table.assignedWaiterId,
-                  waiterName: table.waiterName,
-                  isUnlocked: table.isUnlocked,
-                );
+              if (table.isPending) {
+                if (isTableAuthorizedForThisManager(table)) {
+                  _triggerRequestNotification(
+                    tableId: table.id,
+                    tableNumber: table.tableNumber,
+                    assignedWaiterId: table.assignedWaiterId,
+                    waiterName: table.waiterName,
+                    isUnlocked: table.isUnlocked,
+                    requestSentAt: table.requestSentAt,
+                  );
+                }
+              } else {
+                _clearNotifiedPending(table.id, table.tableNumber);
               }
             }
             if (currentWaiterId.isEmpty) {
@@ -339,12 +421,30 @@ class ServiceRequestRepository {
     String assignedWaiterId = '',
     String waiterName = '',
     bool isUnlocked = false,
+    int? requestSentAt,
   }) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final normKey = tableNumber.toString();
-    final last = _lastNotifiedTime[normKey] ?? _lastNotifiedTime[tableId] ?? 0;
-    // Debounce duplicate alerts within 8 seconds
-    if (now - last < 8000) return;
+    final keys = _getNormalizedKeys(tableId, tableNumber);
+
+    // Check if any normalized key for this table was already notified for this active pending session
+    final bool alreadyNotified = keys.any((k) => _notifiedPendingTableKeys.contains(k));
+
+    // A sound/notification must ONLY play when a genuinely new pending request is received,
+    // NEVER when an existing request is accepted, updated, refreshed, or re-rendered.
+    if (alreadyNotified) {
+      debugPrint(
+        '[NOTIFICATION SUPPRESSED] Table $tableNumber ($tableId) is already pending and notified. Suppressing audio & notif.',
+      );
+      return;
+    }
+
+    // Debounce duplicate alerts across all keys within 8 seconds
+    int lastAlertTime = 0;
+    for (final k in keys) {
+      final t = _lastNotifiedTime[k];
+      if (t != null && t > lastAlertTime) lastAlertTime = t;
+    }
+    if (now - lastAlertTime < 8000) return;
 
     // 1. If user is a MANAGER: Table service requests are intended for Waiters, NOT the Manager.
     // Suppress waiter table alerts on the manager's device.
@@ -356,6 +456,7 @@ class ServiceRequestRepository {
     }
 
     // 2. If user is a WAITER: Strictly verify the table is unlocked by manager
+    final normKey = tableNumber.toString();
     final cachedTable = _cachedTables.cast<TableModel?>().firstWhere(
       (t) => t?.id == tableId || t?.tableNumber.toString() == normKey,
       orElse: () => null,
@@ -391,8 +492,17 @@ class ServiceRequestRepository {
       return;
     }
 
-    _lastNotifiedTime[tableId] = now;
-    _lastNotifiedTime[normKey] = now;
+    // Mark all keys as notified for this active pending session
+    for (final k in keys) {
+      _notifiedPendingTableKeys.add(k);
+      _lastNotifiedTime[k] = now;
+      if (requestSentAt != null && requestSentAt > 0) {
+        _lastNotifiedRequestSentAt[k] = requestSentAt;
+      } else {
+        _lastNotifiedRequestSentAt[k] = now;
+      }
+    }
+
     debugPrint(
       '[NOTIFICATION TRIGGER] Showing OS notification & playing audio for Table $tableNumber ($tableId) to Waiter $currentWaiterId',
     );
@@ -879,12 +989,15 @@ class ServiceRequestRepository {
     NotificationAudioService().stop();
     _pendingEntryTimestamps.remove(tableId);
     _escalatedTableIds.remove(tableId);
+    _clearNotifiedPending(tableId);
     final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
     if (cleanDigits.isNotEmpty) {
       _pendingEntryTimestamps.remove('table_$cleanDigits');
       _pendingEntryTimestamps.remove(cleanDigits);
       _escalatedTableIds.remove('table_$cleanDigits');
       _escalatedTableIds.remove(cleanDigits);
+      _clearNotifiedPending(cleanDigits);
+      _clearNotifiedPending('table_$cleanDigits');
     }
     try {
       final notifId = int.tryParse(cleanDigits) ?? (tableId.hashCode & 0x7FFFFFFF);
@@ -909,12 +1022,15 @@ class ServiceRequestRepository {
     NotificationAudioService().stop();
     _pendingEntryTimestamps.remove(tableId);
     _escalatedTableIds.remove(tableId);
+    _clearNotifiedPending(tableId);
     final cleanDigits = tableId.replaceAll(RegExp(r'[^0-9]'), '');
     if (cleanDigits.isNotEmpty) {
       _pendingEntryTimestamps.remove('table_$cleanDigits');
       _pendingEntryTimestamps.remove(cleanDigits);
       _escalatedTableIds.remove('table_$cleanDigits');
       _escalatedTableIds.remove(cleanDigits);
+      _clearNotifiedPending(cleanDigits);
+      _clearNotifiedPending('table_$cleanDigits');
     }
     try {
       final notifId = int.tryParse(cleanDigits) ?? (tableId.hashCode & 0x7FFFFFFF);
@@ -927,6 +1043,8 @@ class ServiceRequestRepository {
 
   Future<void> resetAllTables() async {
     NotificationAudioService().stop();
+    _notifiedPendingTableKeys.clear();
+    _lastNotifiedRequestSentAt.clear();
     await _dbService.resetAllTables(managerPhone: managerPhone);
     await _bleService.resetAllTables();
   }
@@ -935,6 +1053,7 @@ class ServiceRequestRepository {
     String tableId, {
     dynamic tableNumber,
   }) async {
+    _clearNotifiedPending(tableId, tableNumber);
     await _dbService.triggerTableRequest(
       tableId,
       tableNumber: tableNumber,

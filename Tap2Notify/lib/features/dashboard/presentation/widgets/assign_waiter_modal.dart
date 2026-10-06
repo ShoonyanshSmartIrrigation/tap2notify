@@ -25,10 +25,8 @@ class AssignWaiterModal extends ConsumerStatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => AssignWaiterModal(
-        initialTable: initialTable,
-        allTables: allTables,
-      ),
+      builder: (ctx) =>
+          AssignWaiterModal(initialTable: initialTable, allTables: allTables),
     );
   }
 
@@ -82,7 +80,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
           ),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       return;
@@ -100,7 +100,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
             content: const Text('Please enter Waiter Name.'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
         return;
@@ -115,7 +117,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
             content: const Text('Please choose a waiter to assign.'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
         return;
@@ -139,7 +143,11 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -151,7 +159,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
             ),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -163,7 +173,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
             content: Text('Error assigning waiter: $e'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -188,7 +200,11 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.person_remove_rounded, color: Colors.white, size: 20),
+                const Icon(
+                  Icons.person_remove_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -200,7 +216,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
             ),
             backgroundColor: const Color(0xFFFF9800),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -212,7 +230,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
             content: Text('Error removing waiter: $e'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -287,10 +307,7 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                       height: 44,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [
-                            primaryColor,
-                            AppColors.deepOrange,
-                          ],
+                          colors: [primaryColor, AppColors.deepOrange],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -385,7 +402,10 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2.5,
+                              ),
                               decoration: BoxDecoration(
                                 color: primaryColor.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
@@ -411,7 +431,10 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                             if (_selectedTableIds.isNotEmpty) ...[
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: primaryColor,
                                   borderRadius: BorderRadius.circular(10),
@@ -433,11 +456,15 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                         TextButton(
                           style: TextButton.styleFrom(
                             visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                           ),
                           onPressed: () {
                             setState(() {
-                              if (_selectedTableIds.length == allCurrentTables.length) {
+                              if (_selectedTableIds.length ==
+                                  allCurrentTables.length) {
                                 _selectedTableIds.clear();
                               } else {
                                 _selectedTableIds.addAll(
@@ -496,7 +523,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                         padding: const EdgeInsets.all(24),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF16141D) : const Color(0xFFF8FAFC),
+                          color: isDark
+                              ? const Color(0xFF16141D)
+                              : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
@@ -511,16 +540,19 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                          childAspectRatio: 1.15,
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                              childAspectRatio: 1.15,
+                            ),
                         itemCount: displayTables.length,
                         itemBuilder: (context, index) {
                           final table = displayTables[index];
-                          final isSelected = _selectedTableIds.contains(table.id);
+                          final isSelected = _selectedTableIds.contains(
+                            table.id,
+                          );
                           final hasWaiter = table.isAssigned;
 
                           return Material(
@@ -538,26 +570,39 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                               borderRadius: BorderRadius.circular(14),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 160),
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 6,
+                                ),
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? primaryColor
-                                      : (isDark ? const Color(0xFF282433) : const Color(0xFFF8FAFC)),
+                                      : (isDark
+                                            ? const Color(0xFF282433)
+                                            : const Color(0xFFF8FAFC)),
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
                                     color: isSelected
                                         ? primaryColor
                                         : (hasWaiter
-                                            ? const Color(0xFF2E7D32).withValues(alpha: 0.35)
-                                            : (isDark
-                                                ? Colors.white.withValues(alpha: 0.08)
-                                                : Colors.black.withValues(alpha: 0.08))),
+                                              ? const Color(
+                                                  0xFF2E7D32,
+                                                ).withValues(alpha: 0.35)
+                                              : (isDark
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.08,
+                                                      )
+                                                    : Colors.black.withValues(
+                                                        alpha: 0.08,
+                                                      ))),
                                     width: isSelected ? 1.6 : 1.0,
                                   ),
                                   boxShadow: isSelected
                                       ? [
                                           BoxShadow(
-                                            color: primaryColor.withValues(alpha: 0.35),
+                                            color: primaryColor.withValues(
+                                              alpha: 0.35,
+                                            ),
                                             blurRadius: 6,
                                             offset: const Offset(0, 2),
                                           ),
@@ -568,7 +613,8 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         if (isSelected)
                                           const Padding(
@@ -586,7 +632,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                             fontWeight: FontWeight.bold,
                                             color: isSelected
                                                 ? Colors.white
-                                                : (isDark ? Colors.white : Colors.black87),
+                                                : (isDark
+                                                      ? Colors.white
+                                                      : Colors.black87),
                                           ),
                                         ),
                                       ],
@@ -598,12 +646,24 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                           : 'Unassigned',
                                       style: TextStyle(
                                         fontSize: 9.5,
-                                        fontWeight: hasWaiter ? FontWeight.w600 : FontWeight.normal,
+                                        fontWeight: hasWaiter
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
                                         color: isSelected
-                                            ? Colors.white.withValues(alpha: 0.9)
+                                            ? Colors.white.withValues(
+                                                alpha: 0.9,
+                                              )
                                             : (hasWaiter
-                                                ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
-                                                : (isDark ? Colors.white38 : Colors.grey)),
+                                                  ? (isDark
+                                                        ? const Color(
+                                                            0xFF81C784,
+                                                          )
+                                                        : const Color(
+                                                            0xFF2E7D32,
+                                                          ))
+                                                  : (isDark
+                                                        ? Colors.white38
+                                                        : Colors.grey)),
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -623,7 +683,10 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2.5,
+                          ),
                           decoration: BoxDecoration(
                             color: primaryColor.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
@@ -666,7 +729,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF16141D) : const Color(0xFFF8FAFC),
+                          color: isDark
+                              ? const Color(0xFF16141D)
+                              : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: isDark
@@ -694,19 +759,26 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                     else
                       ...waitersList.map((waiter) {
                         final isSelected =
-                            !_isCustomWaiter && _selectedWaiter?.waiterId == waiter.waiterId;
+                            !_isCustomWaiter &&
+                            _selectedWaiter?.waiterId == waiter.waiterId;
 
                         // Dynamically calculate assigned tables for this waiter
-                        final waiterAssignedTables = allCurrentTables.where((t) {
-                          if (t.assignedWaiterId.isNotEmpty && t.assignedWaiterId == waiter.waiterId) {
+                        final waiterAssignedTables = allCurrentTables.where((
+                          t,
+                        ) {
+                          if (t.assignedWaiterId.isNotEmpty &&
+                              t.assignedWaiterId == waiter.waiterId) {
                             return true;
                           }
                           if (t.waiterName.isNotEmpty) {
-                            if (t.waiterName == waiter.waiterId || t.waiterName == waiter.name) {
+                            if (t.waiterName == waiter.waiterId ||
+                                t.waiterName == waiter.name) {
                               return true;
                             }
                             if (t.waiterName.contains(waiter.waiterId) ||
-                                t.waiterName.toLowerCase().contains(waiter.name.toLowerCase())) {
+                                t.waiterName.toLowerCase().contains(
+                                  waiter.name.toLowerCase(),
+                                )) {
                               return true;
                             }
                           }
@@ -714,7 +786,8 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                         }).toList();
 
                         final int activeCount = waiterAssignedTables.length;
-                        final String tablesListStr = waiterAssignedTables.isNotEmpty
+                        final String tablesListStr =
+                            waiterAssignedTables.isNotEmpty
                             ? ' (${waiterAssignedTables.map((t) => 'T-${t.tableNumber}').join(', ')})'
                             : '';
 
@@ -723,14 +796,16 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? primaryColor.withValues(alpha: 0.08)
-                                : (isDark ? const Color(0xFF17151D) : Colors.white),
+                                : (isDark
+                                      ? const Color(0xFF17151D)
+                                      : Colors.white),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isSelected
                                   ? primaryColor
                                   : (isDark
-                                      ? Colors.white.withValues(alpha: 0.08)
-                                      : Colors.black.withValues(alpha: 0.08)),
+                                        ? Colors.white.withValues(alpha: 0.08)
+                                        : Colors.black.withValues(alpha: 0.08)),
                               width: isSelected ? 1.6 : 1.0,
                             ),
                             boxShadow: [
@@ -750,7 +825,10 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                             },
                             borderRadius: BorderRadius.circular(16),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
                               child: Row(
                                 children: [
                                   // Waiter Avatar
@@ -760,7 +838,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                     decoration: BoxDecoration(
                                       color: isSelected
                                           ? primaryColor
-                                          : primaryColor.withValues(alpha: 0.12),
+                                          : primaryColor.withValues(
+                                              alpha: 0.12,
+                                            ),
                                       shape: BoxShape.circle,
                                     ),
                                     alignment: Alignment.center,
@@ -769,7 +849,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
-                                        color: isSelected ? Colors.white : primaryColor,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : primaryColor,
                                       ),
                                     ),
                                   ),
@@ -778,7 +860,8 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                   // Waiter Info
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           waiter.name,
@@ -795,28 +878,46 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                               style: TextStyle(
                                                 fontSize: 11.5,
                                                 color: isDark
-                                                    ? Colors.white.withValues(alpha: 0.6)
-                                                    : AppColors.lightSecondaryText,
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.6,
+                                                      )
+                                                    : AppColors
+                                                          .lightSecondaryText,
                                               ),
                                             ),
                                             const SizedBox(width: 6),
                                             Text(
                                               '•',
                                               style: TextStyle(
-                                                color: isDark ? Colors.white30 : Colors.black26,
+                                                color: isDark
+                                                    ? Colors.white30
+                                                    : Colors.black26,
                                               ),
                                             ),
                                             const SizedBox(width: 6),
                                             Flexible(
                                               child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   color: activeCount > 0
-                                                      ? primaryColor.withValues(alpha: 0.12)
+                                                      ? primaryColor.withValues(
+                                                          alpha: 0.12,
+                                                        )
                                                       : (isDark
-                                                          ? Colors.white.withValues(alpha: 0.06)
-                                                          : Colors.grey.withValues(alpha: 0.12)),
-                                                  borderRadius: BorderRadius.circular(6),
+                                                            ? Colors.white
+                                                                  .withValues(
+                                                                    alpha: 0.06,
+                                                                  )
+                                                            : Colors.grey
+                                                                  .withValues(
+                                                                    alpha: 0.12,
+                                                                  )),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
                                                 ),
                                                 child: Text(
                                                   activeCount > 0
@@ -827,10 +928,14 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                                     fontWeight: FontWeight.w600,
                                                     color: activeCount > 0
                                                         ? primaryColor
-                                                        : (isDark ? Colors.white54 : Colors.grey[700]),
+                                                        : (isDark
+                                                              ? Colors.white54
+                                                              : Colors
+                                                                    .grey[700]),
                                                   ),
                                                   maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ),
                                             ),
@@ -845,7 +950,11 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                     isSelected
                                         ? Icons.check_circle_rounded
                                         : Icons.radio_button_unchecked_rounded,
-                                    color: isSelected ? primaryColor : (isDark ? Colors.white30 : Colors.grey[400]),
+                                    color: isSelected
+                                        ? primaryColor
+                                        : (isDark
+                                              ? Colors.white30
+                                              : Colors.grey[400]),
                                     size: 22,
                                   ),
                                 ],
@@ -867,8 +976,8 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                           color: _isCustomWaiter
                               ? primaryColor
                               : (isDark
-                                  ? Colors.white.withValues(alpha: 0.08)
-                                  : Colors.black.withValues(alpha: 0.08)),
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : Colors.black.withValues(alpha: 0.08)),
                           width: _isCustomWaiter ? 1.6 : 1.0,
                         ),
                       ),
@@ -878,7 +987,10 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                             onTap: () => setState(() => _isCustomWaiter = true),
                             borderRadius: BorderRadius.circular(16),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
                               child: Row(
                                 children: [
                                   Container(
@@ -888,22 +1000,29 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                       color: _isCustomWaiter
                                           ? primaryColor
                                           : (isDark
-                                              ? Colors.white.withValues(alpha: 0.06)
-                                              : Colors.black.withValues(alpha: 0.05)),
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.06,
+                                                  )
+                                                : Colors.black.withValues(
+                                                    alpha: 0.05,
+                                                  )),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Icon(
                                       Icons.edit_note_rounded,
                                       color: _isCustomWaiter
                                           ? Colors.white
-                                          : (isDark ? Colors.white70 : Colors.black87),
+                                          : (isDark
+                                                ? Colors.white70
+                                                : Colors.black87),
                                       size: 22,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   const Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Custom / Temporary Waiter',
@@ -929,7 +1048,9 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                         : Icons.radio_button_unchecked_rounded,
                                     color: _isCustomWaiter
                                         ? primaryColor
-                                        : (isDark ? Colors.white30 : Colors.grey[400]),
+                                        : (isDark
+                                              ? Colors.white30
+                                              : Colors.grey[400]),
                                     size: 22,
                                   ),
                                 ],
@@ -949,9 +1070,14 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                         labelText: 'Waiter Name',
                                         hintText: 'e.g. Sameer',
                                         isDense: true,
-                                        prefixIcon: const Icon(Icons.person_outline, size: 18),
+                                        prefixIcon: const Icon(
+                                          Icons.person_outline,
+                                          size: 18,
+                                        ),
                                         border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -965,9 +1091,14 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                         labelText: 'Waiter ID',
                                         hintText: 'e.g. W004',
                                         isDense: true,
-                                        prefixIcon: const Icon(Icons.tag_rounded, size: 18),
+                                        prefixIcon: const Icon(
+                                          Icons.tag_rounded,
+                                          size: 18,
+                                        ),
                                         border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -998,12 +1129,15 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                 child: Row(
                   children: [
                     // Optional Unassign Button
-                    if (hasAssignedTablesSelected || _selectedTableIds.isNotEmpty)
+                    if (hasAssignedTablesSelected ||
+                        _selectedTableIds.isNotEmpty)
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFFE53935),
                           side: BorderSide(
-                            color: const Color(0xFFE53935).withValues(alpha: 0.5),
+                            color: const Color(
+                              0xFFE53935,
+                            ).withValues(alpha: 0.5),
                           ),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
@@ -1023,7 +1157,8 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                           ),
                         ),
                       ),
-                    if (hasAssignedTablesSelected || _selectedTableIds.isNotEmpty)
+                    if (hasAssignedTablesSelected ||
+                        _selectedTableIds.isNotEmpty)
                       const SizedBox(width: 10),
 
                     // Primary Assign Button
@@ -1031,15 +1166,14 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFFFB923C),
-                              Color(0xFFEA580C),
-                            ],
+                            colors: [Color(0xFFFB923C), Color(0xFFEA580C)],
                           ),
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFFEA580C).withValues(alpha: 0.35),
+                              color: const Color(
+                                0xFFEA580C,
+                              ).withValues(alpha: 0.35),
                               blurRadius: 10,
                               offset: const Offset(0, 3),
                             ),
@@ -1063,9 +1197,14 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                                         ),
                                       )
                                     : Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
-                                          const Icon(Icons.check_rounded, size: 18, color: Colors.white),
+                                          const Icon(
+                                            Icons.check_rounded,
+                                            size: 18,
+                                            color: Colors.white,
+                                          ),
                                           const SizedBox(width: 6),
                                           Text(
                                             _selectedTableIds.isEmpty
@@ -1089,6 +1228,7 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
             ],
           );
         },
@@ -1117,15 +1257,15 @@ class _AssignWaiterModalState extends ConsumerState<AssignWaiterModal> {
               color: isSelected
                   ? primaryColor.withValues(alpha: 0.15)
                   : (isDark
-                      ? const Color(0xFF282433)
-                      : const Color(0xFFF1F3F5)),
+                        ? const Color(0xFF282433)
+                        : const Color(0xFFF1F3F5)),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isSelected
                     ? primaryColor.withValues(alpha: 0.5)
                     : (isDark
-                        ? Colors.white.withValues(alpha: 0.05)
-                        : Colors.black.withValues(alpha: 0.05)),
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : Colors.black.withValues(alpha: 0.05)),
               ),
             ),
             child: Text(

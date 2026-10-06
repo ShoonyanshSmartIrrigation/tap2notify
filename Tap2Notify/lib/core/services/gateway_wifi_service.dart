@@ -1072,26 +1072,30 @@ class GatewayWifiService {
   }
 
   void _checkStaleDevices() {
-    final now = DateTime.now();
-    bool changed = false;
+    // When connected to Gateway, table devices remain ALWAYS ACTIVE and
+    // their online state is maintained directly by Gateway events and polling.
+    if (_connectionStatus != GatewayConnectionStatus.connected) {
+      final now = DateTime.now();
+      bool changed = false;
 
-    _lastSeenTimes.forEach((tableId, lastSeen) {
-      if (now.difference(lastSeen).inSeconds > 30) {
-        final table = _tables[tableId];
-        if (table != null && table.isDeviceOnline) {
-          final offlineTable = table.copyWith(isDeviceOnline: false);
-          _tables[tableId] = offlineTable;
-          changed = true;
-          debugPrint(
-            '[GATEWAY WIFI] Table $tableId is now OFFLINE (stale >30s)',
-          );
-          onDeviceDiscovered?.call(offlineTable);
+      _lastSeenTimes.forEach((tableId, lastSeen) {
+        if (now.difference(lastSeen).inSeconds > 60) {
+          final table = _tables[tableId];
+          if (table != null && table.isDeviceOnline) {
+            final offlineTable = table.copyWith(isDeviceOnline: false);
+            _tables[tableId] = offlineTable;
+            changed = true;
+            debugPrint(
+              '[GATEWAY WIFI] Table $tableId is now OFFLINE (Gateway disconnected)',
+            );
+            onDeviceDiscovered?.call(offlineTable);
+          }
         }
-      }
-    });
+      });
 
-    if (changed) {
-      _emitTables();
+      if (changed) {
+        _emitTables();
+      }
     }
   }
 

@@ -68,6 +68,16 @@ unsigned long lastGatewayContactTime  = 0;
 unsigned long lastChannelScanTime     = 0;
 static uint16_t packetSequence        = 0;
 
+// Gateway Channel Hunting & Tracking
+const unsigned long INITIAL_DISCOVERY_TIMEOUT_MS = 8000;  // 8s from boot before searching channels
+const unsigned long GATEWAY_LOST_TIMEOUT_MS      = 60000; // 60s in steady state before hunting
+bool hasEverContactedGateway                     = false;
+bool isHunting                                   = false;
+int huntChannelIndex                             = 0;
+// Channels prioritized: 1, 6, 11 first (standard 2.4GHz non-overlapping), then remaining channels
+const int scanChannels[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
+const int totalScanChannels = sizeof(scanChannels) / sizeof(scanChannels[0]);
+
 // Gateway Broadcast MAC (0xFF:0xFF:0xFF:0xFF:0xFF:0xFF allows instant auto-pairing with Gateway)
 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -181,7 +191,15 @@ void sendPacketToGateway(MessageType type, const char* payloadStr = "") {
     strncpy(pkt.payload, DEVICE_ID, sizeof(pkt.payload) - 1);
   }
 
-  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&pkt, sizeof(pkt));
+  // Rapid burst for state changes (REQ, ACC, IDLE) to eliminate RF packet drop
+  int burstCount = (type == MSG_STATE_CHANGE) ? 3 : 1;
+  esp_err_t result = ESP_OK;
+  for (int b = 0; b < burstCount; b++) {
+    result = esp_now_send(broadcastAddress, (uint8_t*)&pkt, sizeof(pkt));
+    if (burstCount > 1 && b < burstCount - 1) {
+      delay(3);
+    }
+  }
   
   if (result == ESP_OK) {
     Serial.printf("[ESP-NOW TX #%d (CH %d | Hotel 0x%08X)] Type: 0x%02X | Table: %s | Flag: %d | Unlocked: %d | Payload: '%s'\n",
@@ -222,13 +240,10 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
 
   // Update last gateway contact timestamp on valid gateway packet
   lastGatewayContactTime = millis();
+  hasEverContactedGateway = true;
+  isHunting = false;
 
-  // Wear-out protection: only write to NVS flash when channel has actually changed
-  if (preferences.getInt("channel", -1) != currentChannel) {
-    preferences.putInt("channel", currentChannel);
-  }
-
-  // Filter messages: Only process commands addressed to THIS table, THIS device ID, or broadcast ("0" or "ALL")
+  // Filter messages: Only process commands addressed to THIS table, THIS device ID, broadcast ("0", "ALL", "GATEWAY"), or MSG_RESP_STATUS
   String cleanPktId = cleanTableId(pkt->deviceId);
   String cleanMyTable = cleanTableId(TABLE_NUMBER);
   String cleanMyDevId = cleanTableId(DEVICE_ID);
@@ -249,8 +264,10 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
                    (pktDigits.length() > 0 && myDigits.length() > 0 && pktDigits == myDigits) ||
                    cleanPktId == "0" ||
                    cleanPktId.equalsIgnoreCase("ALL") ||
+                   cleanPktId.equalsIgnoreCase("GATEWAY") ||
                    strcmp(pkt->deviceId, "0") == 0 ||
-                   strcasecmp(pkt->deviceId, "ALL") == 0;
+                   strcasecmp(pkt->deviceId, "ALL") == 0 ||
+                   pkt->msgType == MSG_RESP_STATUS;
 
   if (!matchesMe) {
     return; // Packet addressed to another C3 device
@@ -262,7 +279,24 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
   switch (pkt->msgType) {
     case MSG_RESP_STATUS: {
       // Gateway PONG keep-alive received
-      // Channel confirmed & locked
+      lastGatewayContactTime = millis();
+      hasEverContactedGateway = true;
+      isHunting = false;
+
+      // Parse Gateway Wi-Fi Channel from payload: "PONG_CH%d"
+      if (strncmp(pkt->payload, "PONG_CH", 7) == 0) {
+        int gwChan = atoi(pkt->payload + 7);
+        if (gwChan >= 1 && gwChan <= 13) {
+          if (gwChan != currentChannel) {
+            currentChannel = gwChan;
+            esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+            Serial.printf("[ESP-NOW SYNC] Gateway confirmed on Channel %d. Locking channel!\n", currentChannel);
+          }
+          if (preferences.getInt("channel", -1) != currentChannel) {
+            preferences.putInt("channel", currentChannel);
+          }
+        }
+      }
       break;
     }
 
@@ -374,11 +408,23 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
 // ==========================================
 void checkChannelHunting() {
   unsigned long now = millis();
-  // If no contact from Gateway for >25 seconds, scan channels 1..13 to re-acquire Gateway
-  if (now - lastGatewayContactTime > 25000) {
-    if (now - lastChannelScanTime > 1500) {
+
+  // Once Gateway contact is confirmed, STAY locked on confirmed channel!
+  // Do NOT drift away into endless channel hunting during normal operation.
+  if (hasEverContactedGateway) {
+    return;
+  }
+
+  // Before initial gateway contact, search channels if no contact within initial window
+  if (now - lastGatewayContactTime > INITIAL_DISCOVERY_TIMEOUT_MS) {
+    isHunting = true;
+  }
+
+  if (isHunting) {
+    if (now - lastChannelScanTime > 2500) { // Dwell 2.5s on each channel
       lastChannelScanTime = now;
-      currentChannel = (currentChannel % 13) + 1;
+      huntChannelIndex = (huntChannelIndex + 1) % totalScanChannels;
+      currentChannel = scanChannels[huntChannelIndex];
       esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
       Serial.printf("[ESP-NOW HUNT] Searching Gateway on Wi-Fi Channel %d...\n", currentChannel);
       sendPacketToGateway(MSG_HEARTBEAT, "HUNT");
@@ -421,9 +467,11 @@ void setup() {
   // Read initial touch sensor baseline
   lastTouchState = digitalRead(TOUCH_PIN);
 
-  // Initialize Wi-Fi in Station Mode for ESP-NOW
+  // Initialize Wi-Fi in Station Mode for ESP-NOW (Modem power save disabled)
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
   esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
 
   Serial.print("[WIFI] ESP32-C3 MAC Address: ");
@@ -481,6 +529,14 @@ void loop() {
     if (millis() - lastDebounceTime > DEBOUNCE_DELAY_MS) {
       lastDebounceTime = millis();
       lastTouchState = reading; // Update to new stable state
+
+      // IMMEDIATE WAKE-UP: If hunting or channel drifted, snap immediately to saved gateway channel
+      if (isHunting) {
+        isHunting = false;
+        currentChannel = preferences.getInt("channel", DEFAULT_WIFI_CHANNEL);
+        esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+        Serial.printf("\n[IMMEDIATE WAKEUP] Customer touch -> Hunting cancelled, locked on Channel %d\n", currentChannel);
+      }
 
       // STRICT LOCK CHECK: Ignore touch if device is locked
       if (!isDeviceUnlocked || currentState == STATE_LOCKED) {

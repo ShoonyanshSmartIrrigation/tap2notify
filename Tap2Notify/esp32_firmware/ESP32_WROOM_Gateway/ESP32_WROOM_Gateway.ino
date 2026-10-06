@@ -283,6 +283,18 @@ int findDeviceIndex(const char* deviceId) {
   return -1;
 }
 
+void ensureEspNowPeer(const uint8_t* mac) {
+  if (mac == NULL) return;
+  if (!esp_now_is_peer_exist(mac)) {
+    esp_now_peer_info_t peerInfo;
+    memset(&peerInfo, 0, sizeof(peerInfo));
+    memcpy(peerInfo.peer_addr, mac, 6);
+    peerInfo.channel = 0; // Dynamic interface channel
+    peerInfo.encrypt = false;
+    esp_now_add_peer(&peerInfo);
+  }
+}
+
 int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag, bool isUnlocked, uint16_t seq) {
   int idx = findDeviceIndex(deviceId);
   bool isNew = false;
@@ -297,16 +309,7 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
     strncpy(deviceRegistry[idx].deviceId, deviceId, sizeof(deviceRegistry[idx].deviceId) - 1);
     memcpy(deviceRegistry[idx].mac, mac, 6);
     deviceRegistry[idx].isVerified = false; // Must be verified before admission/communication
-
-    // Register individual peer in ESP-NOW if not already registered
-    if (!esp_now_is_peer_exist(mac)) {
-      esp_now_peer_info_t peerInfo;
-      memset(&peerInfo, 0, sizeof(peerInfo));
-      memcpy(peerInfo.peer_addr, mac, 6);
-      peerInfo.channel = 0; // Follow interface channel
-      peerInfo.encrypt = false;
-      esp_now_add_peer(&peerInfo);
-    }
+    ensureEspNowPeer(mac);
 
     Serial.printf("[REGISTRY] Discovered C3 Device (Pending Verification): Table %s (MAC: %02X:%02X:%02X:%02X:%02X:%02X)\n",
                   deviceId, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -314,15 +317,8 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
     // Update MAC address if changed
     if (memcmp(deviceRegistry[idx].mac, mac, 6) != 0) {
       memcpy(deviceRegistry[idx].mac, mac, 6);
-      if (!esp_now_is_peer_exist(mac)) {
-        esp_now_peer_info_t peerInfo;
-        memset(&peerInfo, 0, sizeof(peerInfo));
-        memcpy(peerInfo.peer_addr, mac, 6);
-        peerInfo.channel = 0;
-        peerInfo.encrypt = false;
-        esp_now_add_peer(&peerInfo);
-      }
     }
+    ensureEspNowPeer(mac);
   }
 
   bool stateChanged = isNew || 
@@ -355,18 +351,11 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
 }
 
 void checkDeviceHeartbeats() {
-  unsigned long now = millis();
-
+  // Device nodes remain ALWAYS ACTIVE once registered in the Gateway.
+  // Tables do not drop offline simply due to inactivity or quiet periods between orders.
+  // When a user touches or sends a request from C3, it responds and updates state immediately.
   for (int i = 0; i < registeredDeviceCount; i++) {
-    if (deviceRegistry[i].isOnline && (now - deviceRegistry[i].lastSeen > HEARTBEAT_TIMEOUT_MS)) {
-      deviceRegistry[i].isOnline = false;
-      Serial.printf("[GATEWAY TIMEOUT] Table %s is OFFLINE (>30s inactive)\n", deviceRegistry[i].deviceId);
-
-      String offlineEvent = "{\"event\":\"device_offline\",\"deviceId\":\"" + String(deviceRegistry[i].deviceId) + 
-                            "\",\"tableNumber\":\"" + String(deviceRegistry[i].deviceId) + "\"" +
-                            ",\"isOnline\":false}";
-      broadcastEventToApp(offlineEvent.c_str());
-    }
+    deviceRegistry[i].isOnline = true;
   }
 }
 
@@ -402,7 +391,13 @@ void onEspNowDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, 
   ackPkt.isUnlocked = pkt->isUnlocked;
   ackPkt.seqNumber = pkt->seqNumber;
   snprintf(ackPkt.payload, sizeof(ackPkt.payload), "PONG_CH%d", WiFi.channel());
-  esp_now_send(src_addr, (uint8_t*)&ackPkt, sizeof(ackPkt));
+
+  ensureEspNowPeer(src_addr);
+  esp_err_t ackRes = esp_now_send(src_addr, (uint8_t*)&ackPkt, sizeof(ackPkt));
+  if (ackRes != ESP_OK) {
+    // Immediate broadcast fallback so C3 node reliably receives PONG and locks channel
+    esp_now_send(broadcastAddress, (uint8_t*)&ackPkt, sizeof(ackPkt));
+  }
 
   // If this is a response to an App command (e.g. AUTH_OK, AUTH_FAIL, LOCKED, SETPWD_OK)
   if (pkt->msgType == MSG_RESP_OK || pkt->msgType == MSG_RESP_FAIL) {
@@ -462,11 +457,15 @@ void sendCommandToC3(const char* targetDeviceId, MessageType type, const char* p
   int idx = findDeviceIndex(targetDeviceId);
   if (idx != -1) {
     memcpy(targetMac, deviceRegistry[idx].mac, 6);
+    ensureEspNowPeer(targetMac);
   }
 
   esp_err_t res = esp_now_send(targetMac, (uint8_t*)&pkt, sizeof(pkt));
+  if (res != ESP_OK && memcmp(targetMac, broadcastAddress, 6) != 0) {
+    esp_now_send(broadcastAddress, (uint8_t*)&pkt, sizeof(pkt));
+  }
   Serial.printf("[GATEWAY -> C3 TX (Hotel 0x%08X)] Target: Table %s | Cmd: 0x%02X | Payload: '%s' | Status: %s\n",
-                currentHotelToken, targetDeviceId, type, payload ? payload : "", res == ESP_OK ? "OK" : "FAIL");
+                currentHotelToken, targetDeviceId, type, payload ? payload : "", res == ESP_OK ? "OK" : "BROADCAST");
 }
 
 bool executeCommandWithSyncWait(const char* devId, MessageType msgType, const char* payload, unsigned long timeoutMs) {

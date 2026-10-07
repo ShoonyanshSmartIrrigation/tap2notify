@@ -26,6 +26,8 @@
 #include <esp_wifi.h>
 #include <Adafruit_NeoPixel.h>
 #include <Preferences.h>
+#include <esp_sleep.h>
+#include "driver/gpio.h"
 
 // ==========================================
 // --- Device & Hardware Configuration ---
@@ -67,6 +69,12 @@ unsigned long lastHeartbeatTime       = 0;
 unsigned long lastGatewayContactTime  = 0;
 unsigned long lastChannelScanTime     = 0;
 static uint16_t packetSequence        = 0;
+
+// Power Management & Sleep Configuration
+const unsigned long INACTIVITY_SLEEP_TIMEOUT_MS = 30000; // 30 seconds of inactivity before entering sleep
+unsigned long lastActivityTime                   = 0;     // Timestamp of last user touch, command, or state transition
+unsigned long lastWakeupTime                     = 0;     // Timestamp of last wake-up from sleep
+bool isSleeping                                  = false; // Low-power sleep active flag
 
 // Gateway Channel Hunting & Tracking
 const unsigned long INITIAL_DISCOVERY_TIMEOUT_MS = 8000;  // 8s from boot before searching channels
@@ -301,6 +309,7 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
     }
 
     case MSG_CMD_AUTH: {
+      lastActivityTime = millis();
       String enteredPassword = String(pkt->payload);
       enteredPassword.trim();
 
@@ -338,6 +347,7 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
     }
 
     case MSG_CMD_LOCK: {
+      lastActivityTime = millis();
       Serial.printf("[DEVICE LOCKED] Table %s locked by Gateway.\n", TABLE_NUMBER);
       isDeviceUnlocked = false;
       preferences.putBool("unlocked", false);
@@ -350,6 +360,7 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
     }
 
     case MSG_CMD_SETPWD: {
+      lastActivityTime = millis();
       String newPass = String(pkt->payload);
       newPass.trim();
       if (newPass.length() >= 4 && isDeviceUnlocked) {
@@ -365,6 +376,7 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
     }
 
     case MSG_CMD_RESET: {
+      lastActivityTime = millis();
       Serial.printf("[CMD RESET] Table %s reset to IDLE.\n", TABLE_NUMBER);
       if (isDeviceUnlocked) {
         currentState = STATE_IDLE;
@@ -375,6 +387,7 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
     }
 
     case MSG_CMD_ACCEPT: {
+      lastActivityTime = millis();
       Serial.printf("[CMD ACCEPT] Table %s request accepted.\n", TABLE_NUMBER);
       if (isDeviceUnlocked) {
         currentState = STATE_ACCEPTED;
@@ -387,6 +400,7 @@ void onDataReceived(const uint8_t* src_addr, const uint8_t* incomingData, int le
     }
 
     case MSG_CMD_TRIGGER: {
+      lastActivityTime = millis();
       Serial.printf("[CMD TRIGGER] Table %s service request triggered remotely.\n", TABLE_NUMBER);
       if (isDeviceUnlocked) {
         currentState = STATE_PENDING;
@@ -429,6 +443,228 @@ void checkChannelHunting() {
       Serial.printf("[ESP-NOW HUNT] Searching Gateway on Wi-Fi Channel %d...\n", currentChannel);
       sendPacketToGateway(MSG_HEARTBEAT, "HUNT");
     }
+  }
+}
+
+// ==========================================
+// --- Touch Action Processing ---
+// ==========================================
+void handleTouchAction(const char* triggerSource) {
+  lastActivityTime = millis(); // Refresh inactivity timer on every touch action
+
+  // IMMEDIATE WAKE-UP: If hunting or channel drifted, snap immediately to saved gateway channel
+  if (isHunting) {
+    isHunting = false;
+    currentChannel = preferences.getInt("channel", DEFAULT_WIFI_CHANNEL);
+    esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+    Serial.printf("\n[%s] Customer touch -> Hunting cancelled, locked on Channel %d\n", triggerSource, currentChannel);
+  }
+
+  // STRICT LOCK CHECK: Ignore touch if device is locked
+  if (!isDeviceUnlocked || currentState == STATE_LOCKED) {
+    Serial.printf("\n[%s] [TOUCH BLOCKED] Table %s is LOCKED. Manager authorization required.\n", triggerSource, TABLE_NUMBER);
+    triggerNonBlockingBeep(60, 2, 60); // Fast double error buzz
+    sendPacketToGateway(MSG_STATE_CHANGE, "TOUCH_BLOCKED_LOCKED");
+  } else if (currentState == STATE_IDLE) {
+    // ---------------------------------------------------------
+    // 1st PRESS: Transition to PENDING (🔴 RED)
+    // ---------------------------------------------------------
+    currentState = STATE_PENDING;
+
+    // Instant LED & Wireless Dispatch in 0ms (Before Beep)
+    setAllLeds(255, 0, 0);
+    sendPacketToGateway(MSG_STATE_CHANGE, "REQ");
+
+    triggerNonBlockingBeep(120, 1);
+    Serial.printf("\n[%s] [1st PRESS] Table %s: PENDING Broadcasted\n", triggerSource, TABLE_NUMBER);
+
+  } else if (currentState == STATE_PENDING) {
+    // ---------------------------------------------------------
+    // 2nd PRESS: Transition to ACCEPTED (🟢 GREEN)
+    // ---------------------------------------------------------
+    currentState = STATE_ACCEPTED;
+    acceptedTimestamp = millis();
+
+    setAllLeds(0, 255, 0);
+    sendPacketToGateway(MSG_STATE_CHANGE, "ACC");
+
+    triggerNonBlockingBeep(60, 2, 50);
+    Serial.printf("\n[%s] [2nd PRESS] Table %s: ACCEPTED Broadcasted\n", triggerSource, TABLE_NUMBER);
+
+  } else if (currentState == STATE_ACCEPTED) {
+    // ---------------------------------------------------------
+    // 3rd PRESS: Reset back to IDLE / STANDBY
+    // ---------------------------------------------------------
+    currentState = STATE_IDLE;
+
+    setAllLeds(0, 0, 0);
+    sendPacketToGateway(MSG_STATE_CHANGE, "IDLE");
+
+    triggerNonBlockingBeep(40, 1);
+    Serial.printf("\n[%s] [3rd PRESS] Table %s: IDLE Broadcasted\n", triggerSource, TABLE_NUMBER);
+  }
+}
+
+// ==========================================
+// --- Power-Saving Sleep Management ---
+// ==========================================
+
+// Guard conditions: prevent false sleep transitions while request is active or processing
+bool canEnterSleep() {
+  // 1. Only sleep in stable IDLE or LOCKED states (never during active PENDING or ACCEPTED service calls)
+  if (currentState != STATE_IDLE && currentState != STATE_LOCKED) {
+    return false;
+  }
+
+  // 2. Do not sleep while actively hunting / scanning for Gateway channel
+  if (isHunting) {
+    return false;
+  }
+
+  // 3. Do not sleep while buzzer is actively sounding beeps
+  if (buzzerNextToggleTime != 0 || buzzerIsHigh) {
+    return false;
+  }
+
+  // 4. Must satisfy 30-second continuous inactivity timeout
+  if (millis() - lastActivityTime < INACTIVITY_SLEEP_TIMEOUT_MS) {
+    return false;
+  }
+
+  return true;
+}
+
+// Reconnect and restore all radio and peripheral services after wake-up
+void restoreServicesAfterWakeup() {
+  unsigned long restoreStart = millis();
+  Serial.println("[WAKEUP] Restoring Wi-Fi and ESP-NOW radio services...");
+
+  // 1. Restore Wi-Fi in Station Mode for ESP-NOW
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  WiFi.setSleep(false);
+  esp_err_t wifiErr = esp_wifi_start();
+  if (wifiErr != ESP_OK) {
+    Serial.printf("[WAKEUP ERROR] esp_wifi_start returned: 0x%X\n", wifiErr);
+  }
+  
+  // Disable modem power save for sub-2ms ESP-NOW response
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+
+  // 2. Re-initialize ESP-NOW stack
+  esp_now_deinit();
+  esp_err_t espNowErr = esp_now_init();
+  if (espNowErr != ESP_OK && espNowErr != ESP_ERR_ESPNOW_EXIST) {
+    Serial.printf("[WAKEUP ERROR] esp_now_init returned: 0x%X\n", espNowErr);
+  } else {
+    // Re-register receive callback
+    esp_now_register_recv_cb(onDataReceived);
+
+    // Re-register Gateway broadcast peer
+    esp_now_peer_info_t peerInfo;
+    memset(&peerInfo, 0, sizeof(peerInfo));
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+      Serial.println("[WAKEUP ERROR] Failed to re-add broadcast peer!");
+    } else {
+      Serial.printf("[WAKEUP SUCCESS] ESP-NOW restored with Broadcast Peer on Channel %d (%lums)\n", 
+                    currentChannel, millis() - restoreStart);
+    }
+  }
+
+  // 3. Restore visual state according to current device state
+  applyCurrentStateVisuals();
+
+  // 4. Reset timers
+  lastGatewayContactTime = millis();
+  lastHeartbeatTime = millis();
+}
+
+// Enter ESP32-C3 low-power light sleep mode with touch sensor wake-up trigger
+void enterLowPowerSleep() {
+  Serial.printf("\n=======================================================\n");
+  Serial.printf("[POWER SAVE] 30s Inactivity Timeout Reached -> Entering Low-Power Sleep\n");
+  Serial.printf("[POWER SAVE] Table: %s | State: %s | Unlocked: %d | Wi-Fi Channel: %d\n",
+                TABLE_NUMBER, (currentState == STATE_IDLE ? "IDLE" : "LOCKED"), 
+                isDeviceUnlocked ? 1 : 0, currentChannel);
+  Serial.printf("=======================================================\n");
+
+  // 1. Send sleep notification to Gateway before turning off radio
+  sendPacketToGateway(MSG_HEARTBEAT, "SLEEP");
+  delay(10); // Allow RF frame dispatch to finish
+
+  // 2. Persist critical device state to NVS flash
+  preferences.putBool("unlocked", isDeviceUnlocked);
+  preferences.putString("password", devicePassword);
+  preferences.putInt("channel", currentChannel);
+  preferences.putUInt("hotel_tok", currentHotelToken);
+
+  // 3. Turn off NeoPixels and silence Buzzer
+  setAllLeds(0, 0, 0);
+  digitalWrite(BUZZER_PIN, LOW);
+  buzzerIsHigh = false;
+  buzzerNextToggleTime = 0;
+
+  // 4. Shut down Wi-Fi RF baseband and synthesizers
+  esp_wifi_stop();
+
+  // 5. Configure GPIO 1 (TOUCH_PIN) as hardware wake-up source
+  // Dynamically detect current idle level to support both momentary & latching sensors
+  int idleLevel = digitalRead(TOUCH_PIN);
+  gpio_int_type_t wakeTrigger = (idleLevel == LOW) ? GPIO_INTR_HIGH_LEVEL : GPIO_INTR_LOW_LEVEL;
+
+  gpio_wakeup_enable((gpio_num_t)TOUCH_PIN, wakeTrigger);
+  esp_sleep_enable_gpio_wakeup();
+
+  Serial.printf("[POWER SAVE] Wakeup armed on GPIO %d (Trigger Level: %s). Entering Light Sleep...\n",
+                TOUCH_PIN, (wakeTrigger == GPIO_INTR_HIGH_LEVEL ? "HIGH" : "LOW"));
+  Serial.flush(); // Flush UART before clock gating
+
+  // 6. Enter ESP32-C3 Light Sleep (Power drops from ~80mA to ~130uA; RAM & state fully preserved)
+  isSleeping = true;
+  esp_light_sleep_start();
+
+  // ===================================================================
+  // WAKE-UP RESUMPTION POINT (Execution resumes right here on wake-up!)
+  // ===================================================================
+  isSleeping = false;
+  lastWakeupTime = millis();
+  lastActivityTime = millis();
+  lastDebounceTime = millis();
+
+  // 7. Disable GPIO wake-up source to prevent re-triggering while awake
+  gpio_wakeup_disable((gpio_num_t)TOUCH_PIN);
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+
+  // 8. Log Wake-Up Reason
+  esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+  Serial.printf("\n[POWER SAVE] >>> DEVICE WOKE UP! Cause: ");
+  switch (wakeCause) {
+    case ESP_SLEEP_WAKEUP_GPIO:
+      Serial.printf("GPIO Pin Trigger (Physical Touch Sensor on Pin %d)\n", TOUCH_PIN);
+      break;
+    case ESP_SLEEP_WAKEUP_TIMER:
+      Serial.printf("Timer Wakeup\n");
+      break;
+    default:
+      Serial.printf("Other / Code %d\n", wakeCause);
+      break;
+  }
+
+  // 9. Restore Wi-Fi, ESP-NOW, and device peripherals
+  restoreServicesAfterWakeup();
+
+  // 10. ZERO-LOSS TOUCH PROCESSING:
+  // If woken by the touch sensor, process the touch action IMMEDIATELY!
+  // This guarantees the customer's touch is never lost during sleep.
+  if (wakeCause == ESP_SLEEP_WAKEUP_GPIO) {
+    lastTouchState = digitalRead(TOUCH_PIN);
+    Serial.println("[POWER SAVE] Immediate zero-loss dispatch for wake-up touch!");
+    handleTouchAction("WAKEUP_TOUCH");
   }
 }
 
@@ -502,6 +738,7 @@ void setup() {
   }
 
   lastGatewayContactTime = millis();
+  lastActivityTime = millis();
 
   // Send Initial Boot Heartbeat to Gateway
   sendPacketToGateway(MSG_HEARTBEAT, "BOOT");
@@ -526,61 +763,11 @@ void loop() {
   // This ensures both latching/toggle modules (e.g. TTP223 toggle mode)
   // and momentary switches trigger reliably on EVERY single touch.
   if (reading != lastTouchState) {
-    if (millis() - lastDebounceTime > DEBOUNCE_DELAY_MS) {
+    if ((millis() - lastDebounceTime > DEBOUNCE_DELAY_MS) && 
+        (lastWakeupTime == 0 || millis() - lastWakeupTime > 250)) {
       lastDebounceTime = millis();
       lastTouchState = reading; // Update to new stable state
-
-      // IMMEDIATE WAKE-UP: If hunting or channel drifted, snap immediately to saved gateway channel
-      if (isHunting) {
-        isHunting = false;
-        currentChannel = preferences.getInt("channel", DEFAULT_WIFI_CHANNEL);
-        esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
-        Serial.printf("\n[IMMEDIATE WAKEUP] Customer touch -> Hunting cancelled, locked on Channel %d\n", currentChannel);
-      }
-
-      // STRICT LOCK CHECK: Ignore touch if device is locked
-      if (!isDeviceUnlocked || currentState == STATE_LOCKED) {
-        Serial.printf("\n[TOUCH BLOCKED] Table %s is LOCKED. Manager authorization required.\n", TABLE_NUMBER);
-        triggerNonBlockingBeep(60, 2, 60); // Fast double error buzz
-        sendPacketToGateway(MSG_STATE_CHANGE, "TOUCH_BLOCKED_LOCKED");
-      } else if (currentState == STATE_IDLE) {
-        // ---------------------------------------------------------
-        // 1st PRESS: Transition to PENDING (🔴 RED)
-        // ---------------------------------------------------------
-        currentState = STATE_PENDING;
-
-        // Instant LED & Wireless Dispatch in 0ms (Before Beep)
-        setAllLeds(255, 0, 0);
-        sendPacketToGateway(MSG_STATE_CHANGE, "REQ");
-
-        triggerNonBlockingBeep(120, 1);
-        Serial.printf("\n[1st PRESS] Table %s: PENDING Broadcasted\n", TABLE_NUMBER);
-
-      } else if (currentState == STATE_PENDING) {
-        // ---------------------------------------------------------
-        // 2nd PRESS: Transition to ACCEPTED (🟢 GREEN)
-        // ---------------------------------------------------------
-        currentState = STATE_ACCEPTED;
-        acceptedTimestamp = millis();
-
-        setAllLeds(0, 255, 0);
-        sendPacketToGateway(MSG_STATE_CHANGE, "ACC");
-
-        triggerNonBlockingBeep(60, 2, 50);
-        Serial.printf("\n[2nd PRESS] Table %s: ACCEPTED Broadcasted\n", TABLE_NUMBER);
-
-      } else if (currentState == STATE_ACCEPTED) {
-        // ---------------------------------------------------------
-        // 3rd PRESS: Reset back to IDLE / STANDBY
-        // ---------------------------------------------------------
-        currentState = STATE_IDLE;
-
-        setAllLeds(0, 0, 0);
-        sendPacketToGateway(MSG_STATE_CHANGE, "IDLE");
-
-        triggerNonBlockingBeep(40, 1);
-        Serial.printf("\n[3rd PRESS] Table %s: IDLE Broadcasted\n", TABLE_NUMBER);
-      }
+      handleTouchAction("TOUCH_LOOP");
     }
   }
 
@@ -592,6 +779,7 @@ void loop() {
       Serial.printf("[TIMER] Table %s 6s Elapsed -> Resetting to IDLE\n", TABLE_NUMBER);
       setAllLeds(0, 0, 0);
       currentState = STATE_IDLE;
+      lastActivityTime = millis(); // Refresh inactivity timer on transition to IDLE
       sendPacketToGateway(MSG_STATE_CHANGE, "IDLE_AUTO_TIMER");
     }
   }
@@ -602,5 +790,12 @@ void loop() {
   if (millis() - lastHeartbeatTime >= 2500) {
     lastHeartbeatTime = millis();
     sendPacketToGateway(MSG_HEARTBEAT, "PING");
+  }
+
+  // -------------------------------------------------------------
+  // 4. Inactivity Power-Saving Sleep Check (30-Second Timeout)
+  // -------------------------------------------------------------
+  if (canEnterSleep()) {
+    enterLowPowerSleep();
   }
 }

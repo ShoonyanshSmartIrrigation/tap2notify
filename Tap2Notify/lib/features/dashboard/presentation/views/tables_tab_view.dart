@@ -574,7 +574,12 @@ class TablesTabView extends StatelessWidget {
         else
           // 3 Tables per row
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 100.0),
+            padding: EdgeInsets.fromLTRB(
+              16.0,
+              0,
+              16.0,
+              100.0 + MediaQuery.paddingOf(context).bottom,
+            ),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,

@@ -27,7 +27,10 @@ class TableCard extends StatelessWidget {
     // Card Colors based on state and authorization
     Color cardBg;
     Color borderColor;
-    Color statusColor;
+    Color tableIconColor;
+    Color badgeColor;
+    Color badgeBg;
+    Color shadowColor;
     String statusLabel;
     IconData statusIcon;
 
@@ -35,37 +38,52 @@ class TableCard extends StatelessWidget {
       // 🔒 LOCKED STATE (Manager authorization required)
       cardBg = theme.colorScheme.surface;
       borderColor = const Color(0xFFEA580C).withValues(alpha: 0.6);
-      statusColor = const Color(0xFFEA580C);
+      tableIconColor = const Color(0xFFEA580C);
+      badgeColor = const Color(0xFFEA580C);
+      badgeBg = const Color(0xFFEA580C).withValues(alpha: 0.15);
+      shadowColor = const Color(0xFFEA580C);
       statusLabel = 'LOCKED';
       statusIcon = Icons.lock_outline_rounded;
     } else if (isPending) {
       // 🔴 RED STATE (Customer Requested Assistance)
       cardBg = theme.colorScheme.surface;
       borderColor = const Color(0xFFE53935);
-      statusColor = const Color(0xFFE53935);
+      tableIconColor = const Color(0xFFE53935);
+      badgeColor = Colors.white;
+      badgeBg = const Color(0xFFE53935);
+      shadowColor = const Color(0xFFE53935);
       statusLabel = 'PENDING';
       statusIcon = Icons.notifications_active_rounded;
     } else if (isAccepted) {
       // 🟢 PREVIOUS GREEN STATE (Accepted)
       cardBg = theme.colorScheme.surface;
       borderColor = const Color.fromARGB(255, 40, 150, 45);
-      statusColor = const Color.fromARGB(255, 28, 175, 36);
+      tableIconColor = const Color.fromARGB(255, 28, 175, 36);
+      badgeColor = Colors.white;
+      badgeBg = const Color(0xFF2E7D32);
+      shadowColor = const Color.fromARGB(255, 28, 175, 36);
       statusLabel = 'ACCEPTED';
       statusIcon = Icons.check_circle_rounded;
     } else if (!table.isDeviceOnline) {
       // ⚪ OFFLINE STATE (Device unreachable / powered off / disconnected)
-      cardBg = isDark ? const Color(0xFF1E2124) : const Color(0xFFF8FAFC);
-      borderColor = isDark
-          ? const Color(0xFF475569).withValues(alpha: 0.4)
-          : const Color(0xFFCBD5E1);
-      statusColor = const Color(0xFF64748B);
+      // Card background color, table icon color, and border match IDLE state.
+      // Top-right dot remains RED and badge retains OFFLINE text and icon.
+      cardBg = theme.colorScheme.surface;
+      borderColor = const Color(0xFFFFB74D).withValues(alpha: 0.5);
+      tableIconColor = const Color(0xFFFF9800);
+      badgeColor = const Color(0xFF64748B);
+      badgeBg = const Color(0xFF64748B).withValues(alpha: 0.15);
+      shadowColor = const Color(0xFFFF9800);
       statusLabel = 'OFFLINE';
       statusIcon = Icons.wifi_off_rounded;
     } else {
       // 🟠 IDLE STATE (Orange Icon & Light Orange Border)
       cardBg = theme.colorScheme.surface;
       borderColor = const Color(0xFFFFB74D).withValues(alpha: 0.5);
-      statusColor = const Color(0xFFFF9800);
+      tableIconColor = const Color(0xFFFF9800);
+      badgeColor = const Color(0xFFFF9800);
+      badgeBg = const Color(0xFFFF9800).withValues(alpha: 0.15);
+      shadowColor = const Color(0xFFFF9800);
       statusLabel = 'IDLE';
       statusIcon = Icons.radio_button_unchecked_rounded;
     }
@@ -86,7 +104,7 @@ class TableCard extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: statusColor.withValues(
+                color: shadowColor.withValues(
                   alpha: isPending ? 0.35 : (isAccepted ? 0.25 : 0.08),
                 ),
                 blurRadius: isPending || isAccepted ? 8 : 4,
@@ -185,7 +203,7 @@ class TableCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.15),
+                        color: tableIconColor.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -194,7 +212,7 @@ class TableCard extends StatelessWidget {
                             : Icons.table_restaurant_rounded,
                         color: isDark && isAccepted
                             ? const Color(0xFF81C784)
-                            : statusColor,
+                            : tableIconColor,
                         size: 22,
                       ),
                     ),
@@ -265,11 +283,7 @@ class TableCard extends StatelessWidget {
                           vertical: 2.5,
                         ),
                         decoration: BoxDecoration(
-                          color: isAccepted
-                              ? const Color(0xFF2E7D32)
-                              : (isPending
-                                  ? const Color(0xFFE53935)
-                                  : statusColor.withValues(alpha: 0.15)),
+                          color: badgeBg,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -277,18 +291,14 @@ class TableCard extends StatelessWidget {
                           children: [
                             Icon(
                               statusIcon,
-                              color: (isAccepted || isPending)
-                                  ? Colors.white
-                                  : statusColor,
+                              color: badgeColor,
                               size: 10,
                             ),
                             const SizedBox(width: 3),
                             Text(
                               statusLabel,
                               style: TextStyle(
-                                color: (isAccepted || isPending)
-                                    ? Colors.white
-                                    : statusColor,
+                                color: badgeColor,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 9.5,
                               ),

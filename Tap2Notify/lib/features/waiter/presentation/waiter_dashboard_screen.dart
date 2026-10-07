@@ -405,61 +405,52 @@ class _WaiterDashboardScreenState extends ConsumerState<WaiterDashboardScreen> {
       ),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Builder(
-          builder: (drawerCtx) => InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Scaffold.of(drawerCtx).openEndDrawer();
-            },
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeInOut,
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E1B26) : Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: isDark ? 0.25 : 0.15,
-                        ),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOut,
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1B26) : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(
+                      alpha: isDark ? 0.25 : 0.15,
+                    ),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 350),
-                      child: Image.asset(
-                        isDark
-                            ? 'assets/images/app_logo.png'
-                            : 'assets/images/app_logo_white.png',
-                        key: ValueKey(isDark),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Icon(
-                          Icons.notifications_active_rounded,
-                          color: theme.colorScheme.primary,
-                          size: 30,
-                        ),
-                      ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  child: Image.asset(
+                    isDark
+                        ? 'assets/images/app_logo.png'
+                        : 'assets/images/app_logo_white.png',
+                    key: ValueKey(isDark),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Icon(
+                      Icons.notifications_active_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 30,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Tap2Notify',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(width: 10),
+            const Text(
+              'Tap2Notify',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
         actions: [
           Padding(

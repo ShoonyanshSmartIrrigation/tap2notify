@@ -49,7 +49,7 @@
 #define DEFAULT_WIFI_CHANNEL    1
 #define DEFAULT_HOTEL_TOKEN     0x54324E01  // Multi-tenant Hotel Network Isolation Token ("T2N1")
 #define MAX_DEVICES             64
-#define HEARTBEAT_TIMEOUT_MS    30000
+#define HEARTBEAT_TIMEOUT_MS    8000
 #define UDP_DISCOVERY_PORT      8888
 #define HTTP_PORT               80
 
@@ -351,11 +351,23 @@ int registerOrUpdateDevice(const char* deviceId, const uint8_t* mac, int8_t flag
 }
 
 void checkDeviceHeartbeats() {
-  // Device nodes remain ALWAYS ACTIVE once registered in the Gateway.
-  // Tables do not drop offline simply due to inactivity or quiet periods between orders.
-  // When a user touches or sends a request from C3, it responds and updates state immediately.
+  unsigned long now = millis();
   for (int i = 0; i < registeredDeviceCount; i++) {
-    deviceRegistry[i].isOnline = true;
+    if (deviceRegistry[i].isOnline && (now - deviceRegistry[i].lastSeen > HEARTBEAT_TIMEOUT_MS)) {
+      deviceRegistry[i].isOnline = false;
+      Serial.printf("[GATEWAY TIMEOUT] Table %s is OFFLINE (>%lums inactive)\n", 
+                    deviceRegistry[i].deviceId, (unsigned long)(now - deviceRegistry[i].lastSeen));
+
+      // Construct JSON event and push to App
+      String eventJson = "{\"event\":\"state_change\",\"deviceId\":\"" + String(deviceRegistry[i].deviceId) + 
+                         "\",\"tableNumber\":\"" + String(deviceRegistry[i].deviceId) + "\"" +
+                         ",\"flag\":" + String(deviceRegistry[i].flag) + 
+                         ",\"status\":\"" + (deviceRegistry[i].flag == 0 ? "pending" : (deviceRegistry[i].flag == 1 ? "accepted" : (deviceRegistry[i].flag == -2 ? "locked" : "idle"))) + "\"" +
+                         ",\"isUnlocked\":" + (deviceRegistry[i].isUnlocked ? "true" : "false") + 
+                         ",\"isVerified\":" + (deviceRegistry[i].isVerified ? "true" : "false") + 
+                         ",\"isOnline\":false,\"seq\":" + String(deviceRegistry[i].lastSeq) + "}";
+      broadcastEventToApp(eventJson.c_str());
+    }
   }
 }
 

@@ -52,6 +52,15 @@ class TableCard extends StatelessWidget {
       statusColor = const Color.fromARGB(255, 28, 175, 36);
       statusLabel = 'ACCEPTED';
       statusIcon = Icons.check_circle_rounded;
+    } else if (!table.isDeviceOnline) {
+      // ⚪ OFFLINE STATE (Device unreachable / powered off / disconnected)
+      cardBg = isDark ? const Color(0xFF1E2124) : const Color(0xFFF8FAFC);
+      borderColor = isDark
+          ? const Color(0xFF475569).withValues(alpha: 0.4)
+          : const Color(0xFFCBD5E1);
+      statusColor = const Color(0xFF64748B);
+      statusLabel = 'OFFLINE';
+      statusIcon = Icons.wifi_off_rounded;
     } else {
       // 🟠 IDLE STATE (Orange Icon & Light Orange Border)
       cardBg = theme.colorScheme.surface;

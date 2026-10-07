@@ -135,6 +135,7 @@ class FCMService {
       _currentUserRole = prefs.getString(_prefUserRoleKey);
       _currentManagerPhone = prefs.getString(_prefManagerPhoneKey);
       _lastSyncedToken = prefs.getString(_prefLastSyncedTokenKey);
+      NotificationAudioService().setActiveRole(_currentUserRole);
       debugPrint('[FCM SESSION RESTORE] User: $_currentUserId, Role: $_currentUserRole, Phone: $_currentManagerPhone');
     } catch (e) {
       debugPrint('[FCM SESSION RESTORE ERROR] $e');
@@ -201,6 +202,35 @@ class FCMService {
       }
     }
 
+    // Role-Specific Notification Routing: Please_Hold / Manager Escalation check
+    // Please_Hold notification must NEVER play, trigger, or appear on the Waiter side.
+    final type = data['type']?.toString();
+    final sound = data['sound']?.toString() ??
+        message.notification?.android?.sound ??
+        message.notification?.apple?.sound?.name;
+    final channelId = data['channelId']?.toString() ??
+        message.notification?.android?.channelId;
+
+    final bool isManagerEscalation = type == 'manager_escalation' ||
+        channelId == 'manager_escalation_channel' ||
+        (sound != null && sound.toLowerCase().contains('please_hold')) ||
+        targetRole == 'manager';
+
+    if (isManagerEscalation && _currentUserRole == 'waiter') {
+      debugPrint('[FCM REJECT] Manager Escalation / Please_Hold notification rejected on Waiter device.');
+      return false;
+    }
+
+    final bool isWaiterRequest = type == 'waiter_request' ||
+        channelId == 'waiter_requests_channel' ||
+        (sound != null && sound.toLowerCase().contains('incoming_prompt')) ||
+        targetRole == 'waiter';
+
+    if (isWaiterRequest && _currentUserRole == 'manager') {
+      debugPrint('[FCM REJECT] Waiter Request notification rejected on Manager device.');
+      return false;
+    }
+
     // Strict Role Isolation
     if (targetRole != null && targetRole.isNotEmpty) {
       if (targetRole == 'waiter' && _currentUserRole != 'waiter') {
@@ -260,6 +290,14 @@ class FCMService {
     String? channelId,
     String? sound,
   }) async {
+    final bool isManagerEscalation = channelId == 'manager_escalation_channel' ||
+        (sound != null && sound.toLowerCase().contains('please_hold'));
+
+    if (isManagerEscalation && _currentUserRole == 'waiter') {
+      debugPrint('[NATIVE NOTIF SUPPRESSED] Manager escalation notification (Please_Hold) suppressed on Waiter device.');
+      return;
+    }
+
     try {
       final tNum = tableNumber != null
           ? (int.tryParse(tableNumber.toString()) ?? 1)
@@ -273,8 +311,9 @@ class FCMService {
         'requestId': requestId,
         'tableNumber': tableNumber ?? tNum,
         'notificationId': notifId,
-        'channelId': ?channelId,
-        'sound': ?sound,
+        'channelId': channelId,
+        'sound': sound,
+        'role': _currentUserRole,
       });
       debugPrint('[NATIVE NOTIF] Dispatched notification for $requestId (Table ${tableNumber ?? tNum}, channel: $channelId)');
     } catch (e) {
@@ -332,20 +371,47 @@ class FCMService {
 
   /// Displays an in-app banner with vibration/haptics when an alert arrives in the foreground
   void _handleForegroundMessage(RemoteMessage message) {
+    final data = message.data;
+    final type = data['type']?.toString();
+    final sound = data['sound']?.toString() ??
+        message.notification?.android?.sound ??
+        message.notification?.apple?.sound?.name;
+    final channelId = data['channelId']?.toString() ??
+        message.notification?.android?.channelId;
+
+    final bool isManagerEscalation = type == 'manager_escalation' ||
+        channelId == 'manager_escalation_channel' ||
+        (sound != null && sound.toLowerCase().contains('please_hold'));
+
+    // Waiter side must NEVER receive or display manager escalation / Please_Hold
+    if (_currentUserRole == 'waiter' && isManagerEscalation) {
+      debugPrint('[FOREGROUND SUPPRESSED] Manager escalation / Please_Hold suppressed on Waiter device.');
+      return;
+    }
+
+    final bool isWaiterRequest = type == 'waiter_request' ||
+        channelId == 'waiter_requests_channel' ||
+        (sound != null && sound.toLowerCase().contains('incoming_prompt'));
+
+    if (_currentUserRole == 'manager' && isWaiterRequest) {
+      debugPrint('[FOREGROUND SUPPRESSED] Waiter request suppressed on Manager device.');
+      return;
+    }
+
     HapticFeedback.heavyImpact();
 
     final title = message.notification?.title ?? 'New Waiter Request';
     final body = message.notification?.body ?? 'A customer is calling for service!';
-    final data = message.data;
     final requestId = data['requestId']?.toString() ?? data['tableId']?.toString() ?? '';
     final waiterId = data['waiterId']?.toString();
-    final type = data['type']?.toString();
 
     // If active user is an authorized WAITER receiving an incoming table request, play audio prompt
     if (_currentUserRole == 'waiter') {
-      NotificationAudioService().playIncomingRequestPrompt(tableId: requestId);
-    } else if (_currentUserRole == 'manager' && type == 'manager_escalation') {
-      NotificationAudioService().playManagerEscalationPrompt(tableId: requestId);
+      if (!isManagerEscalation) {
+        NotificationAudioService().playIncomingRequestPrompt(tableId: requestId);
+      }
+    } else if (_currentUserRole == 'manager' && (isManagerEscalation || type == 'manager_escalation')) {
+      NotificationAudioService().playManagerEscalationPrompt(tableId: requestId, role: 'manager');
     }
 
     final context = AppRouter.navigatorKey.currentContext;
@@ -471,6 +537,7 @@ class FCMService {
     _currentManagerPhone = managerPhone;
     _currentUserId = waiterId;
     _currentUserRole = 'waiter';
+    NotificationAudioService().setActiveRole('waiter');
 
     try {
       final token = await _fcm.getToken();
@@ -526,6 +593,7 @@ class FCMService {
     _currentManagerPhone = managerPhone;
     _currentUserId = managerUid;
     _currentUserRole = 'manager';
+    NotificationAudioService().setActiveRole('manager');
 
     try {
       final token = await _fcm.getToken();
@@ -570,6 +638,7 @@ class FCMService {
     _currentUserRole = null;
     _currentManagerPhone = null;
     _lastSyncedToken = null;
+    NotificationAudioService().setActiveRole(null);
 
     // 2. Clear persistent storage
     await _clearSessionFromStorage();
@@ -617,4 +686,34 @@ class FCMService {
 
   /// Backward-compatible alias for waiter logout
   Future<void> unregisterWaiterToken() => unregisterCurrentSession();
+
+  /// For unit/integration tests to configure session role state
+  @visibleForTesting
+  void setSessionForTesting({String? userId, String? role, String? managerPhone}) {
+    _currentUserId = userId;
+    _currentUserRole = role;
+    _currentManagerPhone = managerPhone;
+    NotificationAudioService().setActiveRole(role);
+  }
+
+  /// For unit/integration tests to clear session state
+  @visibleForTesting
+  void resetForTesting() {
+    _currentUserId = null;
+    _currentUserRole = null;
+    _currentManagerPhone = null;
+    _lastSyncedToken = null;
+    _lastHandledMessageId = null;
+    NotificationAudioService().setActiveRole(null);
+  }
+
+  /// For unit/integration tests to verify authorization gate logic
+  @visibleForTesting
+  bool isMessageAuthorizedForCurrentSessionForTesting(RemoteMessage message) =>
+      _isMessageAuthorizedForCurrentSession(message);
+
+  /// For unit/integration tests to verify foreground message handling logic
+  @visibleForTesting
+  void handleForegroundMessageForTesting(RemoteMessage message) =>
+      _handleForegroundMessage(message);
 }

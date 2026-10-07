@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tab2notify/core/services/ble_service.dart';
+import 'package:tab2notify/core/services/fcm_service.dart';
 import 'package:tab2notify/core/services/firebase_realtime_service.dart';
 import 'package:tab2notify/core/services/notification_audio_service.dart';
 import 'package:tab2notify/features/service_requests/data/service_request_repository.dart';
@@ -44,6 +46,8 @@ void main() {
   setUp(() {
     nativeNotifCalls.clear();
     NotificationAudioService().resetForTesting();
+    FCMService().resetForTesting();
+    ServiceRequestRepository.resetNotificationStateForTesting();
   });
 
   group('20-Second Manager Escalation & Audio Alert Tests', () {
@@ -273,6 +277,199 @@ void main() {
           reason: 'Manager must NEVER receive notification immediately at 0s');
 
       repoManager.dispose();
+    });
+
+    test('7. Waiter session strictly suppresses Please_Hold audio and manager escalation notification even after 25s pending', () async {
+      final bleService = BleService();
+      final dbService = MockFirebaseRealtimeService();
+
+      // Configure active Waiter session
+      FCMService().setSessionForTesting(
+        userId: 'W001',
+        role: 'waiter',
+        managerPhone: '9876543210',
+      );
+
+      final repoWaiter = ServiceRequestRepository(
+        bleService,
+        dbService,
+        managerPhone: '9876543210',
+        currentWaiterId: 'W001',
+      );
+
+      // Table requested 25 seconds ago (elapsed > 20000ms)
+      final sentTime = DateTime.now().millisecondsSinceEpoch - 25000;
+      final table7 = TableModel(
+        id: 'table_7',
+        tableNumber: 7,
+        deviceId: 'device_7',
+        status: 'pending',
+        flag: 0,
+        assignedWaiterId: 'W001',
+        waiterName: 'Ramesh (W001)',
+        isUnlocked: true,
+        createdAt: sentTime,
+        requestSentAt: sentTime,
+      );
+
+      dbService.emitTables([table7]);
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // Waiter must NEVER receive Please_Hold audio prompt
+      expect(nativeNotifCalls.any((c) => c.method == 'playManagerAudioPrompt'), isFalse,
+          reason: 'Please_Hold audio must NEVER play on Waiter side');
+
+      // Any notifications sent must NEVER use manager_escalation_channel or please_hold sound
+      final showNotifs = nativeNotifCalls.where((c) => c.method == 'showNotification').toList();
+      for (final notif in showNotifs) {
+        expect(notif.arguments['channelId'], isNot('manager_escalation_channel'),
+            reason: 'Manager escalation channel must NEVER be used on Waiter side');
+        expect(notif.arguments['sound'], isNot('please_hold'),
+            reason: 'please_hold sound must NEVER be used on Waiter side');
+      }
+
+      repoWaiter.dispose();
+    });
+
+    test('8. NotificationAudioService.playManagerEscalationPrompt explicitly suppresses Please_Hold when role is waiter', () async {
+      // 1. Explicit waiter role param
+      await NotificationAudioService().playManagerEscalationPrompt(
+        tableId: 'table_8',
+        role: 'waiter',
+      );
+      expect(nativeNotifCalls.any((c) => c.method == 'playManagerAudioPrompt'), isFalse,
+          reason: 'playManagerEscalationPrompt must abort when role is waiter');
+
+      // 2. Active role set to waiter
+      NotificationAudioService().setActiveRole('waiter');
+      await NotificationAudioService().playManagerEscalationPrompt(
+        tableId: 'table_8',
+      );
+      expect(nativeNotifCalls.any((c) => c.method == 'playManagerAudioPrompt'), isFalse,
+          reason: 'playManagerEscalationPrompt must abort when activeRole is waiter');
+
+      // 3. Manager role allowed
+      NotificationAudioService().setActiveRole('manager');
+      await NotificationAudioService().playManagerEscalationPrompt(
+        tableId: 'table_8',
+        role: 'manager',
+      );
+      expect(nativeNotifCalls.any((c) => c.method == 'playManagerAudioPrompt'), isTrue,
+          reason: 'playManagerEscalationPrompt must play for manager role');
+    });
+
+    test('9. FCMService rejects manager escalation payload on Waiter device but accepts on Manager device', () {
+      // Configure Waiter session
+      FCMService().setSessionForTesting(
+        userId: 'W001',
+        role: 'waiter',
+        managerPhone: '9876543210',
+      );
+
+      const escalationMessage = RemoteMessage(
+        data: {
+          'type': 'manager_escalation',
+          'channelId': 'manager_escalation_channel',
+          'sound': 'please_hold',
+          'targetRole': 'manager',
+          'requestId': 'table_9',
+        },
+      );
+
+      // Must be rejected on Waiter device
+      final isAuthorizedWaiter = FCMService().isMessageAuthorizedForCurrentSessionForTesting(escalationMessage);
+      expect(isAuthorizedWaiter, isFalse,
+          reason: 'Manager escalation push must be rejected on Waiter session');
+
+      // Configure Manager session
+      FCMService().setSessionForTesting(
+        userId: 'M001',
+        role: 'manager',
+        managerPhone: '9876543210',
+      );
+
+      final isAuthorizedManager = FCMService().isMessageAuthorizedForCurrentSessionForTesting(escalationMessage);
+      expect(isAuthorizedManager, isTrue,
+          reason: 'Manager escalation push must be authorized on Manager session');
+    });
+
+    test('10. FCMService foreground message handler completely suppresses manager escalation / Please_Hold on Waiter device', () {
+      // Configure Waiter session
+      FCMService().setSessionForTesting(
+        userId: 'W001',
+        role: 'waiter',
+        managerPhone: '9876543210',
+      );
+
+      const escalationMessage = RemoteMessage(
+        data: {
+          'type': 'manager_escalation',
+          'sound': 'please_hold',
+          'channelId': 'manager_escalation_channel',
+          'requestId': 'table_10',
+        },
+      );
+
+      FCMService().handleForegroundMessageForTesting(escalationMessage);
+
+      // Must produce zero native audio calls and zero notifications on Waiter side
+      expect(nativeNotifCalls.isEmpty, isTrue,
+          reason: 'Foreground escalation message must be completely silent and suppressed on Waiter side');
+
+      // Now switch to Manager session
+      FCMService().setSessionForTesting(
+        userId: 'M001',
+        role: 'manager',
+        managerPhone: '9876543210',
+      );
+
+      FCMService().handleForegroundMessageForTesting(escalationMessage);
+
+      // Manager must receive Please_Hold audio
+      expect(nativeNotifCalls.any((c) => c.method == 'playManagerAudioPrompt'), isTrue,
+          reason: 'Manager must receive Please_Hold audio on foreground escalation message');
+    });
+
+    test('11. FCMService.showNativeNotification strictly suppresses Please_Hold and manager_escalation_channel on Waiter device', () async {
+      // Configure Waiter session
+      FCMService().setSessionForTesting(
+        userId: 'W001',
+        role: 'waiter',
+        managerPhone: '9876543210',
+      );
+
+      await FCMService().showNativeNotification(
+        title: '⚠️ Unattended Table 11 Alert!',
+        body: 'Table 11 has been pending for >20s!',
+        requestId: 'table_11',
+        channelId: 'manager_escalation_channel',
+        sound: 'please_hold',
+      );
+
+      expect(nativeNotifCalls.isEmpty, isTrue,
+          reason: 'showNativeNotification must be suppressed on Waiter device when channel/sound is manager escalation');
+
+      // Switch to Manager session
+      FCMService().setSessionForTesting(
+        userId: 'M001',
+        role: 'manager',
+        managerPhone: '9876543210',
+      );
+
+      await FCMService().showNativeNotification(
+        title: '⚠️ Unattended Table 11 Alert!',
+        body: 'Table 11 has been pending for >20s!',
+        requestId: 'table_11',
+        channelId: 'manager_escalation_channel',
+        sound: 'please_hold',
+      );
+
+      final showNotifs = nativeNotifCalls.where((c) => c.method == 'showNotification').toList();
+      expect(showNotifs.length, 1,
+          reason: 'showNativeNotification must dispatch on Manager device');
+      expect(showNotifs.first.arguments['channelId'], 'manager_escalation_channel');
+      expect(showNotifs.first.arguments['sound'], 'please_hold');
+      expect(showNotifs.first.arguments['role'], 'manager');
     });
   });
 }

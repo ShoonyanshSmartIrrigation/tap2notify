@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../../../core/services/app_connectivity_service.dart';
 import '../../../core/services/ble_service.dart';
 import '../../../core/services/device_credential_service.dart';
 import '../../../core/services/fcm_service.dart';
@@ -96,6 +97,10 @@ class ServiceRequestRepository {
     _lastNotifiedTime.clear();
     _escalatedTableIds.clear();
     _pendingEntryTimestamps.clear();
+    // ignore: invalid_use_of_visible_for_testing_member
+    GatewayWifiService().resetForTesting();
+    // ignore: invalid_use_of_visible_for_testing_member
+    AppConnectivityService().resetForTesting();
   }
 
 
@@ -169,7 +174,7 @@ class ServiceRequestRepository {
               tableNumber: bleTable.tableNumber,
               status: bleTable.status,
               flag: bleTable.flag,
-              isOnline: true,
+              isOnline: bleTable.isDeviceOnline,
               managerPhone: managerPhone,
               managerUid: managerUid,
               managerEmail: managerEmail,
@@ -346,7 +351,7 @@ class ServiceRequestRepository {
   }
 
   void _checkManagerEscalation(List<TableModel> tables) {
-    if (currentWaiterId.isNotEmpty) return;
+    if (currentWaiterId.isNotEmpty || FCMService().currentUserRole == 'waiter') return;
     final now = DateTime.now().millisecondsSinceEpoch;
 
     // Merge tables with _bleService.currentTables so local Wi-Fi tables are always checked
@@ -361,9 +366,12 @@ class ServiceRequestRepository {
         final int bleTime = t.updatedAt ?? t.createdAt;
         final bool useBle = bleTime > dbTime;
 
-        final bool isOnlineResolved = _bleService.connectionStatus == GatewayConnectionStatus.connected
-            ? (t.isDeviceOnline || _bleService.isTableOnline(t.id))
-            : (t.isDeviceOnline || existing.isDeviceOnline);
+        final bool hasConn = AppConnectivityService().hasConnectivity;
+        final bool isOnlineResolved = !hasConn
+            ? false
+            : (_bleService.connectionStatus == GatewayConnectionStatus.connected
+                ? (t.isDeviceOnline && _bleService.isTableOnline(t.id))
+                : existing.isDeviceOnline);
 
         final bool authorized = isTableAuthorizedForThisManager(existing) ||
             isTableAuthorizedForThisManager(t);
@@ -373,7 +381,9 @@ class ServiceRequestRepository {
           status: useBle ? t.status : existing.status,
           isUnlocked: authorized,
           isDeviceOnline: isOnlineResolved,
-          requestSentAt: t.requestSentAt ?? existing.requestSentAt,
+          requestSentAt: useBle
+              ? (t.requestSentAt ?? existing.requestSentAt)
+              : (existing.requestSentAt ?? t.requestSentAt),
         );
       } else {
         allActiveTables[t.id] = t.copyWith(
@@ -397,6 +407,7 @@ class ServiceRequestRepository {
           );
           NotificationAudioService().playManagerEscalationPrompt(
             tableId: table.id,
+            role: 'manager',
           );
           FCMService().showNativeNotification(
             title: '⚠️ Unattended Table ${table.tableNumber} Alert!',
@@ -548,11 +559,16 @@ class ServiceRequestRepository {
     List<TableModel> lastDbTables = [];
 
     List<TableModel> computeMerged() {
+      final bool hasConn = AppConnectivityService().hasConnectivity;
       if (lastDbTables.isEmpty) {
         return _bleService.currentTables.map((bleTable) {
           final isAuthorized = isTableAuthorizedForThisManager(bleTable);
           final bool isHwLocked = bleTable.flag == -2;
-          return bleTable.copyWith(isUnlocked: !isHwLocked && isAuthorized);
+          final bool effectiveOnline = hasConn && bleTable.isDeviceOnline;
+          return bleTable.copyWith(
+            isDeviceOnline: effectiveOnline,
+            isUnlocked: !isHwLocked && isAuthorized,
+          );
         }).toList();
       }
       final merged = lastDbTables.map((t) {
@@ -566,12 +582,14 @@ class ServiceRequestRepository {
         final bool isUnlocked = !isHardwareLocked && isAuthorizedForThisManager;
 
         final bool effectiveOnline;
-        if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
+        if (!hasConn) {
+          effectiveOnline = false;
+        } else if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
           effectiveOnline = liveBleTable != null
               ? liveBleTable.isDeviceOnline
               : isBleOnline;
         } else {
-          effectiveOnline = isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+          effectiveOnline = t.isDeviceOnline;
         }
 
         if (liveBleTable != null) {
@@ -615,7 +633,11 @@ class ServiceRequestRepository {
         )) {
           final isAuthorized = isTableAuthorizedForThisManager(bleTable);
           final bool isHwLocked = bleTable.flag == -2;
-          merged.add(bleTable.copyWith(isUnlocked: !isHwLocked && isAuthorized));
+          final bool effectiveOnline = hasConn && bleTable.isDeviceOnline;
+          merged.add(bleTable.copyWith(
+            isDeviceOnline: effectiveOnline,
+            isUnlocked: !isHwLocked && isAuthorized,
+          ));
         }
       }
       merged.sort((a, b) {
@@ -628,6 +650,8 @@ class ServiceRequestRepository {
       });
       return merged;
     }
+
+    StreamSubscription? connSub;
 
     controller = StreamController<List<TableModel>>(
       onListen: () {
@@ -674,10 +698,17 @@ class ServiceRequestRepository {
             emitMerged();
           });
         });
+
+        connSub = AppConnectivityService().connectivityStream.listen((_) {
+          Future(() {
+            emitMerged();
+          });
+        });
       },
       onCancel: () {
         dbSub?.cancel();
         bleSub?.cancel();
+        connSub?.cancel();
       },
     );
 
@@ -692,6 +723,7 @@ class ServiceRequestRepository {
     List<TableModel> lastDbTables = [];
 
     List<TableModel> computeMerged() {
+      final bool hasConn = AppConnectivityService().hasConnectivity;
       if (lastDbTables.isEmpty) {
         return _bleService.currentTables.where((t) {
           final isUnlocked = isTableAuthorizedForThisManager(t);
@@ -702,6 +734,9 @@ class ServiceRequestRepository {
                   (t.waiterName.isNotEmpty &&
                       (t.waiterName == waiterId ||
                           t.waiterName.contains(waiterId))));
+        }).map((t) {
+          final bool effectiveOnline = hasConn && t.isDeviceOnline;
+          return t.copyWith(isDeviceOnline: effectiveOnline);
         }).toList();
       }
       final merged = lastDbTables
@@ -714,12 +749,14 @@ class ServiceRequestRepository {
             final bool isAuthorized = isTableAuthorizedForThisManager(t);
             final bool isUnlocked = isAuthorized;
             final bool effectiveOnline;
-            if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
+            if (!hasConn) {
+              effectiveOnline = false;
+            } else if (_bleService.connectionStatus == GatewayConnectionStatus.connected) {
               effectiveOnline = liveBleTable != null
                   ? liveBleTable.isDeviceOnline
                   : isBleOnline;
             } else {
-              effectiveOnline = isBleOnline || t.isDeviceOnline || (liveBleTable?.isDeviceOnline ?? false);
+              effectiveOnline = t.isDeviceOnline;
             }
 
             if (liveBleTable != null) {
@@ -776,7 +813,11 @@ class ServiceRequestRepository {
                   m.id == bleTable.id ||
                   m.tableNumber.toString() == bleTable.tableNumber.toString(),
             )) {
-          merged.add(bleTable.copyWith(isUnlocked: true));
+          final bool effectiveOnline = hasConn && bleTable.isDeviceOnline;
+          merged.add(bleTable.copyWith(
+            isUnlocked: true,
+            isDeviceOnline: effectiveOnline,
+          ));
         }
       }
 
@@ -790,6 +831,8 @@ class ServiceRequestRepository {
       });
       return merged;
     }
+
+    StreamSubscription? connSub;
 
     controller = StreamController<List<TableModel>>(
       onListen: () {
@@ -838,10 +881,17 @@ class ServiceRequestRepository {
             emitMerged();
           });
         });
+
+        connSub = AppConnectivityService().connectivityStream.listen((_) {
+          Future(() {
+            emitMerged();
+          });
+        });
       },
       onCancel: () {
         dbSub?.cancel();
         bleSub?.cancel();
+        connSub?.cancel();
       },
     );
 

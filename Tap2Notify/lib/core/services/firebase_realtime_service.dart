@@ -31,6 +31,28 @@ class FirebaseRealtimeService {
         _db = FirebaseDatabase.instance;
       } catch (_) {}
     }
+    _initConnectionListener();
+  }
+
+  bool _isFirebaseConnected = true;
+  bool get isFirebaseConnected => _isFirebaseConnected;
+
+  void _initConnectionListener() {
+    try {
+      _db.ref('.info/connected').onValue.listen((event) {
+        _isFirebaseConnected = event.snapshot.value == true;
+      }, onError: (_) {});
+    } catch (_) {}
+  }
+
+  Stream<bool> get connectionStatusStream {
+    try {
+      return _db.ref('.info/connected').onValue.map((event) {
+        return event.snapshot.value == true;
+      });
+    } catch (_) {
+      return const Stream.empty();
+    }
   }
 
   String get _currentAuthUid => FirebaseAuth.instance.currentUser?.uid ?? '';

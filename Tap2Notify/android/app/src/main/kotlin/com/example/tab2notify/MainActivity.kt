@@ -43,8 +43,17 @@ class MainActivity : FlutterActivity() {
                         val notificationId = call.argument<Int>("notificationId") ?: (tableNumberStr.hashCode() and 0x7FFFFFFF)
                         val channelId = call.argument<String>("channelId") ?: "waiter_requests_channel"
                         val sound = call.argument<String>("sound") ?: ""
-                        showNativeNotification(title, body, requestId, tableNumber, notificationId, channelId, sound)
-                        result.success(true)
+                        val role = call.argument<String>("role")?.lowercase()
+                        val isManagerEscalation = channelId == "manager_escalation_channel" ||
+                                sound == "please_hold" ||
+                                sound.contains("Please_Hold", ignoreCase = true)
+
+                        if (role == "waiter" && isManagerEscalation) {
+                            result.success(false)
+                        } else {
+                            showNativeNotification(title, body, requestId, tableNumber, notificationId, channelId, sound)
+                            result.success(true)
+                        }
                     }
                     "clearNotification" -> {
                         val notificationId = call.argument<Int>("notificationId") ?: 1
@@ -61,8 +70,13 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "playManagerAudioPrompt" -> {
-                        playNativeAudioPrompt(R.raw.please_hold)
-                        result.success(true)
+                        val role = call.argument<String>("role")?.lowercase()
+                        if (role == "waiter") {
+                            result.success(false)
+                        } else {
+                            playNativeAudioPrompt(R.raw.please_hold)
+                            result.success(true)
+                        }
                     }
                     "stopAudioPrompt" -> {
                         stopNativeAudioPrompt()

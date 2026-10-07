@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/app_connectivity_service.dart';
 import '../../../core/services/device_credential_service.dart';
 import '../../../core/services/gateway_wifi_service.dart';
 import '../../../core/services/shared_preferences_provider.dart';
@@ -10,6 +11,15 @@ import '../../waiter/domain/waiter_model.dart';
 import '../data/service_request_repository.dart';
 import '../domain/service_request_model.dart';
 import '../domain/table_model.dart';
+
+final appConnectivityServiceProvider = Provider<AppConnectivityService>((ref) {
+  return AppConnectivityService();
+});
+
+final hasConnectivityStreamProvider = StreamProvider<bool>((ref) {
+  final service = ref.watch(appConnectivityServiceProvider);
+  return service.connectivityStream;
+});
 
 final gatewayWifiServiceProvider = Provider<GatewayWifiService>((ref) {
   return GatewayWifiService();

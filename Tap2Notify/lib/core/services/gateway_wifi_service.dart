@@ -372,9 +372,7 @@ class GatewayWifiService {
   List<TableModel> get currentTables {
     final list = _tables.values
         .where(
-          (t) =>
-              isTableOnline(t.id) &&
-              _verifiedDeviceIds.contains(_cleanTableNum(t.tableNumber)),
+          (t) => _verifiedDeviceIds.contains(_cleanTableNum(t.tableNumber)),
         )
         .toList();
     list.sort((a, b) {
@@ -423,7 +421,7 @@ class GatewayWifiService {
           _lastSeenTimes[tableId] ??
           _lastSeenTimes[cleanNum];
       if (lastSeen != null &&
-          DateTime.now().difference(lastSeen).inSeconds > 30) {
+          DateTime.now().difference(lastSeen).inSeconds > 8) {
         return false;
       }
       return table.isDeviceOnline;
@@ -434,7 +432,7 @@ class GatewayWifiService {
         _lastSeenTimes[tableId] ??
         _lastSeenTimes[cleanNum];
     if (lastSeen != null) {
-      return DateTime.now().difference(lastSeen).inSeconds <= 30;
+      return DateTime.now().difference(lastSeen).inSeconds <= 8;
     }
     return false;
   }
@@ -470,6 +468,22 @@ class GatewayWifiService {
       debugPrint(
         '[GATEWAY WIFI] Status Changed -> $status (IP: $_gatewayIp:$_gatewayPort)',
       );
+
+      if (status == GatewayConnectionStatus.disconnected) {
+        _lastSeenTimes.clear();
+        bool changed = false;
+        for (final entry in _tables.entries.toList()) {
+          if (entry.value.isDeviceOnline) {
+            final offlineTable = entry.value.copyWith(isDeviceOnline: false);
+            _tables[entry.key] = offlineTable;
+            changed = true;
+            onDeviceLost?.call(entry.key);
+          }
+        }
+        if (changed) {
+          _emitTables();
+        }
+      }
     }
   }
 
@@ -540,8 +554,8 @@ class GatewayWifiService {
     // 1. Start UDP Auto-Discovery listener in background
     _startUdpDiscovery();
 
-    // 2. Start Periodic Stale Check (every 3 seconds)
-    _staleCheckTimer ??= Timer.periodic(const Duration(seconds: 3), (_) {
+    // 2. Start Periodic Stale Check (every 2 seconds)
+    _staleCheckTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
       _checkStaleDevices();
     });
 
@@ -739,12 +753,13 @@ class GatewayWifiService {
             }
           }
         }
+      } else {
+        _setConnectionStatus(GatewayConnectionStatus.disconnected);
       }
     } catch (e) {
-      // If primary IP fails, probe candidate endpoints
-      final newIp = await findReachableGatewayEndpoint();
-      if (newIp == null &&
-          _connectionStatus == GatewayConnectionStatus.connected) {
+      // If primary IP fails, probe candidate endpoints without running blocking 254-subnet scan
+      final newIp = await findReachableGatewayEndpoint(scanSubnet: false);
+      if (newIp == null) {
         _setConnectionStatus(GatewayConnectionStatus.disconnected);
       }
     }
@@ -1068,37 +1083,52 @@ class GatewayWifiService {
     _managerStoredCredentials.clear();
     _activeManagerPhone = null;
     _activeManagerUid = null;
+    _connectionStatus = GatewayConnectionStatus.disconnected;
     devicePasswordValidator = null;
     httpClient = null;
     onDeviceDiscovered = null;
     onDeviceLost = null;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _staleCheckTimer?.cancel();
+    _staleCheckTimer = null;
   }
 
   void _checkStaleDevices() {
-    // When connected to Gateway, table devices remain ALWAYS ACTIVE and
-    // their online state is maintained directly by Gateway events and polling.
-    if (_connectionStatus != GatewayConnectionStatus.connected) {
-      final now = DateTime.now();
-      bool changed = false;
+    final now = DateTime.now();
+    bool changed = false;
 
-      _lastSeenTimes.forEach((tableId, lastSeen) {
-        if (now.difference(lastSeen).inSeconds > 60) {
-          final table = _tables[tableId];
-          if (table != null && table.isDeviceOnline) {
-            final offlineTable = table.copyWith(isDeviceOnline: false);
-            _tables[tableId] = offlineTable;
-            changed = true;
-            debugPrint(
-              '[GATEWAY WIFI] Table $tableId is now OFFLINE (Gateway disconnected)',
-            );
-            onDeviceDiscovered?.call(offlineTable);
-          }
+    for (final entry in _tables.entries.toList()) {
+      final tableId = entry.key;
+      final table = entry.value;
+      if (!table.isDeviceOnline) continue;
+
+      bool shouldBeOffline = false;
+      if (_connectionStatus != GatewayConnectionStatus.connected) {
+        shouldBeOffline = true;
+      } else {
+        final lastSeen = _lastSeenTimes[tableId] ??
+            _lastSeenTimes['table_${_cleanTableNum(table.tableNumber)}'] ??
+            _lastSeenTimes[_cleanTableNum(table.tableNumber)];
+        if (lastSeen == null || now.difference(lastSeen).inSeconds > 8) {
+          shouldBeOffline = true;
         }
-      });
-
-      if (changed) {
-        _emitTables();
       }
+
+      if (shouldBeOffline) {
+        final offlineTable = table.copyWith(isDeviceOnline: false);
+        _tables[tableId] = offlineTable;
+        _lastSeenTimes.remove(tableId);
+        changed = true;
+        debugPrint(
+          '[GATEWAY WIFI] Table $tableId is now OFFLINE (stale/disconnected)',
+        );
+        onDeviceLost?.call(tableId);
+      }
+    }
+
+    if (changed) {
+      _emitTables();
     }
   }
 
@@ -1637,26 +1667,6 @@ class GatewayWifiService {
       }
     }
 
-    if (!anyUpdated) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final parsedNum = int.tryParse(numPart ?? '') ?? int.tryParse(cleanNum) ?? cleanNum;
-      final newTable = TableModel(
-        id: numTableId ?? cleanTableId,
-        tableNumber: parsedNum,
-        deviceId: 'device_$cleanNum',
-        status: unlocked ? 'idle' : 'locked',
-        flag: unlocked ? -1 : -1,
-        isDeviceOnline: true,
-        isUnlocked: unlocked,
-        unlockedAt: unlocked ? now : null,
-        createdAt: now,
-        updatedAt: now,
-      );
-      _tables[numTableId ?? cleanTableId] = newTable;
-      anyUpdated = true;
-      onDeviceDiscovered?.call(newTable);
-    }
-
     if (anyUpdated) {
       _emitTables();
     }
@@ -2034,6 +2044,9 @@ class GatewayWifiService {
         assignedWaiterId: cloudTable.assignedWaiterId.isNotEmpty
             ? cloudTable.assignedWaiterId
             : (existing?.assignedWaiterId ?? ''),
+        isDeviceOnline: _connectionStatus == GatewayConnectionStatus.connected
+            ? (existing?.isDeviceOnline ?? cloudTable.isDeviceOnline)
+            : cloudTable.isDeviceOnline,
         isUnlocked: isUnlockedForActive,
         updatedAt: cloudUpdated,
         acceptedAt: cloudTable.acceptedAt ?? existing?.acceptedAt,
